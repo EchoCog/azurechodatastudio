@@ -528,14 +528,14 @@
     "axios": "^1.8.2",
     "linux-release-info": "^2.0.0",
     "promisify-child-process": "^3.1.1",
-    "semver": "^7.5.2",
+    "semver": "^7.7.2",
     "sudo-prompt": "9.1.1",
     "vscode-nls": "^4.0.0",
     "yamljs": "^0.3.0"
   },
   "devDependencies": {
     "@types/mocha": "^7.0.2",
-    "@types/semver": "^7.3.1",
+    "@types/semver": "^7.7.0",
     "@types/sinon": "^9.0.8",
     "@types/yamljs": "0.2.30",
     "@microsoft/azdata-test": "^3.0.4",
