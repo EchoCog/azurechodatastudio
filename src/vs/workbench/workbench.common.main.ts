@@ -237,6 +237,8 @@ import { ServerContextualizationService } from 'sql/workbench/services/contextua
 import { IErrorDiagnosticsService } from 'sql/workbench/services/diagnostics/common/errorDiagnosticsService';
 import { ErrorDiagnosticsService } from 'sql/workbench/services/diagnostics/browser/errorDiagnosticsService';
 import { IComponentContextService, ComponentContextService } from 'sql/workbench/services/componentContext/browser/componentContextService';
+import { IZoneCogService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { ZoneCogService } from 'sql/workbench/services/zonecog/browser/zonecogService';
 
 // {{SQL CARBON TODO}} - delayed or eager
 registerSingleton(IDashboardService, DashboardService, InstantiationType.Eager);
@@ -284,6 +286,7 @@ registerSingleton(IExecutionPlanService, ExecutionPlanService, InstantiationType
 registerSingleton(IServerContextualizationService, ServerContextualizationService, InstantiationType.Eager);
 registerSingleton(IErrorDiagnosticsService, ErrorDiagnosticsService, InstantiationType.Eager);
 registerSingleton(IComponentContextService, ComponentContextService, InstantiationType.Eager);
+registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
 //#endregion
 
 
@@ -597,6 +600,10 @@ import 'sql/workbench/contrib/executionPlan/browser/executionPlanContribution';
 
 // table
 import 'sql/workbench/contrib/table/browser/table.contribution';
+
+// zonecog - cognitive protocol integration
+import 'sql/workbench/services/zonecog/browser/zonecog.contribution';
+import 'sql/workbench/contrib/zonecog/browser/zonecogActions.contribution';
 
 // Deprecated Extension Migrator
 import 'vs/workbench/contrib/deprecatedExtensionMigrator/browser/deprecatedExtensionMigrator.contribution';

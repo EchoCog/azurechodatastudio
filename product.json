@@ -1,6 +1,6 @@
 {
 	"nameShort": "azuredatastudio",
-	"nameLong": "Azure Data Studio",
+	"nameLong": "Azure Data Studio - Zone-Cog Edition",
 	"applicationName": "azuredatastudio",
 	"dataFolderName": ".azuredatastudio",
 	"win32MutexName": "azuredatastudio",
