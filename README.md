@@ -1,7 +1,10 @@
-# Azure Data Studio
+# Azure Data Studio - Zone-Cog Edition
 
 > [!IMPORTANT]
 > Azure Data Studio will be retired on **February 28, 2026**.  [Read more](https://aka.ms/ads-retirement)
+
+> [!NOTE]
+> This experimental fork integrates the **Zone-Cog cognitive protocol** to transform Azure Data Studio into an embodied cognition workbench. See [Zone-Cog Integration](src/sql/workbench/services/zonecog/README.md) for details.
 
 ----
 
@@ -21,6 +24,7 @@ You can also find the latest release [here](https://github.com/microsoft/azureda
 
 ## **Feature Highlights**
 
+### Core Azure Data Studio Features
 - Cross-Platform DB management for Windows, macOS and Linux with simple XCopy deployment
 - SQL Server Connection Management with Connection Dialog, Server Groups, Azure Integration and Registered Servers
 - Object Explorer supporting schema browsing and contextual command execution
@@ -33,6 +37,13 @@ You can also find the latest release [here](https://github.com/microsoft/azureda
 - Scripting support to generate CREATE, SELECT, ALTER and DROP statements for database objects
 - Workspaces with full Git integration and Find In Files support to managing T-SQL script libraries
 - Modern light-weight shell with theming, user settings, full-screen support, integrated terminal and numerous other features
+
+### Zone-Cog Cognitive Features
+- **Comprehensive Thinking Protocol**: Natural, stream-of-consciousness cognitive processing for data analysis
+- **Adaptive Query Analysis**: Automatic complexity assessment with depth-appropriate thinking responses
+- **Cognitive Workbench Commands**: Interactive cognitive processing through Command Palette
+- **Pattern Recognition**: Multi-dimensional problem analysis with natural discovery processes
+- **Contextual Understanding**: Intelligent interpretation of database management queries and tasks
 
 Here are some of these features in action.
 
