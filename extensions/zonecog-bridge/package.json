@@ -1,0 +1,50 @@
+{
+  "name": "zonecog-bridge",
+  "displayName": "Zone-Cog Bridge",
+  "publisher": "EchoCog",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.79.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onCommand:zonecog.ingestSchema",
+    "onCommand:zonecog.ingestActiveTable",
+    "onCommand:zonecog.runCognitiveAnalysis"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "zonecog.ingestSchema",
+        "title": "Zone-Cog: Ingest Current Database Schema"
+      },
+      {
+        "command": "zonecog.ingestActiveTable",
+        "title": "Zone-Cog: Ingest Active Table"
+      },
+      {
+        "command": "zonecog.runCognitiveAnalysis",
+        "title": "Zone-Cog: Run Cognitive Analysis"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Zone-Cog Bridge",
+      "properties": {
+        "zonecog.bridge.baseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:7807",
+          "description": "Base URL for the local Zone-Cog Python bridge"
+        },
+        "zonecog.bridge.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Optional auth token header value for the bridge"
+        }
+      }
+    }
+  }
+}
