@@ -29,6 +29,13 @@ export interface IZoneCogService {
 	readonly onDidProcessQuery: Event<ZoneCogResponse>;
 
 	/**
+	 * Fired when a thinking phase completes during streaming processing.
+	 * Subscribers receive each phase as it finishes, enabling real-time
+	 * observation of the cognitive protocol in action.
+	 */
+	readonly onDidCompleteThinkingPhase: Event<ThinkingPhase>;
+
+	/**
 	 * Initialize the Zone-Cog cognitive framework.
 	 */
 	initialize(): Promise<void>;
@@ -54,6 +61,11 @@ export interface IZoneCogService {
 	 * Get the underlying hypergraph store for direct access.
 	 */
 	getHypergraphStore(): IHypergraphStore;
+
+	/**
+	 * Get the history of processed queries in the current session.
+	 */
+	getQueryHistory(): Array<{ query: string; timestamp: number }>;
 }
 
 // ---------------------------------------------------------------------------
