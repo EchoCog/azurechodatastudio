@@ -64,7 +64,7 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 		const merged = { ...existing, ...patch, id };
 		const updated = HypergraphStore._cloneNode(merged);
 		this._nodes.set(id, updated);
-		this._onDidChangeNode.fire(updated);
+		this._onDidChangeNode.fire(HypergraphStore._cloneNode(updated));
 		return HypergraphStore._cloneNode(updated);
 	}
 
