@@ -241,6 +241,9 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			this._queryHistory.shift();
 		}
 
+		// Decay older history nodes to keep attention focused
+		this.hypergraphStore.decayAllSalience(0.98);
+
 		// Persist history node in hypergraph for cross-session retrieval patterns
 		const historyNodeId = shortId(`history:${timestamp}`);
 		this.hypergraphStore.addNode({
@@ -251,9 +254,6 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			metadata: { timestamp, historyIndex: this._queryHistory.length - 1 },
 			salience_score: 0.4,
 		});
-
-		// Decay older history nodes to keep attention focused
-		this.hypergraphStore.decayAllSalience(0.98);
 	}
 
 	// -- Thinking protocol ---------------------------------------------------
