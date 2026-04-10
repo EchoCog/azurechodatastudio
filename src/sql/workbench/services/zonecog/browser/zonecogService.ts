@@ -242,6 +242,14 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		return [...this._queryHistory];
 	}
 
+	reset(): void {
+		this._queryHistory.length = 0;
+		this._cognitiveLoad = 0;
+		this._currentContext = null;
+		this.logService.info('ZoneCogService: State reset (query history, load, context)');
+		this._fireStateChange();
+	}
+
 	// -- Query history -------------------------------------------------------
 
 	private _recordQueryHistory(query: string, timestamp: number): void {

@@ -66,6 +66,12 @@ export interface IZoneCogService {
 	 * Get the history of processed queries in the current session.
 	 */
 	getQueryHistory(): Array<{ query: string; timestamp: number }>;
+
+	/**
+	 * Reset the cognitive service state: clears query history,
+	 * resets cognitive load, and clears context.
+	 */
+	reset(): void;
 }
 
 // ---------------------------------------------------------------------------

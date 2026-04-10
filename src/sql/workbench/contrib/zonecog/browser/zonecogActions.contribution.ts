@@ -456,16 +456,18 @@ class ZoneCogResetAction extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
+		const zonecogService = accessor.get(IZoneCogService);
 		const hypergraphStore = accessor.get(IHypergraphStore);
 		const embodiedService = accessor.get(IEmbodiedCognitionService);
 		const workspaceService = accessor.get(ICognitiveWorkspaceService);
 		const notificationService = accessor.get(INotificationService);
 
+		zonecogService.reset();
 		hypergraphStore.clear();
 		embodiedService.reset();
 		workspaceService.reset();
 
-		notificationService.info(localize('zonecog.resetDone', 'Cognitive workbench reset: hypergraph, embodiment, and workspace cleared.'));
+		notificationService.info(localize('zonecog.resetDone', 'Cognitive workbench reset: all services, hypergraph, embodiment, and workspace cleared.'));
 	}
 }
 
