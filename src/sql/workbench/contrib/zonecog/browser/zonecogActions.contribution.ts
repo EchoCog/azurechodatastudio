@@ -154,13 +154,17 @@ class ZoneCogStatusAction extends Action2 {
 		const proprio = embodiedService.getProprioceptiveState();
 		const wsSummary = workspaceService.getSummary();
 
-		const message = localize('zonecog.statusInfo',
-			'Zone-Cog Workbench Status:\nInitialized: {0}\nThinking Mode: {1}\nCognitive Load: {2}%\nHypergraph Nodes: {3}\nMembrane Health: {4}\nSensory Channels: {5}\nWorking Memory: {6}/{7}\nEpisodes: {8}\nActive Task: {9}\nAttentional Focus: {10}',
+		const coreStatus = localize('zonecog.statusInfoCore',
+			'Zone-Cog Workbench Status:\nInitialized: {0}\nThinking Mode: {1}\nCognitive Load: {2}%\nHypergraph Nodes: {3}\nMembrane Health: {4}',
 			state.isInitialized ? 'Yes' : 'No',
 			state.thinkingModeEnabled ? 'Enabled' : 'Disabled',
 			Math.round(state.cognitiveLoad * 100),
 			state.hypergraphNodeCount,
-			state.membraneHealthy ? 'Healthy' : 'Degraded',
+			state.membraneHealthy ? 'Healthy' : 'Degraded'
+		);
+
+		const workbenchStatus = localize('zonecog.statusInfoWorkbench',
+			'Sensory Channels: {0}\nWorking Memory: {1}/{2}\nEpisodes: {3}\nActive Task: {4}\nAttentional Focus: {5}',
 			proprio.activeSensoryChannels,
 			wsSummary.workingMemorySize,
 			wsSummary.workingMemoryCapacity,
@@ -168,6 +172,8 @@ class ZoneCogStatusAction extends Action2 {
 			wsSummary.activeTask || 'None',
 			proprio.attentionalFocus || 'None'
 		);
+
+		const message = `${coreStatus}\n${workbenchStatus}`;
 
 		notificationService.info(message);
 	}
