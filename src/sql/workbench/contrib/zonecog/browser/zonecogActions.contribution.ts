@@ -8,6 +8,7 @@ import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation
 import { IZoneCogService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { IQuickInputService } from 'vs/platform/quickinput/common/quickInput';
+import { ILogService } from 'vs/platform/log/common/log';
 import { localize } from 'vs/nls';
 import { Codicon } from 'vs/base/common/codicons';
 
@@ -24,7 +25,7 @@ class ZoneCogTestAction extends Action2 {
 			id: ZoneCogTestAction.ID,
 			title: ZoneCogTestAction.LABEL,
 			category: localize('zonecog.category', 'Zone-Cog'),
-			icon: Codicon.brain,
+			icon: Codicon.circuitBoard,
 			f1: true,
 			menu: {
 				id: MenuId.CommandPalette,
@@ -36,6 +37,7 @@ class ZoneCogTestAction extends Action2 {
 		const zonecogService = accessor.get(IZoneCogService);
 		const notificationService = accessor.get(INotificationService);
 		const quickInputService = accessor.get(IQuickInputService);
+		const logService = accessor.get(ILogService);
 
 		// Initialize the service if not already done
 		await zonecogService.initialize();
@@ -66,10 +68,10 @@ class ZoneCogTestAction extends Action2 {
 
 			notificationService.info(message);
 
-			// Also log the thinking process for development purposes
+			// Log the thinking process for diagnostics
 			if (response.thinking) {
-				console.log('Zone-Cog Thinking Process:', response.thinking);
-				console.log('Zone-Cog Phases:', response.phases.map(p => p.name).join(' → '));
+				logService.debug('Zone-Cog Thinking Process:\n' + response.thinking);
+				logService.debug('Zone-Cog Phases: ' + response.phases.map(p => p.name).join(' → '));
 			}
 
 		} catch (error) {
