@@ -94,8 +94,8 @@ Ticket: ECH-2
 
 Implementation Plan Summary
 - In this repo (EchoCog/azurechodatastudio)
-  - Add azure-integration/data_studio_bridge.py: FastAPI app exposing REST endpoints, AtomSpace adapter abstraction, 4E hook.
-  - Add azure-integration/sql_to_atomspace.py: SQL metadata and row mapping to canonical atom JSON.
+  - Add azure_integration/data_studio_bridge.py: FastAPI app exposing REST endpoints, AtomSpace adapter abstraction, 4E hook.
+  - Add azure_integration/sql_to_atomspace.py: SQL metadata and row mapping to canonical atom JSON.
   - Add TypeScript client scaffold under existing Zone-Cog service folder later to invoke the bridge (kept minimal for Phase 1).
   - Document usage in this design doc.
 - In echo.dash config repo
@@ -121,8 +121,8 @@ Risks and Open Items
 
 Appendix
 - Files added
-  - azure-integration/data_studio_bridge.py
-  - azure-integration/sql_to_atomspace.py
+  - azure_integration/data_studio_bridge.py
+  - azure_integration/sql_to_atomspace.py
 - Referenced docs
   - README deprecation note
   - src/sql/workbench/services/zonecog/README.md

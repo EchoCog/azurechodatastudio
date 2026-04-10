@@ -413,7 +413,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		const hasMultipleClauses = query.split(/[.?!]/).filter(s => s.trim().length > 0).length > 2;
 		const hasCodePatterns = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|FROM|WHERE|JOIN)\b/i.test(query);
 
-		if (wordCount > 50 || (hasComplexKeywords && hasMultipleClauses) || (hasCodePatterns && wordCount > 30)) {
+		if (wordCount > 50 || hasComplexKeywords || (hasCodePatterns && wordCount > 30)) {
 			return 'complex';
 		} else if (wordCount > 20 || hasComplexKeywords || query.includes('?') || hasCodePatterns) {
 			return 'moderate';
