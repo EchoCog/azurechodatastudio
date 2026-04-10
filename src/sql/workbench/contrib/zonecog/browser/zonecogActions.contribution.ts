@@ -468,10 +468,10 @@ class ZoneCogResetAction extends Action2 {
 		const workspaceService = accessor.get(ICognitiveWorkspaceService);
 		const notificationService = accessor.get(INotificationService);
 
-		zonecogService.reset();
 		hypergraphStore.clear();
 		embodiedService.reset();
 		workspaceService.reset();
+		zonecogService.reset();
 
 		const membraneService = accessor.get(ICognitiveMembraneService);
 		membraneService.resetErrors('cerebral');
