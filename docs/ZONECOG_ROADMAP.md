@@ -10,6 +10,7 @@
 |---|---|---|---|
 | 1 | Foundation | Complete (ECH-2) | Basic service scaffold, bridge, extension |
 | 2 | Cognitive Core | **Complete** (ECH-1/5/61) | Full protocol, hypergraph store, membrane architecture |
+| 2.5 | Embodied Workbench | **Complete** (ECH-62) | Sensorimotor grounding, workspace memory, workbench actions |
 | 3 | Intelligence Layer | **In Progress** (ECH-61) | AI/LLM integration, pattern mining, reasoning |
 | 4 | Workbench UX | Planned | Visual cognitive maps, interactive exploration |
 | 5 | Post-ADS Migration | Planned | VS Code standalone, portable cognitive workbench |
@@ -78,6 +79,47 @@
 
 ---
 
+## Phase 2.5: Embodied Cognition Workbench (Complete)
+
+**Ticket**: ECH-62  
+**Goal**: Transform the cognitive services into an embodied cognition workbench with sensorimotor grounding, workspace memory management, and interactive workbench commands.
+
+### 2.5.1 Embodied Cognition Service
+- [x] `IEmbodiedCognitionService` interface for sensorimotor grounding
+- [x] Sensory channels: schema, query, result, file, interaction perception
+- [x] Motor actions: query suggestions, schema recommendations, insights, navigation, alerts
+- [x] Proprioceptive state: self-monitoring of cognitive load, attentional focus, health
+- [x] Environment snapshot: workspace awareness (schemas, patterns, context)
+- [x] Percepts and actions persisted as hypergraph nodes with MotivatedBy links
+
+### 2.5.2 Cognitive Workspace Service
+- [x] `ICognitiveWorkspaceService` interface for memory management
+- [x] Working memory: capacity-limited (7±2 chunks), relevance-decayed, eviction-based
+- [x] Episodic memory: temporally indexed cognitive events with keyword search
+- [x] Task contexts: goal-oriented groupings of memory and episodes
+- [x] All items persisted in hypergraph store with cross-references
+
+### 2.5.3 Streaming Thinking Protocol
+- [x] `onDidCompleteThinkingPhase` event for real-time phase observation
+- [x] `getQueryHistory()` accessor for session history
+
+### 2.5.4 Workbench Command Palette Actions
+- [x] Explore Hypergraph: browse/search knowledge graph by node type
+- [x] Set Cognitive Focus: control attentional focus
+- [x] Workspace Summary: view working memory, episodes, tasks, environment
+- [x] Create Cognitive Task: create and activate goal-oriented tasks
+- [x] Membrane Health: detailed P-System triad health view
+- [x] Query History: view session query processing history
+- [x] Reset Workbench: clear hypergraph, embodiment, and workspace state
+- [x] Enhanced Status: combined cognitive, embodied, and workspace status
+
+### 2.5.5 Testing
+- [x] EmbodiedCognitionService unit tests (sensory, motor, proprioception, environment)
+- [x] CognitiveWorkspaceService unit tests (working memory, episodes, tasks, reset)
+- [x] Streaming phase event tests and query history tests
+
+---
+
 ## Phase 3: Intelligence Layer (Planned)
 
 **Goal**: Connect cognitive processing to real AI/reasoning capabilities.
@@ -86,8 +128,9 @@
 - [x] Pluggable LLM provider interface (OpenAI-compatible, local models, Aphrodite Engine)
 - [x] Built-in rule-based fallback (works without API keys)
 - [x] System prompt using Zone-Cog protocol for LLM-enhanced responses
-- [ ] Streaming response generation with thinking tokens
-- [ ] Context window management with hypergraph-based memory
+- [x] Streaming thinking phase events (`onDidCompleteThinkingPhase`)
+- [x] Context window management with hypergraph-based working memory
+- [ ] Streaming response generation with thinking tokens (real-time LLM output)
 
 ### 3.2 AtomSpace Reasoning
 - [ ] Real AtomSpace transport (replace mock adapter)
