@@ -57,7 +57,7 @@ export interface IZoneCogService {
 }
 
 // ---------------------------------------------------------------------------
-// Hypergraph types – follows the EchoCog standard HypergraphNode structure
+// Hypergraph types - follows the EchoCog standard HypergraphNode structure
 // ---------------------------------------------------------------------------
 
 /**
@@ -69,7 +69,7 @@ export interface HypergraphNode {
 	id: string;
 	/** Categorical type (e.g. "TableNode", "CognitiveState", "ThinkingPhase"). */
 	node_type: string;
-	/** Primary content payload – query text, SQL schema JSON, thinking output, etc. */
+	/** Primary content payload - query text, SQL schema JSON, thinking output, etc. */
 	content: string;
 	/** Ordered list of link-IDs that this node participates in. */
 	links: string[];
@@ -187,7 +187,7 @@ export interface ThinkingPhase {
  * Response from Zone-Cog cognitive processing.
  */
 export interface ZoneCogResponse {
-	/** The thinking process (internal monologue) – hidden from user. */
+	/** The thinking process (internal monologue) - hidden from user. */
 	thinking: string;
 
 	/** Structured phases that produced the thinking output. */

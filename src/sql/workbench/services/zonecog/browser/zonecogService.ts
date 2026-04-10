@@ -15,6 +15,7 @@ import {
 	QueryComplexity,
 	ThinkingDepth
 } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { ILLMProviderService, LLMCompletionRequest } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { ILogService } from 'vs/platform/log/common/log';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
@@ -31,6 +32,21 @@ function shortId(seed: string): string {
 }
 
 /**
+ * Zone-Cog system prompt used when an external LLM is connected.
+ */
+const ZONE_COG_SYSTEM_PROMPT =
+	`You are Zone-Cog, an embodied cognition assistant integrated into Azure Data Studio. ` +
+	`You employ a comprehensive thinking protocol: Initial Engagement, Problem Space Exploration, ` +
+	`Hypothesis Generation, Natural Discovery, Progress Tracking, Testing & Verification, ` +
+	`Error Recognition, Knowledge Synthesis, Pattern Recognition, Recursive Thinking, ` +
+	`and Response Preparation. Respond thoughtfully with data-oriented, practical insights.`;
+
+/**
+ * Maximum number of recent queries stored for cognitive history.
+ */
+const MAX_QUERY_HISTORY = 50;
+
+/**
  * Implementation of the Zone-Cog cognitive protocol service.
  *
  * Follows the full Zone-Cog thinking sequence from the protocol specification:
@@ -42,7 +58,9 @@ function shortId(seed: string): string {
  *   6. Error Recognition and Correction
  *   7. Knowledge Synthesis
  *   8. Pattern Recognition and Analysis
- *   9. Response Preparation
+ *   9. Progress Tracking
+ *  10. Recursive Thinking
+ *  11. Response Preparation
  */
 export class ZoneCogService extends Disposable implements IZoneCogService {
 
@@ -53,6 +71,9 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	private _currentContext: string | null = null;
 	private _cognitiveLoad = 0;
 
+	/** Recent query history for context-aware processing. */
+	private readonly _queryHistory: Array<{ query: string; timestamp: number }> = [];
+
 	private readonly _onDidChangeCognitiveState = this._register(new Emitter<ZoneCogState>());
 	readonly onDidChangeCognitiveState: Event<ZoneCogState> = this._onDidChangeCognitiveState.event;
 
@@ -62,7 +83,8 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	constructor(
 		@ILogService private readonly logService: ILogService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
-		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService
+		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
+		@ILLMProviderService private readonly llmProviderService: ILLMProviderService
 	) {
 		super();
 		this.logService.info('ZoneCogService: Initializing Zone-Cog cognitive protocol');
@@ -94,6 +116,9 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		this._cognitiveLoad = Math.min(1, this._cognitiveLoad + 0.2);
 		this._currentContext = query;
 		this._fireStateChange();
+
+		// Record in query history
+		this._recordQueryHistory(query, startTime);
 
 		const complexity = this._assessQueryComplexity(query);
 		const thinkingDepth = this._determineThinkingDepth(complexity);
@@ -146,7 +171,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			this.hypergraphStore.addLink(link);
 		}
 
-		// Generate final response
+		// Generate final response (LLM-enhanced or rule-based)
 		const response = await this._generateResponse(query, thinking, complexity);
 
 		// Persist the response node
@@ -156,7 +181,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			node_type: 'CognitiveResponse',
 			content: response,
 			links: [],
-			metadata: { timestamp: Date.now() },
+			metadata: { timestamp: Date.now(), llmProvider: this.llmProviderService.getActiveProvider().id },
 			salience_score: 0.7,
 		};
 		this.hypergraphStore.addNode(responseNode);
@@ -208,10 +233,34 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		return this.hypergraphStore;
 	}
 
+	// -- Query history -------------------------------------------------------
+
+	private _recordQueryHistory(query: string, timestamp: number): void {
+		this._queryHistory.push({ query, timestamp });
+		if (this._queryHistory.length > MAX_QUERY_HISTORY) {
+			this._queryHistory.shift();
+		}
+
+		// Decay older history nodes to keep attention focused
+		this.hypergraphStore.decayAllSalience(0.98);
+
+		// Persist history node in hypergraph for cross-session retrieval patterns
+		const historyNodeId = shortId(`history:${timestamp}:${query}`);
+		this.hypergraphStore.addNode({
+			id: historyNodeId,
+			node_type: 'QueryHistory',
+			content: query,
+			links: [],
+			metadata: { timestamp, historyIndex: this._queryHistory.length - 1 },
+			salience_score: 0.4,
+		});
+	}
+
 	// -- Thinking protocol ---------------------------------------------------
 
 	/**
 	 * Run the full Zone-Cog thinking protocol, returning structured phases.
+	 * Now includes Progress Tracking and Recursive Thinking phases from the spec.
 	 */
 	private async _runThinkingProtocol(
 		query: string,
@@ -232,6 +281,9 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 
 			// Phase 4: Natural Discovery Process
 			phases.push(this._phaseNaturalDiscovery(query));
+
+			// Phase 9: Progress Tracking (moderate+)
+			phases.push(this._phaseProgressTracking(query, phases));
 		}
 
 		if (depth === 'deep') {
@@ -246,9 +298,12 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 
 			// Phase 8: Pattern Recognition
 			phases.push(this._phasePatternRecognition(query));
+
+			// Phase 10: Recursive Thinking (deep only)
+			phases.push(this._phaseRecursiveThinking(query, phases));
 		}
 
-		// Phase 9: Response Preparation (always)
+		// Phase 11: Response Preparation (always)
 		phases.push(this._phaseResponsePreparation(query, depth));
 
 		return phases;
@@ -260,7 +315,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			`Hmm, let me clearly understand what's being asked here. ` +
 			`The user is saying: "${query}"\n\n` +
 			`This appears to be a ${complexity} query. ` +
-			`Let me think about the broader context — why might someone ask this? ` +
+			`Let me think about the broader context -- why might someone ask this? ` +
 			`There could be several angles to consider here. ` +
 			`I should map out what I know and what I don't know about this topic.`;
 		return { name: 'Initial Engagement', content, durationMs: Date.now() - start };
@@ -275,8 +330,8 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			`The key terms I'm noticing are: ${keyTerms || 'general concepts'}. ` +
 			`The explicit requirement seems to be about understanding or acting on this topic. ` +
 			(complexity !== 'simple'
-				? `But there are implicit requirements too — the user probably wants a thoughtful, nuanced response ` +
-				  `that considers multiple dimensions of this problem. `
+				? `But there are implicit requirements too -- the user probably wants a thoughtful, nuanced response ` +
+				`that considers multiple dimensions of this problem. `
 				: `This seems straightforward, but I should still make sure I'm not missing anything. `) +
 			`A successful response would need to address the core question while providing useful context.`;
 		return { name: 'Problem Space Exploration', content, durationMs: Date.now() - start };
@@ -299,7 +354,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			`This is interesting because it connects to broader patterns I'm noticing. ` +
 			`Starting with the obvious aspects, there's a direct relationship between the query and ` +
 			`the domain of data management and analysis. ` +
-			`But now I'm noticing something — there might be connections to patterns that aren't immediately visible. ` +
+			`But now I'm noticing something -- there might be connections to patterns that aren't immediately visible. ` +
 			`Let me follow this thread and see where it leads... ` +
 			`Actually, this reminds me of related concepts that could enrich the response.`;
 		return { name: 'Natural Discovery Process', content, durationMs: Date.now() - start };
@@ -312,7 +367,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			`Let me test my preliminary conclusions against what I know. ` +
 			`Are there potential flaws in my reasoning? I should consider alternative perspectives ` +
 			`and verify that my understanding is consistent. ` +
-			`I need to check for completeness — am I covering all the important aspects?`;
+			`I need to check for completeness -- am I covering all the important aspects?`;
 		return { name: 'Testing and Verification', content, durationMs: Date.now() - start };
 	}
 
@@ -343,7 +398,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		const topNodes = this.hypergraphStore.getTopSalientNodes(3);
 		const contextHint = topNodes.length > 0
 			? `I can see ${topNodes.length} highly salient concepts in the cognitive graph that relate to this query. `
-			: `The cognitive graph is fresh — this is a new line of inquiry. `;
+			: `The cognitive graph is fresh -- this is a new line of inquiry. `;
 		const content =
 			`Actively looking for patterns in the information I've gathered... ` +
 			contextHint +
@@ -351,6 +406,50 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			`Let me consider exceptions or special cases that might apply here. ` +
 			`These patterns help guide my final response toward something genuinely useful.`;
 		return { name: 'Pattern Recognition and Analysis', content, durationMs: Date.now() - start };
+	}
+
+	/**
+	 * Phase 9: Progress Tracking - maintains awareness of what has been
+	 * established, what remains uncertain, and current confidence level.
+	 * From the Zone-Cog protocol spec's "Progress Tracking" section.
+	 */
+	private _phaseProgressTracking(query: string, priorPhases: ThinkingPhase[]): ThinkingPhase {
+		const start = Date.now();
+		const established = priorPhases.map(p => p.name).join(', ');
+		const historyCount = this._queryHistory.length;
+		const historyContext = historyCount > 1
+			? `I've processed ${historyCount} queries so far -- previous context may inform this analysis. `
+			: `This appears to be an early query in this session. `;
+		const content =
+			`Let me take stock of where I am in this analysis. ` +
+			`So far I've completed: ${established}. ` +
+			historyContext +
+			`What remains to be determined is the most actionable response format. ` +
+			`My confidence is growing as each phase builds on the last. ` +
+			`Open questions: are there edge cases I haven't considered? ` +
+			`Let me keep tracking progress as I move toward the response.`;
+		return { name: 'Progress Tracking', content, durationMs: Date.now() - start };
+	}
+
+	/**
+	 * Phase 10: Recursive Thinking - applies the same careful analysis
+	 * at both macro and micro levels, checking that detailed analysis
+	 * supports broader conclusions. From the Zone-Cog protocol spec's
+	 * "Recursive Thinking" section.
+	 */
+	private _phaseRecursiveThinking(query: string, priorPhases: ThinkingPhase[]): ThinkingPhase {
+		const start = Date.now();
+		const phaseCount = priorPhases.length;
+		const deepestPhase = priorPhases[phaseCount - 1];
+		const content =
+			`Now let me apply recursive analysis -- examining my reasoning at multiple scales. ` +
+			`At the macro level, my ${phaseCount} phases build a coherent narrative from query to insight. ` +
+			`At the micro level, the most recent phase ("${deepestPhase?.name ?? 'N/A'}") ` +
+			`should hold up under the same scrutiny I applied to the overall problem. ` +
+			`Pattern recognition at both scales seems consistent. ` +
+			`The detailed analysis supports my broader conclusions -- ` +
+			`I'm not seeing contradictions between the granular and high-level views.`;
+		return { name: 'Recursive Thinking', content, durationMs: Date.now() - start };
 	}
 
 	private _phaseResponsePreparation(query: string, depth: ThinkingDepth): ThinkingPhase {
@@ -364,6 +463,10 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 
 	// -- Response generation -------------------------------------------------
 
+	/**
+	 * Generate a response using the active LLM provider.
+	 * Falls back to built-in rule-based generation when no external provider is set.
+	 */
 	private async _generateResponse(
 		query: string,
 		thinking: string,
@@ -371,38 +474,22 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	): Promise<string> {
 		this.membraneService.recordActivity('somatic');
 
-		const isQuestion = query.includes('?');
-		const isRequest = /\b(please|can you|could you|help|show|explain)\b/i.test(query);
-		const isAnalysis = /\b(analyze|compare|synthesize|evaluate|optimize)\b/i.test(query);
+		const request: LLMCompletionRequest = {
+			systemPrompt: ZONE_COG_SYSTEM_PROMPT,
+			userMessage: query,
+			thinkingContext: thinking || undefined,
+			temperature: complexity === 'complex' ? 0.8 : complexity === 'moderate' ? 0.7 : 0.5,
+		};
 
-		if (isAnalysis) {
-			return (
-				`Based on my comprehensive analysis of your request, I've considered multiple dimensions ` +
-				`and perspectives. The key findings from examining "${query.substring(0, 80)}" suggest ` +
-				`several actionable insights within the context of the Zone-Cog cognitive workbench. ` +
-				`I'd recommend exploring the hypergraph representation of related data structures ` +
-				`for deeper pattern recognition.`
-			);
-		} else if (isQuestion) {
-			return (
-				`After careful consideration through the Zone-Cog cognitive protocol, ` +
-				`here's my analysis: ${query} ` +
-				`This relates to data management and analysis within the cognitive workbench environment. ` +
-				`I can provide more detailed insights with additional context.`
-			);
-		} else if (isRequest) {
-			return (
-				`I understand your request regarding: ${query.substring(0, 80)}. ` +
-				`Let me help you with that through the Zone-Cog cognitive framework. ` +
-				`The workbench provides several tools for this type of task.`
-			);
+		try {
+			const completion = await this.llmProviderService.complete(request);
+			return completion.content;
+		} catch (err) {
+			this.membraneService.recordError('somatic', `LLM completion failed: ${err}`);
+			this.logService.warn('ZoneCogService: LLM completion error, returning fallback', err);
+			return `I've processed your input through the Zone-Cog thinking protocol. ` +
+				`An error occurred during response generation, but the cognitive analysis is complete.`;
 		}
-		return (
-			`I've processed your input through the Zone-Cog thinking protocol: ` +
-			`"${query.substring(0, 80)}". ` +
-			`As part of the embodied cognition workbench, I'm designed to provide ` +
-			`thoughtful, multi-dimensional analysis of data-related tasks.`
-		);
 	}
 
 	// -- Complexity & confidence ---------------------------------------------
@@ -436,14 +523,14 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	): number {
 		let confidence = 0.65;
 
-		// More thinking phases → higher confidence
+		// More thinking phases -> higher confidence
 		confidence += Math.min(0.15, phases.length * 0.02);
 
-		// Longer, more thoughtful thinking → higher confidence
+		// Longer, more thoughtful thinking -> higher confidence
 		if (thinking.length > 1000) { confidence += 0.05; }
 		if (thinking.length > 2000) { confidence += 0.05; }
 
-		// Specific response → higher confidence
+		// Specific response -> higher confidence
 		if (response.length > 200) { confidence += 0.05; }
 
 		// Very long queries might reduce confidence (harder to address fully)
@@ -451,6 +538,9 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 
 		// Hypergraph context boosts confidence
 		if (this.hypergraphStore.nodeCount() > 5) { confidence += 0.05; }
+
+		// External LLM provider boosts confidence
+		if (this.llmProviderService.isExternalProviderActive()) { confidence += 0.05; }
 
 		return Math.max(0, Math.min(1, confidence));
 	}
