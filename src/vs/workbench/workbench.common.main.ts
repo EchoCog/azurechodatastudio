@@ -285,7 +285,6 @@ registerSingleton(IExecutionPlanService, ExecutionPlanService, InstantiationType
 registerSingleton(IServerContextualizationService, ServerContextualizationService, InstantiationType.Eager);
 registerSingleton(IErrorDiagnosticsService, ErrorDiagnosticsService, InstantiationType.Eager);
 registerSingleton(IComponentContextService, ComponentContextService, InstantiationType.Eager);
-registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
 //#endregion
 
 

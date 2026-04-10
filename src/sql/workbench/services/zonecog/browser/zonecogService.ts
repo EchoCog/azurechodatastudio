@@ -410,12 +410,11 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	private _assessQueryComplexity(query: string): QueryComplexity {
 		const wordCount = query.split(/\s+/).length;
 		const hasComplexKeywords = /\b(analyze|compare|synthesize|integrate|optimize|evaluate)\b/i.test(query);
-		const hasMultipleClauses = query.split(/[.?!]/).filter(s => s.trim().length > 0).length > 2;
 		const hasCodePatterns = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|FROM|WHERE|JOIN)\b/i.test(query);
 
 		if (wordCount > 50 || hasComplexKeywords || (hasCodePatterns && wordCount > 30)) {
 			return 'complex';
-		} else if (wordCount > 20 || hasComplexKeywords || query.includes('?') || hasCodePatterns) {
+		} else if (wordCount > 20 || query.includes('?') || hasCodePatterns) {
 			return 'moderate';
 		}
 		return 'simple';
