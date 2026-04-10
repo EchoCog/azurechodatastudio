@@ -238,6 +238,8 @@ import { IErrorDiagnosticsService } from 'sql/workbench/services/diagnostics/com
 import { ErrorDiagnosticsService } from 'sql/workbench/services/diagnostics/browser/errorDiagnosticsService';
 import { IComponentContextService, ComponentContextService } from 'sql/workbench/services/componentContext/browser/componentContextService';
 // ZoneCog services are registered via their contribution file (zonecog.contribution.ts)
+import 'sql/workbench/services/zonecog/browser/zonecog.contribution';
+import 'sql/workbench/contrib/zonecog/browser/zonecogActions.contribution';
 
 // {{SQL CARBON TODO}} - delayed or eager
 registerSingleton(IDashboardService, DashboardService, InstantiationType.Eager);

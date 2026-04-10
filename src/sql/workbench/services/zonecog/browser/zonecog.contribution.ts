@@ -8,12 +8,17 @@ import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService } from 'sq
 import { ZoneCogService } from 'sql/workbench/services/zonecog/browser/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
+import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmProvider';
+import { LLMProviderService } from 'sql/workbench/services/zonecog/browser/llmProviderService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
 
 // Register the Cognitive Membrane service (dependency of ZoneCogService)
 registerSingleton(ICognitiveMembraneService, CognitiveMembraneService, InstantiationType.Eager);
+
+// Register the LLM provider service (dependency of ZoneCogService)
+registerSingleton(ILLMProviderService, LLMProviderService, InstantiationType.Eager);
 
 // Register the ZoneCog service as a singleton
 registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);

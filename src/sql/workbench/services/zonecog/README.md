@@ -6,11 +6,13 @@ This directory contains the Zone-Cog cognitive protocol integration for Azure Da
 
 Zone-Cog implements a comprehensive thinking framework that enables natural, stream-of-consciousness cognitive processing for data analysis and management tasks. The integration provides:
 
-- **Cognitive Protocol Service**: Full Zone-Cog thinking sequence (9 phases)
+- **Cognitive Protocol Service**: Full Zone-Cog thinking sequence (11 phases)
 - **Hypergraph Store**: In-memory knowledge graph following the EchoCog HypergraphNode standard
 - **Cognitive Membrane Architecture**: Cerebral / Somatic / Autonomic triad system
 - **Adaptive Analysis**: Query complexity assessment and depth-appropriate thinking
 - **Event-Driven State**: Reactive cognitive state management with change notifications
+- **LLM Provider System**: Pluggable LLM backends with built-in rule-based fallback
+- **Cognitive Query History**: Hypergraph-persisted query tracking with salience decay
 
 ## Architecture
 
@@ -31,6 +33,7 @@ The system implements the P-System Membrane Architecture:
 | Zone-Cog Core | `IZoneCogService` | `ZoneCogService` |
 | Hypergraph Store | `IHypergraphStore` | `HypergraphStore` |
 | Cognitive Membrane | `ICognitiveMembraneService` | `CognitiveMembraneService` |
+| LLM Provider | `ILLMProviderService` | `LLMProviderService` |
 
 ### Thinking Protocol Phases
 
@@ -40,11 +43,13 @@ The full Zone-Cog cognitive sequence (depth-adaptive):
 2. **Problem Space Exploration** — Break down components, identify requirements (always)
 3. **Hypothesis Generation** — Multiple interpretations, avoid premature commitment (moderate+)
 4. **Natural Discovery** — Organic insight development, pattern connections (moderate+)
-5. **Testing & Verification** — Question assumptions, check consistency (deep)
-6. **Error Recognition** — Acknowledge and correct reasoning flaws (deep)
-7. **Knowledge Synthesis** — Connect information, build coherent picture (deep)
-8. **Pattern Recognition** — Analyze patterns using hypergraph context (deep)
-9. **Response Preparation** — Final response formulation (always)
+5. **Progress Tracking** — Track established conclusions and open questions (moderate+)
+6. **Testing & Verification** — Question assumptions, check consistency (deep)
+7. **Error Recognition** — Acknowledge and correct reasoning flaws (deep)
+8. **Knowledge Synthesis** — Connect information, build coherent picture (deep)
+9. **Pattern Recognition** — Analyze patterns using hypergraph context (deep)
+10. **Recursive Thinking** — Apply analysis at macro and micro scales (deep)
+11. **Response Preparation** — Final response formulation (always)
 
 ## Hypergraph Store
 
@@ -63,7 +68,30 @@ interface HypergraphNode {
 
 Cognitive processing creates and links nodes automatically:
 - `QueryInput` → `ThinkingProcess` → `CognitiveResponse`
+- `QueryHistory` nodes track past queries with salience decay
 - Links typed as `ProducedBy` connect the processing chain
+
+## LLM Provider System
+
+The `ILLMProviderService` supports pluggable LLM backends:
+
+- **Built-in fallback**: Rule-based response generation (no API keys required)
+- **OpenAI-compatible**: Any API following the OpenAI chat completions format
+- **Aphrodite Engine**: Local inference via Aphrodite's OpenAI-compatible API
+- **Custom providers**: Register at runtime via `registerProvider()`
+
+```typescript
+// Register an external LLM provider
+llmProviderService.registerProvider({
+  id: 'my-llm',
+  displayName: 'My LLM',
+  baseUrl: 'http://localhost:8080',
+  model: 'my-model',
+  maxContextLength: 4096,
+  apiKey: 'optional-key',
+});
+llmProviderService.setActiveProvider('my-llm');
+```
 
 ## Commands
 
@@ -78,16 +106,18 @@ Available through Command Palette (`Ctrl+Shift+P`):
 ```
 services/zonecog/
 ├── common/
-│   └── zonecogService.ts          # Interfaces: IZoneCogService, IHypergraphStore,
-│                                  #   ICognitiveMembraneService, types
+│   ├── zonecogService.ts          # Interfaces: IZoneCogService, IHypergraphStore,
+│   │                              #   ICognitiveMembraneService, types
+│   └── llmProvider.ts             # ILLMProviderService interface and types
 ├── browser/
 │   ├── zonecogService.ts          # ZoneCogService implementation
 │   ├── hypergraphStore.ts         # HypergraphStore implementation
 │   ├── cognitiveMembraneService.ts # CognitiveMembraneService implementation
+│   ├── llmProviderService.ts      # LLMProviderService implementation
 │   └── zonecog.contribution.ts    # DI service registration
 ├── test/
 │   └── browser/
-│       └── zonecogService.test.ts # Tests for all three services
+│       └── zonecogService.test.ts # Tests for all four services
 └── README.md                      # This file
 ```
 
@@ -119,6 +149,11 @@ zoneCogService.onDidChangeCognitiveState(state => {
 // React to completed queries
 zoneCogService.onDidProcessQuery(response => {
   console.log('Phases:', response.phases.map(p => p.name).join(' → '));
+});
+
+// React to LLM provider changes
+llmProviderService.onDidChangeProvider(config => {
+  console.log('Now using:', config.displayName);
 });
 ```
 

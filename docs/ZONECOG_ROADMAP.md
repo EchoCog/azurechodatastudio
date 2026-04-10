@@ -9,8 +9,8 @@
 | Phase | Name | Status | Focus |
 |---|---|---|---|
 | 1 | Foundation | Complete (ECH-2) | Basic service scaffold, bridge, extension |
-| 2 | Cognitive Core | **In Progress** (ECH-1/5) | Full protocol, hypergraph store, membrane architecture |
-| 3 | Intelligence Layer | Planned | AI/LLM integration, pattern mining, reasoning |
+| 2 | Cognitive Core | **Complete** (ECH-1/5/61) | Full protocol, hypergraph store, membrane architecture |
+| 3 | Intelligence Layer | **In Progress** (ECH-61) | AI/LLM integration, pattern mining, reasoning |
 | 4 | Workbench UX | Planned | Visual cognitive maps, interactive exploration |
 | 5 | Post-ADS Migration | Planned | VS Code standalone, portable cognitive workbench |
 
@@ -43,7 +43,9 @@
 - [x] Adaptive complexity assessment with configurable thresholds
 - [x] Stream-of-consciousness thinking generation
 - [x] Confidence calculation with multi-factor analysis
-- [ ] External LLM integration hooks (prepared, not connected)
+- [x] External LLM integration hooks (`ILLMProviderService` with pluggable backends)
+- [x] Progress Tracking and Recursive Thinking phases from protocol spec
+- [x] Cognitive query history tracking in hypergraph store
 
 ### 2.3 Hypergraph Store
 - [x] `IHypergraphStore` interface following EchoCog HypergraphNode standard
@@ -81,10 +83,11 @@
 **Goal**: Connect cognitive processing to real AI/reasoning capabilities.
 
 ### 3.1 LLM Integration
-- [ ] Pluggable LLM provider interface (OpenAI, local models, Aphrodite Engine)
+- [x] Pluggable LLM provider interface (OpenAI-compatible, local models, Aphrodite Engine)
+- [x] Built-in rule-based fallback (works without API keys)
+- [x] System prompt using Zone-Cog protocol for LLM-enhanced responses
 - [ ] Streaming response generation with thinking tokens
 - [ ] Context window management with hypergraph-based memory
-- [ ] Prompt template system using Zone-Cog protocol
 
 ### 3.2 AtomSpace Reasoning
 - [ ] Real AtomSpace transport (replace mock adapter)

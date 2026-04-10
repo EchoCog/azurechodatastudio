@@ -8,6 +8,8 @@ import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService } from 'sq
 import { ZoneCogService } from 'sql/workbench/services/zonecog/browser/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
+import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmProvider';
+import { LLMProviderService } from 'sql/workbench/services/zonecog/browser/llmProviderService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 
@@ -26,6 +28,9 @@ suite('ZoneCog Service Tests', () => {
 
 		const membraneService = instantiationService.createInstance(CognitiveMembraneService);
 		instantiationService.stub(ICognitiveMembraneService, membraneService);
+
+		const llmProviderService = instantiationService.createInstance(LLMProviderService);
+		instantiationService.stub(ILLMProviderService, llmProviderService);
 
 		zoneCogService = instantiationService.createInstance(ZoneCogService);
 	});
@@ -58,13 +63,34 @@ suite('ZoneCog Service Tests', () => {
 		assert.ok(response.response);
 		assert.strictEqual(response.metadata.queryComplexity, 'complex');
 		assert.strictEqual(response.metadata.thinkingDepth, 'deep');
-		// Deep thinking should produce all 9 phases
-		assert.ok(response.phases.length >= 7);
+		// Deep thinking should produce all 11 phases
+		assert.ok(response.phases.length >= 9);
 		// Verify phase names include key protocol phases
 		const phaseNames = response.phases.map(p => p.name);
 		assert.ok(phaseNames.includes('Initial Engagement'));
 		assert.ok(phaseNames.includes('Knowledge Synthesis'));
+		assert.ok(phaseNames.includes('Pattern Recognition and Analysis'));
+		assert.ok(phaseNames.includes('Progress Tracking'));
+		assert.ok(phaseNames.includes('Recursive Thinking'));
 		assert.ok(phaseNames.includes('Response Preparation'));
+	});
+
+	test('should include Progress Tracking phase for moderate queries', async () => {
+		await zoneCogService.initialize();
+		const moderateQuery = 'How can I connect to my database and optimize my queries?';
+		const response = await zoneCogService.processQuery(moderateQuery);
+
+		const phaseNames = response.phases.map(p => p.name);
+		assert.ok(phaseNames.includes('Progress Tracking'), 'Moderate queries should include Progress Tracking');
+	});
+
+	test('should include Recursive Thinking phase for deep queries', async () => {
+		await zoneCogService.initialize();
+		const complexQuery = 'Please analyze and compare the multi-tenant database architecture, synthesize optimization strategies, and evaluate the performance implications across all cloud providers.';
+		const response = await zoneCogService.processQuery(complexQuery);
+
+		const phaseNames = response.phases.map(p => p.name);
+		assert.ok(phaseNames.includes('Recursive Thinking'), 'Deep queries should include Recursive Thinking');
 	});
 
 	test('should toggle thinking mode', async () => {
@@ -107,14 +133,33 @@ suite('ZoneCog Service Tests', () => {
 
 		await zoneCogService.processQuery('Test hypergraph persistence');
 
-		// Should have created query, thinking, and response nodes
-		assert.ok(store.nodeCount() >= 3);
+		// Should have created query, thinking, response, and history nodes
+		assert.ok(store.nodeCount() >= 4);
 		assert.ok(store.getNodesByType('QueryInput').length > 0);
 		assert.ok(store.getNodesByType('ThinkingProcess').length > 0);
 		assert.ok(store.getNodesByType('CognitiveResponse').length > 0);
+		assert.ok(store.getNodesByType('QueryHistory').length > 0);
 
 		// Should have created links between nodes
 		assert.ok(store.linkCount() > 0);
+	});
+
+	test('should track query history in hypergraph', async () => {
+		await zoneCogService.initialize();
+		const store = zoneCogService.getHypergraphStore();
+
+		await zoneCogService.processQuery('First query');
+		await zoneCogService.processQuery('Second query');
+		await zoneCogService.processQuery('Third query');
+
+		const historyNodes = store.getNodesByType('QueryHistory');
+		assert.strictEqual(historyNodes.length, 3);
+
+		// Verify history content
+		const contents = historyNodes.map(n => n.content);
+		assert.ok(contents.includes('First query'));
+		assert.ok(contents.includes('Second query'));
+		assert.ok(contents.includes('Third query'));
 	});
 
 	test('should fire cognitive state change events', async () => {
@@ -339,5 +384,126 @@ suite('CognitiveMembraneService Tests', () => {
 
 		membraneService.recordError('cerebral', 'test');
 		assert.strictEqual(changeCount, 2);
+	});
+});
+
+suite('LLMProviderService Tests', () => {
+
+	let instantiationService: TestInstantiationService;
+	let llmService: ILLMProviderService;
+
+	setup(() => {
+		instantiationService = new TestInstantiationService();
+		instantiationService.stub(ILogService, new NullLogService());
+		llmService = instantiationService.createInstance(LLMProviderService);
+	});
+
+	test('should initialize with built-in provider', () => {
+		const providers = llmService.getProviders();
+		assert.strictEqual(providers.length, 1);
+		assert.strictEqual(providers[0].id, 'builtin-fallback');
+		assert.strictEqual(providers[0].displayName, 'Built-in (Rule-Based)');
+	});
+
+	test('should use built-in provider by default', () => {
+		const active = llmService.getActiveProvider();
+		assert.strictEqual(active.id, 'builtin-fallback');
+		assert.strictEqual(llmService.isExternalProviderActive(), false);
+	});
+
+	test('should register and switch providers', () => {
+		const registered = llmService.registerProvider({
+			id: 'test-llm',
+			displayName: 'Test LLM',
+			baseUrl: 'http://localhost:8080',
+			model: 'test-model',
+			maxContextLength: 4096,
+		});
+		assert.strictEqual(registered, true);
+		assert.strictEqual(llmService.getProviders().length, 2);
+
+		const switched = llmService.setActiveProvider('test-llm');
+		assert.strictEqual(switched, true);
+		assert.strictEqual(llmService.getActiveProvider().id, 'test-llm');
+		assert.strictEqual(llmService.isExternalProviderActive(), true);
+	});
+
+	test('should not register duplicate providers', () => {
+		llmService.registerProvider({
+			id: 'dup', displayName: 'D', baseUrl: '', model: '', maxContextLength: 0,
+		});
+		const dup = llmService.registerProvider({
+			id: 'dup', displayName: 'D2', baseUrl: '', model: '', maxContextLength: 0,
+		});
+		assert.strictEqual(dup, false);
+	});
+
+	test('should not unregister built-in provider', () => {
+		assert.strictEqual(llmService.unregisterProvider('builtin-fallback'), false);
+	});
+
+	test('should fall back to built-in when unregistering active provider', () => {
+		llmService.registerProvider({
+			id: 'temp', displayName: 'Temp', baseUrl: '', model: '', maxContextLength: 0,
+		});
+		llmService.setActiveProvider('temp');
+		assert.strictEqual(llmService.getActiveProvider().id, 'temp');
+
+		llmService.unregisterProvider('temp');
+		assert.strictEqual(llmService.getActiveProvider().id, 'builtin-fallback');
+	});
+
+	test('should complete with built-in fallback', async () => {
+		const response = await llmService.complete({
+			systemPrompt: 'test',
+			userMessage: 'analyze the data',
+		});
+		assert.ok(response.content);
+		assert.strictEqual(response.providerId, 'builtin-fallback');
+		assert.strictEqual(response.isFallback, true);
+	});
+
+	test('should generate different responses for different query types', async () => {
+		const analysis = await llmService.complete({
+			systemPrompt: 'test',
+			userMessage: 'analyze the performance data',
+		});
+		assert.ok(analysis.content.includes('analysis'));
+
+		const question = await llmService.complete({
+			systemPrompt: 'test',
+			userMessage: 'How does this work?',
+		});
+		assert.ok(question.content.includes('Zone-Cog'));
+
+		const request = await llmService.complete({
+			systemPrompt: 'test',
+			userMessage: 'please help me with this',
+		});
+		assert.ok(request.content.includes('request'));
+	});
+
+	test('should fire events on provider changes', () => {
+		let providerChanges = 0;
+		let availabilityChanges = 0;
+		llmService.onDidChangeProvider(() => providerChanges++);
+		llmService.onDidChangeAvailability(() => availabilityChanges++);
+
+		llmService.registerProvider({
+			id: 'evt', displayName: 'Evt', baseUrl: '', model: '', maxContextLength: 0,
+		});
+		assert.strictEqual(availabilityChanges, 1);
+
+		llmService.setActiveProvider('evt');
+		assert.strictEqual(providerChanges, 1);
+
+		llmService.unregisterProvider('evt');
+		assert.strictEqual(availabilityChanges, 2);
+		assert.strictEqual(providerChanges, 2); // Falls back to built-in
+	});
+
+	test('should not switch to unknown provider', () => {
+		assert.strictEqual(llmService.setActiveProvider('nonexistent'), false);
+		assert.strictEqual(llmService.getActiveProvider().id, 'builtin-fallback');
 	});
 });
