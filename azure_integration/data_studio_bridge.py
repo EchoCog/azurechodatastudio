@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 try:
     from fastapi import FastAPI, HTTPException
-    from pydantic import BaseModel
+    from pydantic import BaseModel, Field
     import uvicorn
 except ImportError:  # pragma: no cover
     FastAPI = None  # type: ignore
     HTTPException = Exception  # type: ignore
     BaseModel = object  # type: ignore
+    Field = None  # type: ignore
     uvicorn = None  # type: ignore
-
-from datetime import datetime
 
 from azure_integration.sql_to_atomspace import AtomBatch, map_rows_to_atoms, map_schema_to_atoms, merge_batches
 
@@ -30,10 +30,14 @@ class IngestSchemaRequest(BaseModel):  # type: ignore
 
 
 class IngestTableRequest(BaseModel):  # type: ignore
-    schema: Optional[str] = None
+    # Named `db_schema` to avoid shadowing Pydantic's reserved `schema`
+    # attribute; the JSON/HTTP interface still uses the key "schema" via alias.
+    db_schema: Optional[str] = Field(None, alias="schema")
     table: str
     primary_key: Any
     rows: List[Dict[str, Any]]
+
+    model_config = {"populate_by_name": True}  # type: ignore[assignment]
 
 
 class ReasonRequest(BaseModel):  # type: ignore
@@ -84,7 +88,7 @@ class BridgeApp:
         self.last_request_id: Optional[str] = None
 
     def health(self) -> Dict[str, Any]:
-        return {"status": "ok", "time": datetime.utcnow().isoformat() + "Z"}
+        return {"status": "ok", "time": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")}
 
     def ingest_schema(self, req: IngestSchemaRequest) -> Dict[str, Any]:
         batch = map_schema_to_atoms(req.tables, req.foreign_keys)
@@ -94,7 +98,7 @@ class BridgeApp:
         return {"upsert": res}
 
     def ingest_table(self, req: IngestTableRequest) -> Dict[str, Any]:
-        batch = map_rows_to_atoms(req.schema, req.table, req.rows, req.primary_key)
+        batch = map_rows_to_atoms(req.db_schema, req.table, req.rows, req.primary_key)
         res = self.adapter.upsert(batch)
         self.processed_batches += 1
         self.last_request_id = str(uuid.uuid4())

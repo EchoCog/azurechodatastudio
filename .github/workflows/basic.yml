@@ -68,6 +68,12 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
         run: yarn --frozen-lockfile --network-timeout 180000
 
+      - name: Install Python bridge dependencies
+        run: pip install -r azure_integration/requirements.txt
+
+      - name: Run Python Bridge Tests
+        run: python -m pytest azure_integration/tests/ -v --tb=short
+
       - name: Compile and Download
         run: yarn npm-run-all --max_old_space_size=4095 -lp compile "electron x64"
 
