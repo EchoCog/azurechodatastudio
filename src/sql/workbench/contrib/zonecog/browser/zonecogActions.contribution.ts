@@ -20,12 +20,10 @@ import { Codicon } from 'vs/base/common/codicons';
 class ZoneCogTestAction extends Action2 {
 
 	static ID = 'zonecog.test';
-	static LABEL = localize('zonecog.test', 'Test Zone-Cog Cognitive Processing');
-
 	constructor() {
 		super({
 			id: ZoneCogTestAction.ID,
-			title: ZoneCogTestAction.LABEL,
+			title: { value: localize('zonecog.test', 'Test Zone-Cog Cognitive Processing'), original: 'Test Zone-Cog Cognitive Processing' },
 			category: localize('zonecog.category', 'Zone-Cog'),
 			icon: Codicon.circuitBoard,
 			f1: true,
@@ -89,12 +87,10 @@ class ZoneCogTestAction extends Action2 {
 class ZoneCogToggleThinkingAction extends Action2 {
 
 	static ID = 'zonecog.toggleThinking';
-	static LABEL = localize('zonecog.toggleThinking', 'Toggle Zone-Cog Thinking Mode');
-
 	constructor() {
 		super({
 			id: ZoneCogToggleThinkingAction.ID,
-			title: ZoneCogToggleThinkingAction.LABEL,
+			title: { value: localize('zonecog.toggleThinking', 'Toggle Zone-Cog Thinking Mode'), original: 'Toggle Zone-Cog Thinking Mode' },
 			category: localize('zonecog.category', 'Zone-Cog'),
 			icon: Codicon.gear,
 			f1: true,
@@ -129,12 +125,10 @@ class ZoneCogToggleThinkingAction extends Action2 {
 class ZoneCogStatusAction extends Action2 {
 
 	static ID = 'zonecog.status';
-	static LABEL = localize('zonecog.status', 'Show Zone-Cog Workbench Status');
-
 	constructor() {
 		super({
 			id: ZoneCogStatusAction.ID,
-			title: ZoneCogStatusAction.LABEL,
+			title: { value: localize('zonecog.status', 'Show Zone-Cog Workbench Status'), original: 'Show Zone-Cog Workbench Status' },
 			category: localize('zonecog.category', 'Zone-Cog'),
 			icon: Codicon.info,
 			f1: true,
@@ -185,12 +179,10 @@ class ZoneCogStatusAction extends Action2 {
 class ZoneCogExploreHypergraphAction extends Action2 {
 
 	static ID = 'zonecog.exploreHypergraph';
-	static LABEL = localize('zonecog.exploreHypergraph', 'Explore Hypergraph Knowledge Store');
-
 	constructor() {
 		super({
 			id: ZoneCogExploreHypergraphAction.ID,
-			title: ZoneCogExploreHypergraphAction.LABEL,
+			title: { value: localize('zonecog.exploreHypergraph', 'Explore Hypergraph Knowledge Store'), original: 'Explore Hypergraph Knowledge Store' },
 			category: localize('zonecog.category', 'Zone-Cog'),
 			icon: Codicon.graphScatter,
 			f1: true,
@@ -256,12 +248,10 @@ class ZoneCogExploreHypergraphAction extends Action2 {
 class ZoneCogSetFocusAction extends Action2 {
 
 	static ID = 'zonecog.setFocus';
-	static LABEL = localize('zonecog.setFocus', 'Set Cognitive Focus');
-
 	constructor() {
 		super({
 			id: ZoneCogSetFocusAction.ID,
-			title: ZoneCogSetFocusAction.LABEL,
+			title: { value: localize('zonecog.setFocus', 'Set Cognitive Focus'), original: 'Set Cognitive Focus' },
 			category: localize('zonecog.category', 'Zone-Cog'),
 			icon: Codicon.eye,
 			f1: true,
@@ -304,12 +294,10 @@ class ZoneCogSetFocusAction extends Action2 {
 class ZoneCogWorkspaceSummaryAction extends Action2 {
 
 	static ID = 'zonecog.workspaceSummary';
-	static LABEL = localize('zonecog.workspaceSummary', 'Show Cognitive Workspace Summary');
-
 	constructor() {
 		super({
 			id: ZoneCogWorkspaceSummaryAction.ID,
-			title: ZoneCogWorkspaceSummaryAction.LABEL,
+			title: { value: localize('zonecog.workspaceSummary', 'Show Cognitive Workspace Summary'), original: 'Show Cognitive Workspace Summary' },
 			category: localize('zonecog.category', 'Zone-Cog'),
 			icon: Codicon.notebook,
 			f1: true,
@@ -366,12 +354,10 @@ class ZoneCogWorkspaceSummaryAction extends Action2 {
 class ZoneCogCreateTaskAction extends Action2 {
 
 	static ID = 'zonecog.createTask';
-	static LABEL = localize('zonecog.createTask', 'Create Cognitive Task');
-
 	constructor() {
 		super({
 			id: ZoneCogCreateTaskAction.ID,
-			title: ZoneCogCreateTaskAction.LABEL,
+			title: { value: localize('zonecog.createTask', 'Create Cognitive Task'), original: 'Create Cognitive Task' },
 			category: localize('zonecog.category', 'Zone-Cog'),
 			icon: Codicon.checklist,
 			f1: true,
@@ -406,12 +392,10 @@ class ZoneCogCreateTaskAction extends Action2 {
 class ZoneCogMembraneHealthAction extends Action2 {
 
 	static ID = 'zonecog.membraneHealth';
-	static LABEL = localize('zonecog.membraneHealth', 'Show Membrane Triad Health');
-
 	constructor() {
 		super({
 			id: ZoneCogMembraneHealthAction.ID,
-			title: ZoneCogMembraneHealthAction.LABEL,
+			title: { value: localize('zonecog.membraneHealth', 'Show Membrane Triad Health'), original: 'Show Membrane Triad Health' },
 			category: localize('zonecog.category', 'Zone-Cog'),
 			icon: Codicon.heartFilled,
 			f1: true,
@@ -446,12 +430,10 @@ class ZoneCogMembraneHealthAction extends Action2 {
 class ZoneCogResetAction extends Action2 {
 
 	static ID = 'zonecog.reset';
-	static LABEL = localize('zonecog.reset', 'Reset Cognitive Workbench');
-
 	constructor() {
 		super({
 			id: ZoneCogResetAction.ID,
-			title: ZoneCogResetAction.LABEL,
+			title: { value: localize('zonecog.reset', 'Reset Cognitive Workbench'), original: 'Reset Cognitive Workbench' },
 			category: localize('zonecog.category', 'Zone-Cog'),
 			icon: Codicon.debugRestart,
 			f1: true,
@@ -488,12 +470,10 @@ class ZoneCogResetAction extends Action2 {
 class ZoneCogQueryHistoryAction extends Action2 {
 
 	static ID = 'zonecog.queryHistory';
-	static LABEL = localize('zonecog.queryHistory', 'Show Query History');
-
 	constructor() {
 		super({
 			id: ZoneCogQueryHistoryAction.ID,
-			title: ZoneCogQueryHistoryAction.LABEL,
+			title: { value: localize('zonecog.queryHistory', 'Show Query History'), original: 'Show Query History' },
 			category: localize('zonecog.category', 'Zone-Cog'),
 			icon: Codicon.history,
 			f1: true,
