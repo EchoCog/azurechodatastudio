@@ -21,6 +21,16 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 	private readonly _nodes = new Map<string, HypergraphNode>();
 	private readonly _links = new Map<string, HypergraphLink>();
 
+	/** Deep-copy a node so callers cannot mutate internal state. */
+	private static _cloneNode(n: HypergraphNode): HypergraphNode {
+		return { ...n, links: [...n.links], metadata: { ...n.metadata } };
+	}
+
+	/** Deep-copy a link so callers cannot mutate internal state. */
+	private static _cloneLink(l: HypergraphLink): HypergraphLink {
+		return { ...l, outgoing: [...l.outgoing], metadata: { ...l.metadata } };
+	}
+
 	private readonly _onDidChangeNode = this._register(new Emitter<HypergraphNode>());
 	readonly onDidChangeNode: Event<HypergraphNode> = this._onDidChangeNode.event;
 
@@ -36,14 +46,14 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 	// -- Node CRUD -----------------------------------------------------------
 
 	addNode(node: HypergraphNode): void {
-		this._nodes.set(node.id, { ...node });
+		this._nodes.set(node.id, HypergraphStore._cloneNode(node));
 		this._onDidChangeNode.fire(node);
 		this.logService.trace(`HypergraphStore: added node ${node.id} (${node.node_type})`);
 	}
 
 	getNode(id: string): HypergraphNode | undefined {
 		const n = this._nodes.get(id);
-		return n ? { ...n } : undefined;
+		return n ? HypergraphStore._cloneNode(n) : undefined;
 	}
 
 	updateNode(id: string, patch: Partial<Omit<HypergraphNode, 'id'>>): HypergraphNode | undefined {
@@ -51,10 +61,11 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 		if (!existing) {
 			return undefined;
 		}
-		const updated: HypergraphNode = { ...existing, ...patch, id };
+		const merged = { ...existing, ...patch, id };
+		const updated = HypergraphStore._cloneNode(merged);
 		this._nodes.set(id, updated);
 		this._onDidChangeNode.fire(updated);
-		return { ...updated };
+		return HypergraphStore._cloneNode(updated);
 	}
 
 	removeNode(id: string): boolean {
@@ -69,20 +80,20 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 		const result: HypergraphNode[] = [];
 		for (const n of this._nodes.values()) {
 			if (n.node_type === nodeType) {
-				result.push({ ...n });
+				result.push(HypergraphStore._cloneNode(n));
 			}
 		}
 		return result;
 	}
 
 	getAllNodes(): HypergraphNode[] {
-		return Array.from(this._nodes.values()).map(n => ({ ...n }));
+		return Array.from(this._nodes.values()).map(n => HypergraphStore._cloneNode(n));
 	}
 
 	// -- Link CRUD -----------------------------------------------------------
 
 	addLink(link: HypergraphLink): void {
-		this._links.set(link.id, { ...link });
+		this._links.set(link.id, HypergraphStore._cloneLink(link));
 		// Update link references on participating nodes
 		for (const nodeId of link.outgoing) {
 			const node = this._nodes.get(nodeId);
@@ -96,7 +107,7 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 
 	getLink(id: string): HypergraphLink | undefined {
 		const l = this._links.get(id);
-		return l ? { ...l } : undefined;
+		return l ? HypergraphStore._cloneLink(l) : undefined;
 	}
 
 	removeLink(id: string): boolean {
@@ -123,7 +134,7 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 		const result: HypergraphLink[] = [];
 		for (const l of this._links.values()) {
 			if (l.link_type === linkType) {
-				result.push({ ...l });
+				result.push(HypergraphStore._cloneLink(l));
 			}
 		}
 		return result;
@@ -133,7 +144,7 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 		const result: HypergraphLink[] = [];
 		for (const l of this._links.values()) {
 			if (l.outgoing.includes(nodeId)) {
-				result.push({ ...l });
+				result.push(HypergraphStore._cloneLink(l));
 			}
 		}
 		return result;
@@ -145,7 +156,7 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 		return Array.from(this._nodes.values())
 			.sort((a, b) => b.salience_score - a.salience_score)
 			.slice(0, n)
-			.map(node => ({ ...node }));
+			.map(node => HypergraphStore._cloneNode(node));
 	}
 
 	decayAllSalience(factor: number): void {
