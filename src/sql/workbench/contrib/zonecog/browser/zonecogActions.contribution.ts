@@ -473,7 +473,12 @@ class ZoneCogResetAction extends Action2 {
 		embodiedService.reset();
 		workspaceService.reset();
 
-		notificationService.info(localize('zonecog.resetDone', 'Cognitive workbench reset: all services, hypergraph, embodiment, and workspace cleared.'));
+		const membraneService = accessor.get(ICognitiveMembraneService);
+		membraneService.resetErrors('cerebral');
+		membraneService.resetErrors('somatic');
+		membraneService.resetErrors('autonomic');
+
+		notificationService.info(localize('zonecog.resetDone', 'Cognitive workbench reset: all services, hypergraph, embodiment, workspace, and membrane errors cleared.'));
 	}
 }
 
