@@ -315,7 +315,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			`Hmm, let me clearly understand what's being asked here. ` +
 			`The user is saying: "${query}"\n\n` +
 			`This appears to be a ${complexity} query. ` +
-			`Let me think about the broader context — why might someone ask this? ` +
+			`Let me think about the broader context -- why might someone ask this? ` +
 			`There could be several angles to consider here. ` +
 			`I should map out what I know and what I don't know about this topic.`;
 		return { name: 'Initial Engagement', content, durationMs: Date.now() - start };
@@ -330,8 +330,8 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			`The key terms I'm noticing are: ${keyTerms || 'general concepts'}. ` +
 			`The explicit requirement seems to be about understanding or acting on this topic. ` +
 			(complexity !== 'simple'
-				? `But there are implicit requirements too — the user probably wants a thoughtful, nuanced response ` +
-				  `that considers multiple dimensions of this problem. `
+				? `But there are implicit requirements too -- the user probably wants a thoughtful, nuanced response ` +
+				`that considers multiple dimensions of this problem. `
 				: `This seems straightforward, but I should still make sure I'm not missing anything. `) +
 			`A successful response would need to address the core question while providing useful context.`;
 		return { name: 'Problem Space Exploration', content, durationMs: Date.now() - start };
@@ -354,7 +354,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			`This is interesting because it connects to broader patterns I'm noticing. ` +
 			`Starting with the obvious aspects, there's a direct relationship between the query and ` +
 			`the domain of data management and analysis. ` +
-			`But now I'm noticing something — there might be connections to patterns that aren't immediately visible. ` +
+			`But now I'm noticing something -- there might be connections to patterns that aren't immediately visible. ` +
 			`Let me follow this thread and see where it leads... ` +
 			`Actually, this reminds me of related concepts that could enrich the response.`;
 		return { name: 'Natural Discovery Process', content, durationMs: Date.now() - start };
@@ -367,7 +367,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			`Let me test my preliminary conclusions against what I know. ` +
 			`Are there potential flaws in my reasoning? I should consider alternative perspectives ` +
 			`and verify that my understanding is consistent. ` +
-			`I need to check for completeness — am I covering all the important aspects?`;
+			`I need to check for completeness -- am I covering all the important aspects?`;
 		return { name: 'Testing and Verification', content, durationMs: Date.now() - start };
 	}
 
@@ -398,7 +398,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		const topNodes = this.hypergraphStore.getTopSalientNodes(3);
 		const contextHint = topNodes.length > 0
 			? `I can see ${topNodes.length} highly salient concepts in the cognitive graph that relate to this query. `
-			: `The cognitive graph is fresh — this is a new line of inquiry. `;
+			: `The cognitive graph is fresh -- this is a new line of inquiry. `;
 		const content =
 			`Actively looking for patterns in the information I've gathered... ` +
 			contextHint +
@@ -409,7 +409,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	}
 
 	/**
-	 * Phase 9: Progress Tracking – maintains awareness of what has been
+	 * Phase 9: Progress Tracking - maintains awareness of what has been
 	 * established, what remains uncertain, and current confidence level.
 	 * From the Zone-Cog protocol spec's "Progress Tracking" section.
 	 */
@@ -418,7 +418,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		const established = priorPhases.map(p => p.name).join(', ');
 		const historyCount = this._queryHistory.length;
 		const historyContext = historyCount > 1
-			? `I've processed ${historyCount} queries so far — previous context may inform this analysis. `
+			? `I've processed ${historyCount} queries so far -- previous context may inform this analysis. `
 			: `This appears to be an early query in this session. `;
 		const content =
 			`Let me take stock of where I am in this analysis. ` +
@@ -432,7 +432,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	}
 
 	/**
-	 * Phase 10: Recursive Thinking – applies the same careful analysis
+	 * Phase 10: Recursive Thinking - applies the same careful analysis
 	 * at both macro and micro levels, checking that detailed analysis
 	 * supports broader conclusions. From the Zone-Cog protocol spec's
 	 * "Recursive Thinking" section.
@@ -442,12 +442,12 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		const phaseCount = priorPhases.length;
 		const deepestPhase = priorPhases[phaseCount - 1];
 		const content =
-			`Now let me apply recursive analysis — examining my reasoning at multiple scales. ` +
+			`Now let me apply recursive analysis -- examining my reasoning at multiple scales. ` +
 			`At the macro level, my ${phaseCount} phases build a coherent narrative from query to insight. ` +
 			`At the micro level, the most recent phase ("${deepestPhase?.name ?? 'N/A'}") ` +
 			`should hold up under the same scrutiny I applied to the overall problem. ` +
 			`Pattern recognition at both scales seems consistent. ` +
-			`The detailed analysis supports my broader conclusions — ` +
+			`The detailed analysis supports my broader conclusions -- ` +
 			`I'm not seeing contradictions between the granular and high-level views.`;
 		return { name: 'Recursive Thinking', content, durationMs: Date.now() - start };
 	}

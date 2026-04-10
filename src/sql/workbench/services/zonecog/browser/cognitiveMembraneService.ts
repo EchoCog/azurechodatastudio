@@ -29,13 +29,13 @@ interface MembraneState {
  * triad architecture mapped from the P-System Membrane model.
  *
  * - **Cerebral** (Cognitive Membrane): Core cognitive processing, thinking
- *   protocol, reasoning — maps to thought-service, processing-director,
+ *   protocol, reasoning -- maps to thought-service, processing-director,
  *   processing-service, output-service.
  * - **Somatic** (Extension Membrane): Plugin container, UI interactions,
- *   bridge communication — maps to motor-control-service, sensory-service,
+ *   bridge communication -- maps to motor-control-service, sensory-service,
  *   processing-service, output-service.
  * - **Autonomic** (Security Membrane): Validation, state monitoring, error
- *   correction — maps to monitoring-service, state-management,
+ *   correction -- maps to monitoring-service, state-management,
  *   process-director, processing-service, trigger-service.
  */
 export class CognitiveMembraneService extends Disposable implements ICognitiveMembraneService {
