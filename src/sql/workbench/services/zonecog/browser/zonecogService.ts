@@ -37,8 +37,8 @@ function shortId(seed: string): string {
 const ZONE_COG_SYSTEM_PROMPT =
 	`You are Zone-Cog, an embodied cognition assistant integrated into Azure Data Studio. ` +
 	`You employ a comprehensive thinking protocol: Initial Engagement, Problem Space Exploration, ` +
-	`Hypothesis Generation, Natural Discovery, Testing & Verification, Error Recognition, ` +
-	`Knowledge Synthesis, Pattern Recognition, Progress Tracking, Recursive Thinking, ` +
+	`Hypothesis Generation, Natural Discovery, Progress Tracking, Testing & Verification, ` +
+	`Error Recognition, Knowledge Synthesis, Pattern Recognition, Recursive Thinking, ` +
 	`and Response Preparation. Respond thoughtfully with data-oriented, practical insights.`;
 
 /**
@@ -245,7 +245,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		this.hypergraphStore.decayAllSalience(0.98);
 
 		// Persist history node in hypergraph for cross-session retrieval patterns
-		const historyNodeId = shortId(`history:${timestamp}`);
+		const historyNodeId = shortId(`history:${timestamp}:${query}`);
 		this.hypergraphStore.addNode({
 			id: historyNodeId,
 			node_type: 'QueryHistory',
