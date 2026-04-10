@@ -237,8 +237,7 @@ import { ServerContextualizationService } from 'sql/workbench/services/contextua
 import { IErrorDiagnosticsService } from 'sql/workbench/services/diagnostics/common/errorDiagnosticsService';
 import { ErrorDiagnosticsService } from 'sql/workbench/services/diagnostics/browser/errorDiagnosticsService';
 import { IComponentContextService, ComponentContextService } from 'sql/workbench/services/componentContext/browser/componentContextService';
-import { IZoneCogService } from 'sql/workbench/services/zonecog/common/zonecogService';
-import { ZoneCogService } from 'sql/workbench/services/zonecog/browser/zonecogService';
+// ZoneCog services are registered via their contribution file (zonecog.contribution.ts)
 
 // {{SQL CARBON TODO}} - delayed or eager
 registerSingleton(IDashboardService, DashboardService, InstantiationType.Eager);
@@ -286,7 +285,6 @@ registerSingleton(IExecutionPlanService, ExecutionPlanService, InstantiationType
 registerSingleton(IServerContextualizationService, ServerContextualizationService, InstantiationType.Eager);
 registerSingleton(IErrorDiagnosticsService, ErrorDiagnosticsService, InstantiationType.Eager);
 registerSingleton(IComponentContextService, ComponentContextService, InstantiationType.Eager);
-registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
 //#endregion
 
 

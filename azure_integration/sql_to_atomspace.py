@@ -47,6 +47,11 @@ def make_link(link_type: str, out: List[str]) -> Atom:
     return {"type": "Link", "link_type": link_type, "out": out, "uuid": stable_id(f"{link_type}:{'|'.join(out)}")}
 
 
+def _node_uuid(node_type: str, name: str) -> str:
+    """Return the deterministic UUID for a node without constructing the full dict."""
+    return stable_id(f"{node_type}:{name}")
+
+
 def map_schema_to_atoms(
     tables: Iterable[Dict[str, Any]],
     foreign_keys: Iterable[Dict[str, Any]],
@@ -73,11 +78,12 @@ def map_schema_to_atoms(
         dst_cols = fk["dst_columns"]
         src_tn = table_node_id(src_schema, src_table)
         dst_tn = table_node_id(dst_schema, dst_table)
-        src_cols_ids = [column_node_id(src_schema, src_table, c) for c in src_cols]
-        dst_cols_ids = [column_node_id(dst_schema, dst_table, c) for c in dst_cols]
-        link_out = [make_node("TableNode", src_tn)["uuid"], make_node("TableNode", dst_tn)["uuid"]]
-        link_out.extend(stable_id(x) for x in src_cols_ids)
-        link_out.extend(stable_id(x) for x in dst_cols_ids)
+        # Use the helper to derive UUIDs consistently
+        link_out = [_node_uuid("TableNode", src_tn), _node_uuid("TableNode", dst_tn)]
+        for c in src_cols:
+            link_out.append(_node_uuid("ColumnNode", column_node_id(src_schema, src_table, c)))
+        for c in dst_cols:
+            link_out.append(_node_uuid("ColumnNode", column_node_id(dst_schema, dst_table, c)))
         links.append(make_link("ForeignKeyLink", link_out))
 
     return {"nodes": dedupe(nodes), "links": dedupe(links)}
@@ -92,7 +98,7 @@ def map_rows_to_atoms(
     nodes: List[Atom] = []
     links: List[Atom] = []
     tn = table_node_id(schema, table)
-    t_uuid = make_node("TableNode", tn)["uuid"]
+    t_uuid = _node_uuid("TableNode", tn)
 
     if isinstance(primary_key, str):
         pk_cols = [primary_key]
@@ -102,20 +108,24 @@ def map_rows_to_atoms(
     for row in rows:
         pk_values = tuple(row[c] for c in pk_cols)
         rn = row_node_id(schema, table, pk_values)
-        r_uuid = make_node("RowNode", rn)["uuid"]
+        row_node = make_node("RowNode", rn)
+        nodes.append(row_node)
+        r_uuid = row_node["uuid"]
         links.append(make_link("MemberLink", [r_uuid, t_uuid]))
         for col, val in row.items():
             cn = column_node_id(schema, table, col)
-            c_uuid = make_node("ColumnNode", cn)["uuid"]
+            c_uuid = _node_uuid("ColumnNode", cn)
             vv = value_node_value(val)
-            v_uuid = make_node("ValueNode", vv)["uuid"]
+            val_node = make_node("ValueNode", vv)
+            nodes.append(val_node)
+            v_uuid = val_node["uuid"]
             links.append(make_link("EvaluationLink", [r_uuid, c_uuid, v_uuid]))
 
     return {"nodes": dedupe(nodes), "links": dedupe(links)}
 
 
 def dedupe(atoms: List[Atom]) -> List[Atom]:
-    seen = set()
+    seen: set[str] = set()
     out: List[Atom] = []
     for a in atoms:
         k = a["uuid"]
