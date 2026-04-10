@@ -1,6 +1,10 @@
 .DS_Store
 .cache
 npm-debug.log
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
 Thumbs.db
 node_modules/
 .build/
