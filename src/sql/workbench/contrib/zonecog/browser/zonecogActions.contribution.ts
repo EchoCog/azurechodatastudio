@@ -3,8 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Registry } from 'vs/platform/registry/common/platform';
-import { IWorkbenchActionRegistry, Extensions as ActionExtensions } from 'vs/workbench/common/actions';
 import { Action2, MenuId, registerAction2 } from 'vs/platform/actions/common/actions';
 import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
 import { IZoneCogService } from 'sql/workbench/services/zonecog/common/zonecogService';
@@ -55,25 +53,28 @@ class ZoneCogTestAction extends Action2 {
 		try {
 			// Process the query through Zone-Cog
 			const response = await zonecogService.processQuery(input);
-			
+
 			// Show the result
-			const message = localize('zonecog.result', 
-				'Zone-Cog Response: {0}\n\nComplexity: {1} | Confidence: {2}% | Processing Time: {3}ms',
+			const message = localize('zonecog.result',
+				'Zone-Cog Response: {0}\n\nComplexity: {1} | Confidence: {2}% | Processing Time: {3}ms | Phases: {4}',
 				response.response,
 				response.metadata.queryComplexity,
 				Math.round(response.confidence * 100),
-				response.metadata.processingTime
+				response.metadata.processingTime,
+				response.phases.length
 			);
-			
+
 			notificationService.info(message);
-			
+
 			// Also log the thinking process for development purposes
 			if (response.thinking) {
 				console.log('Zone-Cog Thinking Process:', response.thinking);
+				console.log('Zone-Cog Phases:', response.phases.map(p => p.name).join(' → '));
 			}
-			
+
 		} catch (error) {
-			notificationService.error(localize('zonecog.error', 'Zone-Cog processing failed: {0}', error.message));
+			const errMsg = error instanceof Error ? error.message : String(error);
+			notificationService.error(localize('zonecog.error', 'Zone-Cog processing failed: {0}', errMsg));
 		}
 	}
 }
@@ -104,22 +105,22 @@ class ZoneCogToggleThinkingAction extends Action2 {
 		const notificationService = accessor.get(INotificationService);
 
 		await zonecogService.initialize();
-		
+
 		const currentState = zonecogService.getCognitiveState();
 		const newThinkingMode = !currentState.thinkingModeEnabled;
-		
+
 		zonecogService.setThinkingMode(newThinkingMode);
-		
-		const message = newThinkingMode 
+
+		const message = newThinkingMode
 			? localize('zonecog.thinkingEnabled', 'Zone-Cog comprehensive thinking mode enabled')
 			: localize('zonecog.thinkingDisabled', 'Zone-Cog comprehensive thinking mode disabled');
-			
+
 		notificationService.info(message);
 	}
 }
 
 /**
- * Action to show Zone-Cog status
+ * Action to show Zone-Cog status including membrane and hypergraph info
  */
 class ZoneCogStatusAction extends Action2 {
 
@@ -144,15 +145,17 @@ class ZoneCogStatusAction extends Action2 {
 		const notificationService = accessor.get(INotificationService);
 
 		const state = zonecogService.getCognitiveState();
-		
-		const message = localize('zonecog.statusInfo', 
-			'Zone-Cog Status:\nInitialized: {0}\nThinking Mode: {1}\nCognitive Load: {2}%\nContext: {3}',
+
+		const message = localize('zonecog.statusInfo',
+			'Zone-Cog Status:\nInitialized: {0}\nThinking Mode: {1}\nCognitive Load: {2}%\nHypergraph Nodes: {3}\nMembrane Health: {4}\nContext: {5}',
 			state.isInitialized ? 'Yes' : 'No',
 			state.thinkingModeEnabled ? 'Enabled' : 'Disabled',
 			Math.round(state.cognitiveLoad * 100),
+			state.hypergraphNodeCount,
+			state.membraneHealthy ? 'Healthy' : 'Degraded',
 			state.currentContext || 'None'
 		);
-		
+
 		notificationService.info(message);
 	}
 }

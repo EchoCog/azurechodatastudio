@@ -6,65 +6,125 @@ This directory contains the Zone-Cog cognitive protocol integration for Azure Da
 
 Zone-Cog implements a comprehensive thinking framework that enables natural, stream-of-consciousness cognitive processing for data analysis and management tasks. The integration provides:
 
-- **Cognitive Protocol Service**: Core service implementing the Zone-Cog thinking framework
+- **Cognitive Protocol Service**: Full Zone-Cog thinking sequence (9 phases)
+- **Hypergraph Store**: In-memory knowledge graph following the EchoCog HypergraphNode standard
+- **Cognitive Membrane Architecture**: Cerebral / Somatic / Autonomic triad system
 - **Adaptive Analysis**: Query complexity assessment and depth-appropriate thinking
-- **Natural Discovery**: Organic thought processes that flow naturally between ideas
-- **Contextual Understanding**: Multi-dimensional problem analysis with pattern recognition
-
-## Components
-
-### Services
-
-- `IZoneCogService` - Core interface for cognitive processing
-- `ZoneCogService` - Implementation of the Zone-Cog protocol
-
-### Features
-
-- Query processing through comprehensive thinking framework
-- Configurable thinking depth based on complexity
-- Real-time cognitive state monitoring
-- Thinking mode toggle for development/debugging
-
-### Commands
-
-Available through Command Palette (`Ctrl+Shift+P`):
-
-- `Zone-Cog: Test Cognitive Processing` - Interactive query processing
-- `Zone-Cog: Toggle Thinking Mode` - Enable/disable comprehensive thinking
-- `Zone-Cog: Show Status` - Display current cognitive state
+- **Event-Driven State**: Reactive cognitive state management with change notifications
 
 ## Architecture
 
-The Zone-Cog integration follows the established Azure Data Studio service patterns:
+### Cognitive Membrane Triads
 
-1. **Service Layer**: Core cognitive processing logic
-2. **Contribution Layer**: Command registration and UI integration  
-3. **Test Layer**: Comprehensive test coverage for cognitive functions
+The system implements the P-System Membrane Architecture:
 
-## Protocol Details
+| Triad | Role | Components |
+|---|---|---|
+| **Cerebral** | Core cognitive processing | `ZoneCogService`, thinking protocol |
+| **Somatic** | Extension & UI interaction | Command Palette, bridge extension |
+| **Autonomic** | Health monitoring & validation | `CognitiveMembraneService`, error tracking |
 
-Based on the Zone-Cog protocol specification in `zonecog.prompt.yml`, the implementation includes:
+### Services
 
-- **Initial Engagement**: Query understanding and context mapping
-- **Problem Space Exploration**: Multi-dimensional analysis
-- **Hypothesis Generation**: Alternative perspective consideration
-- **Natural Discovery Process**: Organic insight development
-- **Verification & Quality Control**: Systematic validation
+| Service | Interface | Implementation |
+|---|---|---|
+| Zone-Cog Core | `IZoneCogService` | `ZoneCogService` |
+| Hypergraph Store | `IHypergraphStore` | `HypergraphStore` |
+| Cognitive Membrane | `ICognitiveMembraneService` | `CognitiveMembraneService` |
+
+### Thinking Protocol Phases
+
+The full Zone-Cog cognitive sequence (depth-adaptive):
+
+1. **Initial Engagement** — Rephrase query, map knowns/unknowns (always)
+2. **Problem Space Exploration** — Break down components, identify requirements (always)
+3. **Hypothesis Generation** — Multiple interpretations, avoid premature commitment (moderate+)
+4. **Natural Discovery** — Organic insight development, pattern connections (moderate+)
+5. **Testing & Verification** — Question assumptions, check consistency (deep)
+6. **Error Recognition** — Acknowledge and correct reasoning flaws (deep)
+7. **Knowledge Synthesis** — Connect information, build coherent picture (deep)
+8. **Pattern Recognition** — Analyze patterns using hypergraph context (deep)
+9. **Response Preparation** — Final response formulation (always)
+
+## Hypergraph Store
+
+Follows the EchoCog standard `HypergraphNode` structure:
+
+```typescript
+interface HypergraphNode {
+  id: string;           // Unique stable identifier
+  node_type: string;    // e.g. "TableNode", "ThinkingProcess", "QueryInput"
+  content: string;      // Primary content payload
+  links: string[];      // Link IDs this node participates in
+  metadata: Record<string, unknown>;
+  salience_score: number; // [0, 1] for ECAN-style attention
+}
+```
+
+Cognitive processing creates and links nodes automatically:
+- `QueryInput` → `ThinkingProcess` → `CognitiveResponse`
+- Links typed as `ProducedBy` connect the processing chain
+
+## Commands
+
+Available through Command Palette (`Ctrl+Shift+P`):
+
+- `Zone-Cog: Test Cognitive Processing` — Interactive query processing with full protocol
+- `Zone-Cog: Toggle Thinking Mode` — Enable/disable comprehensive thinking
+- `Zone-Cog: Show Status` — Display cognitive state, membrane health, hypergraph stats
+
+## File Structure
+
+```
+services/zonecog/
+├── common/
+│   └── zonecogService.ts          # Interfaces: IZoneCogService, IHypergraphStore,
+│                                  #   ICognitiveMembraneService, types
+├── browser/
+│   ├── zonecogService.ts          # ZoneCogService implementation
+│   ├── hypergraphStore.ts         # HypergraphStore implementation
+│   ├── cognitiveMembraneService.ts # CognitiveMembraneService implementation
+│   └── zonecog.contribution.ts    # DI service registration
+├── test/
+│   └── browser/
+│       └── zonecogService.test.ts # Tests for all three services
+└── README.md                      # This file
+```
 
 ## Development
 
-The cognitive framework is designed to be:
+### Adding New Node Types
 
-- **Extensible**: Easy to add new cognitive capabilities
-- **Configurable**: Adjustable thinking depth and processing modes
-- **Observable**: Full visibility into cognitive processes
-- **Testable**: Comprehensive test coverage for reliability
+Add nodes to the hypergraph store from anywhere with access to `IHypergraphStore`:
 
-## Future Enhancements
+```typescript
+store.addNode({
+  id: 'unique-id',
+  node_type: 'MyCustomNode',
+  content: 'payload',
+  links: [],
+  metadata: { custom: 'data' },
+  salience_score: 0.5,
+});
+```
 
-This initial integration provides the foundation for evolving Azure Data Studio into a full cognitive workbench, with potential expansions into:
+### Listening to Events
 
-- AI/LLM integration for advanced reasoning
-- Visual cognitive mapping interfaces
-- Collaborative cognitive spaces
-- Advanced pattern recognition systems
+```typescript
+// React to cognitive state changes
+zoneCogService.onDidChangeCognitiveState(state => {
+  console.log('Load:', state.cognitiveLoad, 'Healthy:', state.membraneHealthy);
+});
+
+// React to completed queries
+zoneCogService.onDidProcessQuery(response => {
+  console.log('Phases:', response.phases.map(p => p.name).join(' → '));
+});
+```
+
+## Related Documentation
+
+- [Implementation Strategy](../../../docs/ZONECOG_STRATEGY.md)
+- [Development Roadmap](../../../docs/ZONECOG_ROADMAP.md)
+- [Zone-Cog Protocol Specification](../../../ZONECOG.md)
+- [Implementation Summary](../../../ZONECOG_IMPLEMENTATION.md)

@@ -8,7 +8,7 @@ try:
     from fastapi import FastAPI, HTTPException
     from pydantic import BaseModel
     import uvicorn
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     FastAPI = None  # type: ignore
     HTTPException = Exception  # type: ignore
     BaseModel = object  # type: ignore
@@ -16,7 +16,7 @@ except Exception:  # pragma: no cover
 
 from datetime import datetime
 
-from .sql_to_atomspace import AtomBatch, map_rows_to_atoms, map_schema_to_atoms, merge_batches
+from azure_integration.sql_to_atomspace import AtomBatch, map_rows_to_atoms, map_schema_to_atoms, merge_batches
 
 
 class HealthResponse(BaseModel):  # type: ignore
@@ -121,8 +121,8 @@ app_impl = BridgeApp()
 if FastAPI:
     app = FastAPI()
 
-    @app.post("/health", response_model=HealthResponse)  # type: ignore
-    def post_health() -> Dict[str, Any]:
+    @app.get("/health", response_model=HealthResponse)  # type: ignore
+    def get_health() -> Dict[str, Any]:
         return app_impl.health()
 
     @app.post("/ingest/schema")
