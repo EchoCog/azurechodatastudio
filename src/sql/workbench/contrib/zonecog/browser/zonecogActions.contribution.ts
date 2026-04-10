@@ -14,6 +14,8 @@ import { ILogService } from 'vs/platform/log/common/log';
 import { localize } from 'vs/nls';
 import { Codicon } from 'vs/base/common/codicons';
 
+const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
+
 /**
  * Action to test ZoneCog cognitive processing
  */
@@ -24,7 +26,7 @@ class ZoneCogTestAction extends Action2 {
 		super({
 			id: ZoneCogTestAction.ID,
 			title: { value: localize('zonecog.test', 'Test Zone-Cog Cognitive Processing'), original: 'Test Zone-Cog Cognitive Processing' },
-			category: localize('zonecog.category', 'Zone-Cog'),
+			category: ZONECOG_CATEGORY,
 			icon: Codicon.circuitBoard,
 			f1: true,
 			menu: {
@@ -91,7 +93,7 @@ class ZoneCogToggleThinkingAction extends Action2 {
 		super({
 			id: ZoneCogToggleThinkingAction.ID,
 			title: { value: localize('zonecog.toggleThinking', 'Toggle Zone-Cog Thinking Mode'), original: 'Toggle Zone-Cog Thinking Mode' },
-			category: localize('zonecog.category', 'Zone-Cog'),
+			category: ZONECOG_CATEGORY,
 			icon: Codicon.gear,
 			f1: true,
 			menu: {
@@ -129,7 +131,7 @@ class ZoneCogStatusAction extends Action2 {
 		super({
 			id: ZoneCogStatusAction.ID,
 			title: { value: localize('zonecog.status', 'Show Zone-Cog Workbench Status'), original: 'Show Zone-Cog Workbench Status' },
-			category: localize('zonecog.category', 'Zone-Cog'),
+			category: ZONECOG_CATEGORY,
 			icon: Codicon.info,
 			f1: true,
 			menu: {
@@ -183,7 +185,7 @@ class ZoneCogExploreHypergraphAction extends Action2 {
 		super({
 			id: ZoneCogExploreHypergraphAction.ID,
 			title: { value: localize('zonecog.exploreHypergraph', 'Explore Hypergraph Knowledge Store'), original: 'Explore Hypergraph Knowledge Store' },
-			category: localize('zonecog.category', 'Zone-Cog'),
+			category: ZONECOG_CATEGORY,
 			icon: Codicon.graphScatter,
 			f1: true,
 			menu: {
@@ -252,7 +254,7 @@ class ZoneCogSetFocusAction extends Action2 {
 		super({
 			id: ZoneCogSetFocusAction.ID,
 			title: { value: localize('zonecog.setFocus', 'Set Cognitive Focus'), original: 'Set Cognitive Focus' },
-			category: localize('zonecog.category', 'Zone-Cog'),
+			category: ZONECOG_CATEGORY,
 			icon: Codicon.eye,
 			f1: true,
 			menu: {
@@ -298,7 +300,7 @@ class ZoneCogWorkspaceSummaryAction extends Action2 {
 		super({
 			id: ZoneCogWorkspaceSummaryAction.ID,
 			title: { value: localize('zonecog.workspaceSummary', 'Show Cognitive Workspace Summary'), original: 'Show Cognitive Workspace Summary' },
-			category: localize('zonecog.category', 'Zone-Cog'),
+			category: ZONECOG_CATEGORY,
 			icon: Codicon.notebook,
 			f1: true,
 			menu: {
@@ -358,7 +360,7 @@ class ZoneCogCreateTaskAction extends Action2 {
 		super({
 			id: ZoneCogCreateTaskAction.ID,
 			title: { value: localize('zonecog.createTask', 'Create Cognitive Task'), original: 'Create Cognitive Task' },
-			category: localize('zonecog.category', 'Zone-Cog'),
+			category: ZONECOG_CATEGORY,
 			icon: Codicon.checklist,
 			f1: true,
 			menu: {
@@ -396,7 +398,7 @@ class ZoneCogMembraneHealthAction extends Action2 {
 		super({
 			id: ZoneCogMembraneHealthAction.ID,
 			title: { value: localize('zonecog.membraneHealth', 'Show Membrane Triad Health'), original: 'Show Membrane Triad Health' },
-			category: localize('zonecog.category', 'Zone-Cog'),
+			category: ZONECOG_CATEGORY,
 			icon: Codicon.heartFilled,
 			f1: true,
 			menu: {
@@ -434,7 +436,7 @@ class ZoneCogResetAction extends Action2 {
 		super({
 			id: ZoneCogResetAction.ID,
 			title: { value: localize('zonecog.reset', 'Reset Cognitive Workbench'), original: 'Reset Cognitive Workbench' },
-			category: localize('zonecog.category', 'Zone-Cog'),
+			category: ZONECOG_CATEGORY,
 			icon: Codicon.debugRestart,
 			f1: true,
 			menu: {
@@ -474,7 +476,7 @@ class ZoneCogQueryHistoryAction extends Action2 {
 		super({
 			id: ZoneCogQueryHistoryAction.ID,
 			title: { value: localize('zonecog.queryHistory', 'Show Query History'), original: 'Show Query History' },
-			category: localize('zonecog.category', 'Zone-Cog'),
+			category: ZONECOG_CATEGORY,
 			icon: Codicon.history,
 			f1: true,
 			menu: {
