@@ -80,6 +80,9 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	private readonly _onDidProcessQuery = this._register(new Emitter<ZoneCogResponse>());
 	readonly onDidProcessQuery: Event<ZoneCogResponse> = this._onDidProcessQuery.event;
 
+	private readonly _onDidCompleteThinkingPhase = this._register(new Emitter<ThinkingPhase>());
+	readonly onDidCompleteThinkingPhase: Event<ThinkingPhase> = this._onDidCompleteThinkingPhase.event;
+
 	constructor(
 		@ILogService private readonly logService: ILogService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
@@ -133,6 +136,8 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 			for (const phase of phaseResults) {
 				phases.push(phase);
 				thinking += phase.content + '\n\n';
+				// Stream each phase as it completes
+				this._onDidCompleteThinkingPhase.fire(phase);
 			}
 
 			// Persist the thinking as a hypergraph node
@@ -231,6 +236,18 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 
 	getHypergraphStore(): IHypergraphStore {
 		return this.hypergraphStore;
+	}
+
+	getQueryHistory(): Array<{ query: string; timestamp: number }> {
+		return [...this._queryHistory];
+	}
+
+	reset(): void {
+		this._queryHistory.length = 0;
+		this._cognitiveLoad = 0;
+		this._currentContext = null;
+		this.logService.info('ZoneCogService: State reset (query history, load, context)');
+		this._fireStateChange();
 	}
 
 	// -- Query history -------------------------------------------------------

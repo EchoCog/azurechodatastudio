@@ -187,6 +187,33 @@ suite('ZoneCog Service Tests', () => {
 		assert.strictEqual(processedCount, 1);
 	});
 
+	test('should stream thinking phase events', async () => {
+		const streamedPhases: string[] = [];
+		zoneCogService.onDidCompleteThinkingPhase((phase) => {
+			streamedPhases.push(phase.name);
+		});
+
+		await zoneCogService.initialize();
+		await zoneCogService.processQuery('Stream test');
+
+		assert.ok(streamedPhases.length > 0, 'Should stream at least one thinking phase');
+		assert.ok(streamedPhases.includes('Initial Engagement'));
+		assert.ok(streamedPhases.includes('Response Preparation'));
+	});
+
+	test('should expose query history', async () => {
+		await zoneCogService.initialize();
+		assert.strictEqual(zoneCogService.getQueryHistory().length, 0);
+
+		await zoneCogService.processQuery('First query');
+		await zoneCogService.processQuery('Second query');
+
+		const history = zoneCogService.getQueryHistory();
+		assert.strictEqual(history.length, 2);
+		assert.strictEqual(history[0].query, 'First query');
+		assert.strictEqual(history[1].query, 'Second query');
+	});
+
 	test('should track cognitive load', async () => {
 		await zoneCogService.initialize();
 		const stateBefore = zoneCogService.getCognitiveState();
