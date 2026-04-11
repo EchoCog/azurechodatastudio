@@ -25,8 +25,8 @@ class ZoneCogTestAction extends Action2 {
 	constructor() {
 		super({
 			id: ZoneCogTestAction.ID,
-			title: { value: localize('zonecog.test', 'Test Zone-Cog Cognitive Processing'), original: 'Test Zone-Cog Cognitive Processing' },
-			category: ZONECOG_CATEGORY,
+			title: { value: ZoneCogTestAction.LABEL, original: 'Test Zone-Cog Cognitive Processing' },
+			category: { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' },
 			icon: Codicon.circuitBoard,
 			f1: true,
 			menu: {
@@ -92,8 +92,8 @@ class ZoneCogToggleThinkingAction extends Action2 {
 	constructor() {
 		super({
 			id: ZoneCogToggleThinkingAction.ID,
-			title: { value: localize('zonecog.toggleThinking', 'Toggle Zone-Cog Thinking Mode'), original: 'Toggle Zone-Cog Thinking Mode' },
-			category: ZONECOG_CATEGORY,
+			title: { value: ZoneCogToggleThinkingAction.LABEL, original: 'Toggle Zone-Cog Thinking Mode' },
+			category: { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' },
 			icon: Codicon.gear,
 			f1: true,
 			menu: {
@@ -130,8 +130,8 @@ class ZoneCogStatusAction extends Action2 {
 	constructor() {
 		super({
 			id: ZoneCogStatusAction.ID,
-			title: { value: localize('zonecog.status', 'Show Zone-Cog Workbench Status'), original: 'Show Zone-Cog Workbench Status' },
-			category: ZONECOG_CATEGORY,
+			title: { value: ZoneCogStatusAction.LABEL, original: 'Show Zone-Cog Status' },
+			category: { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' },
 			icon: Codicon.info,
 			f1: true,
 			menu: {
