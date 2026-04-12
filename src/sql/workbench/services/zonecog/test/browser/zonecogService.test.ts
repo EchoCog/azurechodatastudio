@@ -10,6 +10,14 @@ import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergra
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
 import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { LLMProviderService } from 'sql/workbench/services/zonecog/browser/llmProviderService';
+import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
+import { ECANAttentionService } from 'sql/workbench/services/zonecog/browser/ecanAttentionService';
+import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
+import { EmbodiedCognitionService } from 'sql/workbench/services/zonecog/browser/embodiedCognitionService';
+import { ICognitiveWorkspaceService } from 'sql/workbench/services/zonecog/common/cognitiveWorkspace';
+import { CognitiveWorkspaceService } from 'sql/workbench/services/zonecog/browser/cognitiveWorkspaceService';
+import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
+import { CognitiveLoopService } from 'sql/workbench/services/zonecog/browser/cognitiveLoopService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 
@@ -532,5 +540,303 @@ suite('LLMProviderService Tests', () => {
 	test('should not switch to unknown provider', () => {
 		assert.strictEqual(llmService.setActiveProvider('nonexistent'), false);
 		assert.strictEqual(llmService.getActiveProvider().id, 'builtin-fallback');
+	});
+});
+
+suite('ECANAttentionService Tests', () => {
+
+	let instantiationService: TestInstantiationService;
+	let ecanService: IECANAttentionService;
+	let store: IHypergraphStore;
+
+	setup(() => {
+		instantiationService = new TestInstantiationService();
+		instantiationService.stub(ILogService, new NullLogService());
+
+		store = instantiationService.createInstance(HypergraphStore);
+		instantiationService.stub(IHypergraphStore, store);
+
+		const membraneService = instantiationService.createInstance(CognitiveMembraneService);
+		instantiationService.stub(ICognitiveMembraneService, membraneService);
+
+		ecanService = instantiationService.createInstance(ECANAttentionService);
+	});
+
+	test('should initialize with default state', () => {
+		const snapshot = ecanService.getSnapshot();
+		assert.strictEqual(snapshot.totalTrackedNodes, 0);
+		assert.strictEqual(snapshot.nodesInFocus, 0);
+		assert.strictEqual(snapshot.spreadingCycles, 0);
+		assert.strictEqual(snapshot.attentionalFocusBoundary, 0);
+	});
+
+	test('should set and get attention values', () => {
+		ecanService.setAttentionValue('node1', { sti: 0.5, lti: 0.3 });
+		const av = ecanService.getAttentionValue('node1');
+		assert.strictEqual(av.sti, 0.5);
+		assert.strictEqual(av.lti, 0.3);
+	});
+
+	test('should return default AV for untracked nodes', () => {
+		const av = ecanService.getAttentionValue('unknown');
+		assert.strictEqual(av.sti, 0);
+		assert.strictEqual(av.lti, 0);
+	});
+
+	test('should clamp STI to [-1, 1]', () => {
+		ecanService.setAttentionValue('n1', { sti: 5.0, lti: 0 });
+		assert.strictEqual(ecanService.getAttentionValue('n1').sti, 1);
+
+		ecanService.setAttentionValue('n2', { sti: -3.0, lti: 0 });
+		assert.strictEqual(ecanService.getAttentionValue('n2').sti, -1);
+	});
+
+	test('should clamp LTI to [0, 1]', () => {
+		ecanService.setAttentionValue('n1', { sti: 0, lti: 2.0 });
+		assert.strictEqual(ecanService.getAttentionValue('n1').lti, 1);
+
+		ecanService.setAttentionValue('n2', { sti: 0, lti: -1.0 });
+		assert.strictEqual(ecanService.getAttentionValue('n2').lti, 0);
+	});
+
+	test('should stimulate nodes', () => {
+		ecanService.setAttentionValue('n1', { sti: 0.2, lti: 0.5 });
+		ecanService.stimulate('n1', 0.3);
+		assert.strictEqual(ecanService.getAttentionValue('n1').sti, 0.5);
+		assert.strictEqual(ecanService.getAttentionValue('n1').lti, 0.5); // LTI unchanged
+	});
+
+	test('should compute attentional focus', () => {
+		ecanService.setAttentionValue('above', { sti: 0.5, lti: 0 });
+		ecanService.setAttentionValue('at_boundary', { sti: 0.0, lti: 0 });
+		ecanService.setAttentionValue('below', { sti: -0.3, lti: 0 });
+
+		const focus = ecanService.getAttentionalFocus();
+		assert.ok(focus.includes('above'));
+		assert.ok(focus.includes('at_boundary'));
+		assert.ok(!focus.includes('below'));
+	});
+
+	test('should spread activation along links', () => {
+		// Create two linked nodes in the hypergraph
+		store.addNode({ id: 'src', node_type: 'A', content: '', links: [], metadata: {}, salience_score: 0.8 });
+		store.addNode({ id: 'dst', node_type: 'B', content: '', links: [], metadata: {}, salience_score: 0.2 });
+		store.addLink({ id: 'l1', link_type: 'Test', outgoing: ['src', 'dst'], metadata: {} });
+
+		ecanService.setAttentionValue('src', { sti: 0.8, lti: 0.5 });
+		ecanService.setAttentionValue('dst', { sti: 0.1, lti: 0.2 });
+
+		const result = ecanService.spreadActivation();
+
+		// dst should have received some STI from src
+		const dstAv = ecanService.getAttentionValue('dst');
+		// src had STI=0.8, spread fraction = 0.1 → 0.08 spread to each neighbor
+		// dst had STI=0.1, gains 0.08, loses rent 0.02 → ~0.16
+		assert.ok(dstAv.sti > 0.05, `dst STI should have increased, got ${dstAv.sti}`);
+
+		assert.ok(result.boosted.length > 0 || result.decayed.length > 0);
+		assert.strictEqual(ecanService.getSnapshot().spreadingCycles, 1);
+	});
+
+	test('should collect rent each cycle', () => {
+		ecanService.setAttentionValue('n1', { sti: 0.1, lti: 0.5 });
+
+		ecanService.spreadActivation();
+
+		// After rent collection (0.02), STI should decrease
+		const av = ecanService.getAttentionValue('n1');
+		assert.ok(av.sti < 0.1, `STI should have decreased after rent, got ${av.sti}`);
+	});
+
+	test('should fire spread events', () => {
+		let eventFired = false;
+		ecanService.onDidSpread(() => { eventFired = true; });
+
+		ecanService.setAttentionValue('n1', { sti: 0.5, lti: 0 });
+		ecanService.spreadActivation();
+
+		assert.ok(eventFired);
+	});
+
+	test('should set and get focus boundary', () => {
+		ecanService.setFocusBoundary(0.3);
+		assert.strictEqual(ecanService.getFocusBoundary(), 0.3);
+
+		// Node at 0.2 should now be below the boundary
+		ecanService.setAttentionValue('n1', { sti: 0.2, lti: 0 });
+		assert.ok(!ecanService.getAttentionalFocus().includes('n1'));
+	});
+
+	test('should fire focus boundary change events', () => {
+		let newBoundary = -1;
+		ecanService.onDidChangeFocusBoundary(b => { newBoundary = b; });
+
+		ecanService.setFocusBoundary(0.5);
+		assert.strictEqual(newBoundary, 0.5);
+	});
+
+	test('should reset all state', () => {
+		ecanService.setAttentionValue('n1', { sti: 0.5, lti: 0.5 });
+		ecanService.setFocusBoundary(0.3);
+		ecanService.spreadActivation();
+
+		ecanService.reset();
+
+		const snapshot = ecanService.getSnapshot();
+		assert.strictEqual(snapshot.totalTrackedNodes, 0);
+		assert.strictEqual(snapshot.spreadingCycles, 0);
+		assert.strictEqual(snapshot.attentionalFocusBoundary, 0);
+	});
+});
+
+suite('CognitiveLoopService Tests', () => {
+
+	let instantiationService: TestInstantiationService;
+	let loopService: ICognitiveLoopService;
+
+	setup(() => {
+		instantiationService = new TestInstantiationService();
+		instantiationService.stub(ILogService, new NullLogService());
+
+		const store = instantiationService.createInstance(HypergraphStore);
+		instantiationService.stub(IHypergraphStore, store);
+
+		const membraneService = instantiationService.createInstance(CognitiveMembraneService);
+		instantiationService.stub(ICognitiveMembraneService, membraneService);
+
+		const ecanService = instantiationService.createInstance(ECANAttentionService);
+		instantiationService.stub(IECANAttentionService, ecanService);
+
+		const embodiedService = instantiationService.createInstance(EmbodiedCognitionService);
+		instantiationService.stub(IEmbodiedCognitionService, embodiedService);
+
+		const workspaceService = instantiationService.createInstance(CognitiveWorkspaceService);
+		instantiationService.stub(ICognitiveWorkspaceService, workspaceService);
+
+		loopService = instantiationService.createInstance(CognitiveLoopService);
+	});
+
+	teardown(() => {
+		loopService.stop();
+	});
+
+	test('should initialize in stopped state', () => {
+		const state = loopService.getState();
+		assert.strictEqual(state.running, false);
+		assert.strictEqual(state.paused, false);
+		assert.strictEqual(state.totalIterations, 0);
+	});
+
+	test('should start and stop', () => {
+		loopService.start();
+		assert.strictEqual(loopService.getState().running, true);
+		assert.strictEqual(loopService.getState().paused, false);
+
+		loopService.stop();
+		assert.strictEqual(loopService.getState().running, false);
+	});
+
+	test('should pause and resume', () => {
+		loopService.start();
+
+		loopService.pause();
+		assert.strictEqual(loopService.getState().paused, true);
+		assert.strictEqual(loopService.getState().running, true);
+
+		loopService.resume();
+		assert.strictEqual(loopService.getState().paused, false);
+		assert.strictEqual(loopService.getState().running, true);
+
+		loopService.stop();
+	});
+
+	test('should run a single iteration', async () => {
+		const iteration = await loopService.runOnce();
+
+		assert.ok(iteration.success);
+		assert.strictEqual(iteration.iteration, 1);
+		assert.strictEqual(iteration.phases.length, 5);
+
+		const phaseNames = iteration.phases.map(p => p.name);
+		assert.ok(phaseNames.includes('perceive'));
+		assert.ok(phaseNames.includes('attend'));
+		assert.ok(phaseNames.includes('think'));
+		assert.ok(phaseNames.includes('act'));
+		assert.ok(phaseNames.includes('reflect'));
+	});
+
+	test('should track iteration history', async () => {
+		await loopService.runOnce();
+		await loopService.runOnce();
+		await loopService.runOnce();
+
+		const recent = loopService.getRecentIterations(10);
+		assert.strictEqual(recent.length, 3);
+		assert.strictEqual(recent[0].iteration, 1);
+		assert.strictEqual(recent[2].iteration, 3);
+
+		const state = loopService.getState();
+		assert.strictEqual(state.totalIterations, 3);
+		assert.ok(state.averageIterationMs >= 0);
+	});
+
+	test('should fire iteration events', async () => {
+		let eventCount = 0;
+		loopService.onDidCompleteIteration(() => { eventCount++; });
+
+		await loopService.runOnce();
+		assert.strictEqual(eventCount, 1);
+	});
+
+	test('should fire state change events', () => {
+		let stateChanges = 0;
+		loopService.onDidChangeState(() => { stateChanges++; });
+
+		loopService.start();
+		assert.ok(stateChanges > 0);
+
+		const before = stateChanges;
+		loopService.stop();
+		assert.ok(stateChanges > before);
+	});
+
+	test('should set tick interval', () => {
+		loopService.setTickInterval(2000);
+		assert.strictEqual(loopService.getState().tickIntervalMs, 2000);
+	});
+
+	test('should enforce minimum tick interval', () => {
+		loopService.setTickInterval(100); // Below minimum
+		assert.strictEqual(loopService.getState().tickIntervalMs, 1000);
+	});
+
+	test('should reset all state', async () => {
+		loopService.start();
+		await loopService.runOnce();
+		await loopService.runOnce();
+
+		loopService.reset();
+
+		const state = loopService.getState();
+		assert.strictEqual(state.running, false);
+		assert.strictEqual(state.totalIterations, 0);
+		assert.strictEqual(state.failedIterations, 0);
+		assert.strictEqual(loopService.getRecentIterations().length, 0);
+	});
+
+	test('should handle iteration with populated hypergraph', async () => {
+		// Add some nodes to the hypergraph before running
+		const store = instantiationService.get(IHypergraphStore);
+		store.addNode({ id: 'test1', node_type: 'TestNode', content: 'test data', links: [], metadata: {}, salience_score: 0.8 });
+		store.addNode({ id: 'test2', node_type: 'TestNode', content: 'more data', links: [], metadata: {}, salience_score: 0.6 });
+		store.addLink({ id: 'tl1', link_type: 'Test', outgoing: ['test1', 'test2'], metadata: {} });
+
+		const iteration = await loopService.runOnce();
+		assert.ok(iteration.success);
+
+		// The iteration should have processed the nodes
+		const perceivePhase = iteration.phases.find(p => p.name === 'perceive');
+		assert.ok(perceivePhase);
+		assert.ok(perceivePhase.summary.includes('2 nodes'));
 	});
 });
