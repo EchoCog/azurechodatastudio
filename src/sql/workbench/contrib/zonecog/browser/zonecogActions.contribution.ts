@@ -8,6 +8,8 @@ import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation
 import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
 import { ICognitiveWorkspaceService } from 'sql/workbench/services/zonecog/common/cognitiveWorkspace';
+import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
+import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { IQuickInputService } from 'vs/platform/quickinput/common/quickInput';
 import { ILogService } from 'vs/platform/log/common/log';
@@ -508,6 +510,178 @@ class ZoneCogQueryHistoryAction extends Action2 {
 	}
 }
 
+/**
+ * Action to view ECAN Attention Network snapshot
+ */
+class ZoneCogECANSnapshotAction extends Action2 {
+
+	static ID = 'zonecog.ecanSnapshot';
+	constructor() {
+		super({
+			id: ZoneCogECANSnapshotAction.ID,
+			title: { value: localize('zonecog.ecanSnapshot', 'Show ECAN Attention Snapshot'), original: 'Show ECAN Attention Snapshot' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.flame,
+			f1: true,
+			menu: {
+				id: MenuId.CommandPalette,
+			}
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const ecanService = accessor.get(IECANAttentionService);
+		const notificationService = accessor.get(INotificationService);
+
+		const snapshot = ecanService.getSnapshot();
+		const focusNodes = ecanService.getAttentionalFocus();
+
+		const message = localize('zonecog.ecanStatus',
+			'ECAN Attention Network:\nFocus Boundary: {0}\nNodes in Focus: {1}\nTotal Tracked: {2}\nSpreading Cycles: {3}\nRent Collected: {4}\n\nFocus Node IDs: {5}',
+			snapshot.attentionalFocusBoundary.toFixed(3),
+			snapshot.nodesInFocus,
+			snapshot.totalTrackedNodes,
+			snapshot.spreadingCycles,
+			snapshot.rentCollected.toFixed(4),
+			focusNodes.length > 0 ? focusNodes.slice(0, 10).join(', ') : 'None'
+		);
+
+		notificationService.info(message);
+	}
+}
+
+/**
+ * Action to manually trigger ECAN spreading activation
+ */
+class ZoneCogSpreadActivationAction extends Action2 {
+
+	static ID = 'zonecog.spreadActivation';
+	constructor() {
+		super({
+			id: ZoneCogSpreadActivationAction.ID,
+			title: { value: localize('zonecog.spreadActivation', 'Run ECAN Spreading Activation'), original: 'Run ECAN Spreading Activation' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.zap,
+			f1: true,
+			menu: {
+				id: MenuId.CommandPalette,
+			}
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const ecanService = accessor.get(IECANAttentionService);
+		const notificationService = accessor.get(INotificationService);
+
+		const result = ecanService.spreadActivation();
+
+		notificationService.info(localize('zonecog.spreadResult',
+			'ECAN Spreading Activation Complete:\nBoosted: {0} nodes\nDecayed: {1} nodes\nEvicted: {2} nodes\nDuration: {3}ms',
+			result.boosted.length,
+			result.decayed.length,
+			result.evicted.length,
+			result.durationMs
+		));
+	}
+}
+
+/**
+ * Action to start/stop the cognitive loop
+ */
+class ZoneCogCognitiveLoopToggleAction extends Action2 {
+
+	static ID = 'zonecog.toggleCognitiveLoop';
+	constructor() {
+		super({
+			id: ZoneCogCognitiveLoopToggleAction.ID,
+			title: { value: localize('zonecog.toggleCognitiveLoop', 'Toggle Cognitive Loop'), original: 'Toggle Cognitive Loop' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.play,
+			f1: true,
+			menu: {
+				id: MenuId.CommandPalette,
+			}
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const loopService = accessor.get(ICognitiveLoopService);
+		const notificationService = accessor.get(INotificationService);
+
+		const state = loopService.getState();
+
+		if (state.running && !state.paused) {
+			loopService.stop();
+			notificationService.info(localize('zonecog.loopStopped', 'Cognitive loop stopped.'));
+		} else if (state.paused) {
+			loopService.resume();
+			notificationService.info(localize('zonecog.loopResumed', 'Cognitive loop resumed.'));
+		} else {
+			loopService.start();
+			notificationService.info(localize('zonecog.loopStarted',
+				'Cognitive loop started (interval: {0}ms). Cycle: perceive → attend → think → act → reflect',
+				state.tickIntervalMs
+			));
+		}
+	}
+}
+
+/**
+ * Action to view cognitive loop status and recent iterations
+ */
+class ZoneCogCognitiveLoopStatusAction extends Action2 {
+
+	static ID = 'zonecog.cognitiveLoopStatus';
+	constructor() {
+		super({
+			id: ZoneCogCognitiveLoopStatusAction.ID,
+			title: { value: localize('zonecog.cognitiveLoopStatus', 'Show Cognitive Loop Status'), original: 'Show Cognitive Loop Status' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.pulse,
+			f1: true,
+			menu: {
+				id: MenuId.CommandPalette,
+			}
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const loopService = accessor.get(ICognitiveLoopService);
+		const notificationService = accessor.get(INotificationService);
+
+		const state = loopService.getState();
+		const recent = loopService.getRecentIterations(5);
+
+		let statusLabel: string;
+		if (state.running && !state.paused) {
+			statusLabel = 'Running';
+		} else if (state.paused) {
+			statusLabel = 'Paused';
+		} else {
+			statusLabel = 'Stopped';
+		}
+
+		let message = localize('zonecog.loopStatus',
+			'Cognitive Loop Status: {0}\nTotal Iterations: {1}\nFailed: {2}\nAvg Duration: {3}ms\nTick Interval: {4}ms',
+			statusLabel,
+			state.totalIterations,
+			state.failedIterations,
+			state.averageIterationMs,
+			state.tickIntervalMs
+		);
+
+		if (recent.length > 0) {
+			const recentLines = recent.reverse().map((it, i) => {
+				const phases = it.phases.map(p => p.name).join('→');
+				return `  #${it.iteration}: ${it.durationMs}ms [${phases}] ${it.success ? '✓' : '✗'}`;
+			});
+			message += '\n\nRecent Iterations:\n' + recentLines.join('\n');
+		}
+
+		notificationService.info(message);
+	}
+}
+
 // Register all actions
 registerAction2(ZoneCogTestAction);
 registerAction2(ZoneCogToggleThinkingAction);
@@ -519,3 +693,7 @@ registerAction2(ZoneCogCreateTaskAction);
 registerAction2(ZoneCogMembraneHealthAction);
 registerAction2(ZoneCogResetAction);
 registerAction2(ZoneCogQueryHistoryAction);
+registerAction2(ZoneCogECANSnapshotAction);
+registerAction2(ZoneCogSpreadActivationAction);
+registerAction2(ZoneCogCognitiveLoopToggleAction);
+registerAction2(ZoneCogCognitiveLoopStatusAction);

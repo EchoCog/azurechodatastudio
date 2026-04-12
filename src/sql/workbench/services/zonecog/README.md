@@ -12,7 +12,10 @@ Zone-Cog implements a comprehensive thinking framework that enables natural, str
 - **Adaptive Analysis**: Query complexity assessment and depth-appropriate thinking
 - **Event-Driven State**: Reactive cognitive state management with change notifications
 - **LLM Provider System**: Pluggable LLM backends with built-in rule-based fallback
-- **Cognitive Query History**: Hypergraph-persisted query tracking with salience decay
+- **Embodied Cognition**: Sensorimotor grounding loop (perceive → think → act → proprioception)
+- **Cognitive Workspace**: Working memory, episodic memory, and task contexts
+- **ECAN Attention Network**: Economic attention allocation with spreading activation and rent collection
+- **Cognitive Loop**: Autonomous cognitive cycle orchestrator (perceive → attend → think → act → reflect)
 
 ## Architecture
 
@@ -22,11 +25,11 @@ The system implements the P-System Membrane Architecture:
 
 | Triad | Role | Components |
 |---|---|---|
-| **Cerebral** | Core cognitive processing | `ZoneCogService`, thinking protocol |
-| **Somatic** | Extension & UI interaction | Command Palette, bridge extension |
-| **Autonomic** | Health monitoring & validation | `CognitiveMembraneService`, error tracking |
+| **Cerebral** | Core cognitive processing | `ZoneCogService`, `CognitiveLoopService`, thinking protocol |
+| **Somatic** | Extension & UI interaction | Command Palette, bridge extension, LLM calls |
+| **Autonomic** | Health monitoring & validation | `CognitiveMembraneService`, ECAN rent, error tracking |
 
-### Services
+### Services (8 total)
 
 | Service | Interface | Implementation |
 |---|---|---|
@@ -34,6 +37,10 @@ The system implements the P-System Membrane Architecture:
 | Hypergraph Store | `IHypergraphStore` | `HypergraphStore` |
 | Cognitive Membrane | `ICognitiveMembraneService` | `CognitiveMembraneService` |
 | LLM Provider | `ILLMProviderService` | `LLMProviderService` |
+| Embodied Cognition | `IEmbodiedCognitionService` | `EmbodiedCognitionService` |
+| Cognitive Workspace | `ICognitiveWorkspaceService` | `CognitiveWorkspaceService` |
+| ECAN Attention | `IECANAttentionService` | `ECANAttentionService` |
+| Cognitive Loop | `ICognitiveLoopService` | `CognitiveLoopService` |
 
 ### Thinking Protocol Phases
 
@@ -71,6 +78,50 @@ Cognitive processing creates and links nodes automatically:
 - `QueryHistory` nodes track past queries with salience decay
 - Links typed as `ProducedBy` connect the processing chain
 
+## ECAN Attention Network
+
+The Economic Attention Network provides principled resource allocation:
+
+- **Attention Values**: Each node has STI (Short-Term Importance) in [-1, 1] and LTI (Long-Term Importance) in [0, 1]
+- **Spreading Activation**: STI diffuses along hypergraph links from high-attention nodes to neighbors
+- **Rent Collection**: A flat rent is charged each cycle, creating economic pressure against low-value nodes
+- **Attentional Focus**: Nodes with STI above the focus boundary receive priority processing
+
+```typescript
+// Stimulate a node to draw attention
+ecanService.stimulate('important-node', 0.5);
+
+// Run a spreading activation cycle
+const result = ecanService.spreadActivation();
+console.log('Boosted:', result.boosted.length, 'Evicted:', result.evicted.length);
+
+// Get nodes in attentional focus
+const focusNodes = ecanService.getAttentionalFocus();
+```
+
+## Cognitive Loop
+
+The autonomous cognitive cycle runs continuously:
+
+```
+perceive → attend → think → act → reflect → (repeat)
+```
+
+- **Perceive**: Scan environment via embodied cognition layer
+- **Attend**: Run ECAN spreading activation
+- **Think**: Process focused items, update working memory
+- **Act**: Produce motor actions (insights, suggestions)
+- **Reflect**: Decay transient state, record episodes
+
+```typescript
+// Start the autonomous cognitive loop
+cognitiveLoopService.start();
+
+// Or run a single iteration manually
+const iteration = await cognitiveLoopService.runOnce();
+console.log('Phases:', iteration.phases.map(p => p.name).join(' → '));
+```
+
 ## LLM Provider System
 
 The `ILLMProviderService` supports pluggable LLM backends:
@@ -100,6 +151,17 @@ Available through Command Palette (`Ctrl+Shift+P`):
 - `Zone-Cog: Test Cognitive Processing` — Interactive query processing with full protocol
 - `Zone-Cog: Toggle Thinking Mode` — Enable/disable comprehensive thinking
 - `Zone-Cog: Show Status` — Display cognitive state, membrane health, hypergraph stats
+- `Zone-Cog: Explore Hypergraph Knowledge Store` — Browse hypergraph by node type
+- `Zone-Cog: Set Cognitive Focus` — Set attentional focus for embodied cognition
+- `Zone-Cog: Show Cognitive Workspace Summary` — Working memory, episodes, tasks
+- `Zone-Cog: Create Cognitive Task` — Create and activate a task context
+- `Zone-Cog: Show Membrane Triad Health` — Cerebral/Somatic/Autonomic status
+- `Zone-Cog: Reset Cognitive Workbench` — Clear all state
+- `Zone-Cog: Show Query History` — Recent query processing history
+- `Zone-Cog: Show ECAN Attention Snapshot` — Attention network diagnostics
+- `Zone-Cog: Run ECAN Spreading Activation` — Manual spreading activation trigger
+- `Zone-Cog: Toggle Cognitive Loop` — Start/stop the autonomous cognitive cycle
+- `Zone-Cog: Show Cognitive Loop Status` — Loop iterations and performance
 
 ## File Structure
 
@@ -108,16 +170,24 @@ services/zonecog/
 ├── common/
 │   ├── zonecogService.ts          # Interfaces: IZoneCogService, IHypergraphStore,
 │   │                              #   ICognitiveMembraneService, types
-│   └── llmProvider.ts             # ILLMProviderService interface and types
+│   ├── llmProvider.ts             # ILLMProviderService interface and types
+│   ├── embodiedCognition.ts       # IEmbodiedCognitionService interface and types
+│   ├── cognitiveWorkspace.ts      # ICognitiveWorkspaceService interface and types
+│   ├── ecanAttention.ts           # IECANAttentionService interface and types
+│   └── cognitiveLoop.ts           # ICognitiveLoopService interface and types
 ├── browser/
 │   ├── zonecogService.ts          # ZoneCogService implementation
 │   ├── hypergraphStore.ts         # HypergraphStore implementation
 │   ├── cognitiveMembraneService.ts # CognitiveMembraneService implementation
 │   ├── llmProviderService.ts      # LLMProviderService implementation
+│   ├── embodiedCognitionService.ts # EmbodiedCognitionService implementation
+│   ├── cognitiveWorkspaceService.ts # CognitiveWorkspaceService implementation
+│   ├── ecanAttentionService.ts    # ECANAttentionService implementation
+│   ├── cognitiveLoopService.ts    # CognitiveLoopService implementation
 │   └── zonecog.contribution.ts    # DI service registration
 ├── test/
 │   └── browser/
-│       └── zonecogService.test.ts # Tests for all four services
+│       └── zonecogService.test.ts # Tests for all eight services
 └── README.md                      # This file
 ```
 
