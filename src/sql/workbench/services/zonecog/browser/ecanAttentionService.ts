@@ -31,11 +31,6 @@ const RENT_PER_CYCLE = 0.02;
 const SPREAD_FRACTION = 0.1;
 
 /**
- * Maximum number of spreading cycles to track for diagnostics.
- */
-const MAX_CYCLE_HISTORY = 100;
-
-/**
  * Implementation of the Economic Attention Network (ECAN) Service.
  *
  * Provides attention allocation for the hypergraph knowledge store using
