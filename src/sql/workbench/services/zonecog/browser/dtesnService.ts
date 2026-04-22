@@ -38,6 +38,16 @@ const DEFAULT_CONFIG: DTESNConfig = {
 
 const MAX_TRAINING_BUFFER = 512;
 
+/**
+ * Base seed for per-layer reservoir deterministic initialisation.
+ * Each layer uses LAYER_INIT_BASE_SEED + layerIndex * LAYER_INIT_SEED_STRIDE
+ * to ensure reproducible but distinct reservoirs across layers.
+ */
+const LAYER_INIT_BASE_SEED = 0xC0FFEE;
+const LAYER_INIT_SEED_STRIDE = 0x1337;
+
+const MAX_TRAINING_BUFFER = 512;
+
 // ---------------------------------------------------------------------------
 // Utility: seeded pseudo-random number generator (Mulberry32)
 // ---------------------------------------------------------------------------
@@ -170,6 +180,14 @@ class ESNLayer {
 		this._state = new Float64Array(this.config.reservoirSize);
 	}
 
+	/**
+	 * Restore the reservoir state from a previously captured snapshot.
+	 * Used by trainReadout() to roll back state after collecting training activations.
+	 */
+	restoreState(snapshot: Float64Array): void {
+		this._state = new Float64Array(snapshot);
+	}
+
 	/** Compute actual spectral radius via power iteration (for diagnostics). */
 	computeSpectralRadius(): number {
 		const rng = mulberry32(0xdeadbeef);
@@ -224,7 +242,7 @@ export class DTESNService extends Disposable implements IDTESNService {
 		let currentInputDim = this._config.inputDim;
 		for (let d = 0; d < this._config.treeDepth; d++) {
 			const layerCfg = this._config.layers[Math.min(d, this._config.layers.length - 1)];
-			const layer = new ESNLayer(d, currentInputDim, layerCfg, 0xC0FFEE + d * 0x1337);
+		const layer = new ESNLayer(d, currentInputDim, layerCfg, LAYER_INIT_BASE_SEED + d * LAYER_INIT_SEED_STRIDE);
 			this._layers.push(layer);
 			currentInputDim = this._config.inputDim + layerCfg.reservoirSize;
 			this._totalReservoirSize += layerCfg.reservoirSize;
@@ -374,10 +392,7 @@ export class DTESNService extends Disposable implements IDTESNService {
 
 		// Restore state
 		for (let d = 0; d < this._layers.length; d++) {
-			const layer = this._layers[d];
-			const saved = savedStates[d];
-			// Access private state via a cast to bypass readonly
-			(layer as unknown as { _state: Float64Array })['_state'] = new Float64Array(saved);
+			this._layers[d].restoreState(savedStates[d]);
 		}
 
 		// Ridge regression: W_out = (X^T X + alpha*I)^{-1} X^T Y

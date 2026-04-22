@@ -47,15 +47,6 @@ const DEFAULT_PIPELINE: string[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Unique task ID generator
-// ---------------------------------------------------------------------------
-
-let _taskCounter = 0;
-function nextTaskId(): string {
-	return `aar-task-${Date.now()}-${++_taskCounter}`;
-}
-
-// ---------------------------------------------------------------------------
 // AAR Orchestration Service implementation
 // ---------------------------------------------------------------------------
 
@@ -88,6 +79,8 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 	private readonly _startTime = Date.now();
 	private _totalTasksOrchestrated = 0;
 	private _successfulTasks = 0;
+	/** Per-instance monotonic counter used to generate unique task IDs. */
+	private _taskCounter = 0;
 
 	/** Per-agent async handlers for cognitive processing. */
 	private readonly _agentHandlers = new Map<string, (payload: unknown, context: Map<string, unknown>) => Promise<unknown>>();
@@ -315,7 +308,7 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 	async orchestrate(taskSpec: Omit<AARTask, 'id' | 'createdAt'>): Promise<AARTaskResult> {
 		const task: AARTask = {
 			...taskSpec,
-			id: nextTaskId(),
+			id: `aar-task-${Date.now()}-${++this._taskCounter}`,
 			createdAt: Date.now(),
 		};
 

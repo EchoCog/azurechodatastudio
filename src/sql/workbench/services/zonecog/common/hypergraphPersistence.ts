@@ -115,7 +115,12 @@ export interface IHypergraphPersistenceService {
 
 	/**
 	 * Enable automatic periodic saves.
-	 * @param intervalMs Interval between saves in milliseconds (minimum 10 000 ms).
+	 *
+	 * The graph is saved to IndexedDB on the given interval until
+	 * {@link disableAutoSave} is called or the service is disposed.
+	 *
+	 * @param intervalMs Interval between saves in milliseconds.
+	 *   Must be at least 10 000 ms; smaller values are clamped to that minimum.
 	 */
 	enableAutoSave(intervalMs: number): void;
 

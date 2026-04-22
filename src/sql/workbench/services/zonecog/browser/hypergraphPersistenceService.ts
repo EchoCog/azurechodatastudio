@@ -26,6 +26,13 @@ const STORE_SNAPSHOTS = 'snapshots';
 
 const MIN_AUTO_SAVE_INTERVAL_MS = 10_000;
 
+/**
+ * Rough per-record size estimates used for `estimatedBytes` in storage stats.
+ * These are conservative averages; actual size depends on content length.
+ */
+const AVG_NODE_SIZE_BYTES = 512;
+const AVG_LINK_SIZE_BYTES = 128;
+
 // ---------------------------------------------------------------------------
 // IndexedDB helpers
 // ---------------------------------------------------------------------------
@@ -330,8 +337,8 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			idbCount(db, STORE_SNAPSHOTS),
 		]);
 
-		// Rough size estimate: average node ≈ 512 bytes, link ≈ 128 bytes
-		const estimatedBytes = nodeCount * 512 + linkCount * 128;
+		// Rough size estimate based on average record sizes
+		const estimatedBytes = nodeCount * AVG_NODE_SIZE_BYTES + linkCount * AVG_LINK_SIZE_BYTES;
 
 		return {
 			databaseReady: true,
