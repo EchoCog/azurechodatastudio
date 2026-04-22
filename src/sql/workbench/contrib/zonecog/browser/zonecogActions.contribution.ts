@@ -15,6 +15,10 @@ import { IQuickInputService } from 'vs/platform/quickinput/common/quickInput';
 import { ILogService } from 'vs/platform/log/common/log';
 import { localize } from 'vs/nls';
 import { Codicon } from 'vs/base/common/codicons';
+import { Registry } from 'vs/platform/registry/common/platform';
+import { IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions } from 'vs/workbench/common/contributions';
+import { LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle';
+import { CognitiveLoopStatusBarContribution } from 'sql/workbench/contrib/zonecog/browser/cognitiveLoopStatusBar';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
 
@@ -697,3 +701,8 @@ registerAction2(ZoneCogECANSnapshotAction);
 registerAction2(ZoneCogSpreadActivationAction);
 registerAction2(ZoneCogCognitiveLoopToggleAction);
 registerAction2(ZoneCogCognitiveLoopStatusAction);
+
+// Register the cognitive loop status bar contribution so the loop state is
+// always visible in the workbench status bar.
+const workbenchRegistry = Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench);
+workbenchRegistry.registerWorkbenchContribution(CognitiveLoopStatusBarContribution, LifecyclePhase.Restored);
