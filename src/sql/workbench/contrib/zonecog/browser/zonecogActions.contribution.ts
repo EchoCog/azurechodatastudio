@@ -10,6 +10,9 @@ import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common
 import { ICognitiveWorkspaceService } from 'sql/workbench/services/zonecog/common/cognitiveWorkspace';
 import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
 import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
+import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
+import { IAAROrchestrationService } from 'sql/workbench/services/zonecog/common/aarOrchestration';
+import { IHypergraphPersistenceService } from 'sql/workbench/services/zonecog/common/hypergraphPersistence';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { IQuickInputService } from 'vs/platform/quickinput/common/quickInput';
 import { ILogService } from 'vs/platform/log/common/log';
@@ -686,6 +689,325 @@ class ZoneCogCognitiveLoopStatusAction extends Action2 {
 	}
 }
 
+// =============================================================================
+// Phase 4 actions — DTESN, AAR Orchestration, Hypergraph Persistence
+// =============================================================================
+
+/**
+ * Action to run a DTESN forward pass with a test input
+ */
+class ZoneCogDTESNForwardAction extends Action2 {
+
+	static ID = 'zonecog.dtesnForward';
+	constructor() {
+		super({
+			id: ZoneCogDTESNForwardAction.ID,
+			title: { value: localize('zonecog.dtesnForward', 'Run DTESN Forward Pass'), original: 'Run DTESN Forward Pass' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.symbolMisc,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const dtesnService = accessor.get(IDTESNService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const inputStr = await quickInputService.input({
+			prompt: localize('zonecog.dtesnInputPrompt', 'Enter comma-separated input values (up to 8 floats)'),
+			placeHolder: localize('zonecog.dtesnInputPlaceholder', 'e.g. 0.5,0.2,0.8,0.1,0.6,0.3,0.9,0.4'),
+		});
+
+		if (inputStr === undefined) { return; }
+
+		const rawValues = (inputStr || '0.5,0.3,0.7,0.2,0.6,0.4,0.8,0.1')
+			.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+
+		const result = dtesnService.forward(rawValues);
+		const outputStr = result.output.map(v => v.toFixed(4)).join(', ');
+		const layerNorms = result.layerStates.map((ls, i) => {
+			const norm = Math.sqrt(ls.activation.reduce((s, v) => s + v * v, 0));
+			return `L${i}=‖${norm.toFixed(3)}‖`;
+		}).join(' ');
+
+		notificationService.info(localize('zonecog.dtesnResult',
+			'DTESN Forward Pass:\nInput dim: {0}\nOutput: [{1}]\nLayer norms: {2}\nDuration: {3}ms\n\n{4}',
+			rawValues.length,
+			outputStr,
+			layerNorms,
+			result.durationMs,
+			dtesnService.getDiagnosticSummary()
+		));
+	}
+}
+
+/**
+ * Action to view DTESN network status and diagnostics
+ */
+class ZoneCogDTESNStatusAction extends Action2 {
+
+	static ID = 'zonecog.dtesnStatus';
+	constructor() {
+		super({
+			id: ZoneCogDTESNStatusAction.ID,
+			title: { value: localize('zonecog.dtesnStatus', 'Show DTESN Network Status'), original: 'Show DTESN Network Status' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.graph,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const dtesnService = accessor.get(IDTESNService);
+		const notificationService = accessor.get(INotificationService);
+
+		const state = dtesnService.getState();
+		const config = dtesnService.getConfig();
+		const spectralRadii = config.layers.map((_, i) =>
+			`L${i}: ${dtesnService.getLayerSpectralRadius(i).toFixed(4)}`
+		).join(', ');
+
+		notificationService.info(localize('zonecog.dtesnStatusMsg',
+			'Deep Tree Echo State Network:\nDepth: {0} layers\nInput dim: {1} | Output dim: {2}\nTotal ticks: {3}\nTraining buffer: {4} samples\nLast tick: {5}\nSpectral radii: {6}\n\n{7}',
+			config.treeDepth,
+			config.inputDim,
+			config.outputDim,
+			state.totalTicks,
+			dtesnService.getTrainingBufferSize(),
+			state.lastTickTime > 0 ? new Date(state.lastTickTime).toLocaleTimeString() : 'Never',
+			spectralRadii,
+			dtesnService.getDiagnosticSummary()
+		));
+	}
+}
+
+/**
+ * Action to orchestrate a task through the AAR agent network
+ */
+class ZoneCogAAROrchestrationAction extends Action2 {
+
+	static ID = 'zonecog.aarOrchestrate';
+	constructor() {
+		super({
+			id: ZoneCogAAROrchestrationAction.ID,
+			title: { value: localize('zonecog.aarOrchestrate', 'AAR: Orchestrate Cognitive Task'), original: 'AAR: Orchestrate Cognitive Task' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.organization,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aarService = accessor.get(IAAROrchestrationService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const description = await quickInputService.input({
+			prompt: localize('zonecog.aarTaskPrompt', 'Describe the cognitive task to orchestrate'),
+			placeHolder: localize('zonecog.aarTaskPlaceholder', 'e.g. "Analyse recent query patterns and suggest optimisations"'),
+		});
+
+		if (!description) { return; }
+
+		notificationService.info(localize('zonecog.aarStarted', 'AAR orchestration started for: {0}', description));
+
+		try {
+			const result = await aarService.orchestrate({
+				description,
+				payload: description,
+				requiredCapabilities: [],
+				priority: 0.7,
+			});
+
+			const agentPath = result.agentPath.join(' → ');
+			const statusIcon = result.success ? '✓' : '✗';
+
+			notificationService.info(localize('zonecog.aarResult',
+				'AAR Task Complete {0}\nPath: {1}\nDuration: {2}ms\nSuccess: {3}',
+				statusIcon,
+				agentPath,
+				result.totalDurationMs,
+				result.success ? 'Yes' : `No — ${result.error}`
+			));
+		} catch (err) {
+			notificationService.error(localize('zonecog.aarError',
+				'AAR orchestration failed: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to view the AAR Arena status
+ */
+class ZoneCogAARArenaStatusAction extends Action2 {
+
+	static ID = 'zonecog.aarArenaStatus';
+	constructor() {
+		super({
+			id: ZoneCogAARArenaStatusAction.ID,
+			title: { value: localize('zonecog.aarArenaStatus', 'Show AAR Arena Status'), original: 'Show AAR Arena Status' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.serverProcess,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aarService = accessor.get(IAAROrchestrationService);
+		const notificationService = accessor.get(INotificationService);
+
+		const arenaState = aarService.getArenaState();
+		const agents = aarService.getAllAgents();
+		const agentLines = agents.map(a =>
+			`  [${a.role}] ${a.name} — tasks: ${a.totalTasksProcessed}, ` +
+			`active: ${a.active ? 'yes' : 'no'}`
+		).join('\n');
+
+		notificationService.info(localize('zonecog.aarArenaMsg',
+			'AAR Arena (session: {0}):\nAgents: {1}\nRelations: {2}\nTasks orchestrated: {3}\nSuccessful: {4}\nActive now: {5}\n\nRegistered Agents:\n{6}',
+			arenaState.sessionId.substring(0, 16),
+			arenaState.agentCount,
+			arenaState.relationCount,
+			arenaState.totalTasksOrchestrated,
+			arenaState.successfulTasks,
+			arenaState.activeTaskCount,
+			agentLines
+		));
+	}
+}
+
+/**
+ * Action to save the hypergraph to IndexedDB
+ */
+class ZoneCogPersistenceSaveAction extends Action2 {
+
+	static ID = 'zonecog.persistenceSave';
+	constructor() {
+		super({
+			id: ZoneCogPersistenceSaveAction.ID,
+			title: { value: localize('zonecog.persistenceSave', 'Save Hypergraph to IndexedDB'), original: 'Save Hypergraph to IndexedDB' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.save,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+
+		try {
+			const snapshot = await persistenceService.save('manual');
+			notificationService.info(localize('zonecog.persistenceSaved',
+				'Hypergraph saved to IndexedDB:\n{0} nodes, {1} links\nSnapshot ID: {2}\nTime: {3}',
+				snapshot.nodeCount,
+				snapshot.linkCount,
+				snapshot.id,
+				new Date(snapshot.timestamp).toLocaleTimeString()
+			));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceSaveError',
+				'Failed to save hypergraph: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to load the hypergraph from IndexedDB
+ */
+class ZoneCogPersistenceLoadAction extends Action2 {
+
+	static ID = 'zonecog.persistenceLoad';
+	constructor() {
+		super({
+			id: ZoneCogPersistenceLoadAction.ID,
+			title: { value: localize('zonecog.persistenceLoad', 'Load Hypergraph from IndexedDB'), original: 'Load Hypergraph from IndexedDB' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.desktopDownload,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+
+		try {
+			const snapshot = await persistenceService.load();
+			if (!snapshot) {
+				notificationService.info(localize('zonecog.persistenceNothingStored',
+					'No hypergraph data found in IndexedDB. Save the graph first.'));
+				return;
+			}
+			notificationService.info(localize('zonecog.persistenceLoaded',
+				'Hypergraph loaded from IndexedDB:\n{0} nodes, {1} links\nOriginal save: {2}',
+				snapshot.nodeCount,
+				snapshot.linkCount,
+				new Date(snapshot.timestamp).toLocaleString()
+			));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceLoadError',
+				'Failed to load hypergraph: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to view hypergraph persistence statistics
+ */
+class ZoneCogPersistenceStatsAction extends Action2 {
+
+	static ID = 'zonecog.persistenceStats';
+	constructor() {
+		super({
+			id: ZoneCogPersistenceStatsAction.ID,
+			title: { value: localize('zonecog.persistenceStats', 'Show Hypergraph Persistence Stats'), original: 'Show Hypergraph Persistence Stats' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.database,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+
+		try {
+			const stats = await persistenceService.getStats();
+			const lastSave = stats.lastSaveTime > 0
+				? new Date(stats.lastSaveTime).toLocaleTimeString()
+				: 'Never';
+			const lastLoad = stats.lastLoadTime > 0
+				? new Date(stats.lastLoadTime).toLocaleTimeString()
+				: 'Never';
+			const sizeKb = (stats.estimatedBytes / 1024).toFixed(1);
+
+			notificationService.info(localize('zonecog.persistenceStatsMsg',
+				'Hypergraph Persistence (IndexedDB):\nDB ready: {0}\nStored nodes: {1}\nStored links: {2}\nSnapshots: {3}\nEst. size: {4} KB\nLast save: {5}\nLast load: {6}\nAuto-save: {7}',
+				stats.databaseReady ? 'Yes' : 'No',
+				stats.storedNodeCount,
+				stats.storedLinkCount,
+				stats.snapshotCount,
+				sizeKb,
+				lastSave,
+				lastLoad,
+				persistenceService.isAutoSaveEnabled() ? 'Enabled' : 'Disabled'
+			));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceStatsError',
+				'Failed to get persistence stats: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
 // Register all actions
 registerAction2(ZoneCogTestAction);
 registerAction2(ZoneCogToggleThinkingAction);
@@ -701,6 +1023,15 @@ registerAction2(ZoneCogECANSnapshotAction);
 registerAction2(ZoneCogSpreadActivationAction);
 registerAction2(ZoneCogCognitiveLoopToggleAction);
 registerAction2(ZoneCogCognitiveLoopStatusAction);
+
+// Phase 4 actions
+registerAction2(ZoneCogDTESNForwardAction);
+registerAction2(ZoneCogDTESNStatusAction);
+registerAction2(ZoneCogAAROrchestrationAction);
+registerAction2(ZoneCogAARArenaStatusAction);
+registerAction2(ZoneCogPersistenceSaveAction);
+registerAction2(ZoneCogPersistenceLoadAction);
+registerAction2(ZoneCogPersistenceStatsAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.

@@ -18,6 +18,12 @@ import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/eca
 import { ECANAttentionService } from 'sql/workbench/services/zonecog/browser/ecanAttentionService';
 import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
 import { CognitiveLoopService } from 'sql/workbench/services/zonecog/browser/cognitiveLoopService';
+import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
+import { DTESNService } from 'sql/workbench/services/zonecog/browser/dtesnService';
+import { IAAROrchestrationService } from 'sql/workbench/services/zonecog/common/aarOrchestration';
+import { AAROrchestrationService } from 'sql/workbench/services/zonecog/browser/aarOrchestrationService';
+import { IHypergraphPersistenceService } from 'sql/workbench/services/zonecog/common/hypergraphPersistence';
+import { HypergraphPersistenceService } from 'sql/workbench/services/zonecog/browser/hypergraphPersistenceService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -39,6 +45,17 @@ registerSingleton(IECANAttentionService, ECANAttentionService, InstantiationType
 
 // Register the Cognitive Loop service (autonomous perceive→attend→think→act→reflect cycle)
 registerSingleton(ICognitiveLoopService, CognitiveLoopService, InstantiationType.Eager);
+
+// Register Phase 4 services
+
+// Register the DTESN service (Deep Tree Echo State Network — temporal reservoir computing)
+registerSingleton(IDTESNService, DTESNService, InstantiationType.Eager);
+
+// Register the AAR Orchestration service (Agent-Arena-Relation core orchestration)
+registerSingleton(IAAROrchestrationService, AAROrchestrationService, InstantiationType.Eager);
+
+// Register the Hypergraph Persistence service (IndexedDB-backed durable knowledge store)
+registerSingleton(IHypergraphPersistenceService, HypergraphPersistenceService, InstantiationType.Eager);
 
 // Register the ZoneCog service as a singleton
 registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
