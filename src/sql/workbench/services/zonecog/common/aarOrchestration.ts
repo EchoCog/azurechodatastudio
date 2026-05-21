@@ -292,4 +292,18 @@ export interface IAAROrchestrationService {
 	 * Does NOT unregister agents or relations.
 	 */
 	reset(): void;
+
+	// -- Cognitive loop integration ------------------------------------------
+
+	/**
+	 * Query the current state of the cognitive loop to inform orchestration
+	 * decisions (e.g., defer heavy processing if loop is under load).
+	 */
+	getCognitiveLoopState(): { running: boolean; paused: boolean; totalIterations: number };
+
+	/**
+	 * Check whether the cognitive loop is currently available to receive
+	 * new orchestration tasks without causing backpressure.
+	 */
+	isLoopReadyForOrchestration(): boolean;
 }

@@ -501,4 +501,26 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 		if (focusNodes?.length) { parts.push(`focus:${focusNodes.length}nodes`); }
 		return `AAR orchestration — ${parts.join(', ') || 'no context'}`;
 	}
+
+	// -------------------------------------------------------------------------
+	// Cognitive loop integration
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Query the current state of the cognitive loop to inform orchestration
+	 * decisions (e.g., defer heavy processing if loop is under load).
+	 */
+	getCognitiveLoopState() {
+		return this._loopService.getState();
+	}
+
+	/**
+	 * Check whether the cognitive loop is currently available to receive
+	 * new orchestration tasks without causing backpressure.
+	 */
+	isLoopReadyForOrchestration(): boolean {
+		const loopState = this._loopService.getState();
+		// Ready if the loop is running and not paused
+		return loopState.running && !loopState.paused;
+	}
 }

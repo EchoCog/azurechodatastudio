@@ -503,4 +503,40 @@ export class DTESNService extends Disposable implements IDTESNService {
 			`buf=${this._trainingBuffer.length} | ${layerInfo}`
 		);
 	}
+
+	// -------------------------------------------------------------------------
+	// Hypergraph persistence
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Persist the current DTESN state as a hypergraph node for long-term
+	 * memory and potential retrieval during future cognitive processing.
+	 */
+	persistStateToHypergraph(): string {
+		const state = this.getState();
+		const nodeId = `dtesn-state-${Date.now()}`;
+		this._hypergraphStore.addNode({
+			id: nodeId,
+			node_type: 'DTESNState',
+			content: JSON.stringify({
+				totalTicks: state.totalTicks,
+				lastOutput: state.lastOutput,
+				layerActivations: state.layers.map(l => ({
+					layer: l.layer,
+					activationNorm: Math.sqrt(l.activation.reduce((s, v) => s + v * v, 0)),
+				})),
+			}),
+			links: [],
+			metadata: {
+				treeDepth: this._config.treeDepth,
+				inputDim: this._config.inputDim,
+				outputDim: this._config.outputDim,
+				totalReservoirSize: this._totalReservoirSize,
+				trainingBufferSize: this._trainingBuffer.length,
+			},
+			salience_score: 0.5,
+		});
+		this.logService.debug(`DTESNService: persisted state to hypergraph as '${nodeId}'`);
+		return nodeId;
+	}
 }
