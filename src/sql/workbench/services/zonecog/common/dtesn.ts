@@ -190,4 +190,13 @@ export interface IDTESNService {
 	 * Return a brief diagnostic summary string (suitable for notification display).
 	 */
 	getDiagnosticSummary(): string;
+
+	// -- Hypergraph persistence ----------------------------------------------
+
+	/**
+	 * Persist the current DTESN state as a hypergraph node for long-term
+	 * memory and potential retrieval during future cognitive processing.
+	 * @returns The ID of the created hypergraph node.
+	 */
+	persistStateToHypergraph(): string;
 }
