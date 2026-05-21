@@ -251,7 +251,7 @@ export class DTESNService extends Disposable implements IDTESNService {
 		this._lastOutput = new Array(this._config.outputDim).fill(0);
 
 		this.logService.info(
-			`DTESNService: initialised — depth=${this._config.treeDepth}, ` +
+			`DTESNService: initialised - depth=${this._config.treeDepth}, ` +
 			`inputDim=${this._config.inputDim}, outputDim=${this._config.outputDim}, ` +
 			`totalReservoir=${this._totalReservoirSize}`
 		);
@@ -438,7 +438,7 @@ export class DTESNService extends Disposable implements IDTESNService {
 		}
 		mse /= (n * O_size);
 
-		this.logService.info(`DTESNService: readout trained — samples=${n}, MSE=${mse.toFixed(6)}`);
+		this.logService.info(`DTESNService: readout trained - samples=${n}, MSE=${mse.toFixed(6)}`);
 		this._onDidLearn.fire({ samplesUsed: n, mse });
 		this.membraneService.recordActivity('autonomic');
 		return mse;
@@ -495,8 +495,8 @@ export class DTESNService extends Disposable implements IDTESNService {
 		const state = this.getState();
 		const layerInfo = this._layers.map((l, i) => {
 			const norm = Math.sqrt(l.state.reduce((s, v) => s + v * v, 0));
-			return `L${i}(N=${l.reservoirSize},‖x‖=${norm.toFixed(3)})`;
-		}).join(' → ');
+			return `L${i}(N=${l.reservoirSize},||x||=${norm.toFixed(3)})`;
+		}).join(' -> ');
 		return (
 			`DTESN[depth=${this._config.treeDepth}, in=${this._config.inputDim}, ` +
 			`out=${this._config.outputDim}] ticks=${state.totalTicks} ` +

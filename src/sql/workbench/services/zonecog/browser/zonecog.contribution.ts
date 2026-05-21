@@ -48,7 +48,7 @@ registerSingleton(ICognitiveLoopService, CognitiveLoopService, InstantiationType
 
 // Register Phase 4 services
 
-// Register the DTESN service (Deep Tree Echo State Network — temporal reservoir computing)
+// Register the DTESN service (Deep Tree Echo State Network - temporal reservoir computing)
 registerSingleton(IDTESNService, DTESNService, InstantiationType.Eager);
 
 // Register the AAR Orchestration service (Agent-Arena-Relation core orchestration)

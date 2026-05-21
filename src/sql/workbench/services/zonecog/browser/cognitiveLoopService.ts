@@ -33,7 +33,7 @@ const MIN_TICK_INTERVAL_MS = 1000;
 const MAX_ITERATION_HISTORY = 100;
 
 /**
- * Cognitive Loop Service — the autonomous heartbeat of the Zone-Cog system.
+ * Cognitive Loop Service - the autonomous heartbeat of the Zone-Cog system.
  *
  * Orchestrates a continuous cognitive cycle:
  *   perceive → attend → think → act → reflect
@@ -43,7 +43,7 @@ const MAX_ITERATION_HISTORY = 100;
  *    fresh sensory percepts about workspace state changes.
  * 2. **Attend**: Runs ECAN spreading activation to focus processing
  *    resources on the most salient hypergraph nodes.
- * 3. **Think**: Performs lightweight cognitive processing on focused items —
+ * 3. **Think**: Performs lightweight cognitive processing on focused items -
  *    updates working memory and identifies patterns.
  * 4. **Act**: Produces motor actions (insights, suggestions) based on
  *    the cognitive processing results.
@@ -265,7 +265,7 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	// -- Phase implementations ------------------------------------------------
 
 	/**
-	 * Phase 1: Perceive — Gather sensory input from the environment.
+	 * Phase 1: Perceive - Gather sensory input from the environment.
 	 *
 	 * Scans the hypergraph for recently added nodes and registers them
 	 * as percepts via the embodied cognition layer. This creates an
@@ -295,7 +295,7 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	}
 
 	/**
-	 * Phase 2: Attend — Run ECAN spreading activation to allocate attention.
+	 * Phase 2: Attend - Run ECAN spreading activation to allocate attention.
 	 *
 	 * Ensures all hypergraph nodes have attention values, then runs one
 	 * cycle of spreading activation. Nodes in the attentional focus are
@@ -329,7 +329,7 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	}
 
 	/**
-	 * Phase 3: Think — Process focused items through cognitive evaluation.
+	 * Phase 3: Think - Process focused items through cognitive evaluation.
 	 *
 	 * Examines the nodes in attentional focus, updates working memory
 	 * with the most relevant items, and identifies patterns.
@@ -368,7 +368,7 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	}
 
 	/**
-	 * Phase 4: Act — Produce motor actions based on cognitive state.
+	 * Phase 4: Act - Produce motor actions based on cognitive state.
 	 *
 	 * Examines working memory for actionable patterns and produces
 	 * appropriate motor outputs (insights, suggestions).
@@ -409,7 +409,7 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	}
 
 	/**
-	 * Phase 5: Reflect — Update self-model and decay transient state.
+	 * Phase 5: Reflect - Update self-model and decay transient state.
 	 *
 	 * Runs working memory decay, updates proprioceptive state, and
 	 * records the iteration as an episodic memory event.

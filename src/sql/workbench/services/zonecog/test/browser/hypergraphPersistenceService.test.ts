@@ -104,6 +104,8 @@ class MockIDBDatabase {
 }
 
 // Install the mock into the global scope for tests
+let originalIndexedDB: IDBFactory | undefined;
+
 function installIndexedDBMock(): MockIDBDatabase {
 	const db = new MockIDBDatabase();
 	const openReq = {
@@ -112,13 +114,50 @@ function installIndexedDBMock(): MockIDBDatabase {
 		onupgradeneeded: null as ((ev: { target: { result: MockIDBDatabase } }) => void) | null,
 		result: db,
 	};
-	(global as unknown as Record<string, unknown>)['indexedDB'] = {
+	const mockIndexedDB = {
 		open: (_name: string, _version: number) => {
 			Promise.resolve().then(() => openReq.onsuccess?.({ target: { result: db } }));
 			return openReq;
 		},
 	};
+
+	// Store original value for cleanup
+	try {
+		originalIndexedDB = (globalThis as unknown as { indexedDB?: IDBFactory }).indexedDB;
+	} catch {
+		originalIndexedDB = undefined;
+	}
+
+	// Use Object.defineProperty to override read-only property in browser environments
+	try {
+		Object.defineProperty(globalThis, 'indexedDB', {
+			value: mockIndexedDB,
+			writable: true,
+			configurable: true,
+		});
+	} catch {
+		// Fallback for environments where defineProperty fails
+		(globalThis as unknown as Record<string, unknown>)['indexedDB'] = mockIndexedDB;
+	}
+
 	return db;
+}
+
+function uninstallIndexedDBMock(): void {
+	try {
+		if (originalIndexedDB !== undefined) {
+			Object.defineProperty(globalThis, 'indexedDB', {
+				value: originalIndexedDB,
+				writable: true,
+				configurable: true,
+			});
+		} else {
+			// Delete the mock if there was no original
+			delete (globalThis as unknown as Record<string, unknown>)['indexedDB'];
+		}
+	} catch {
+		// Ignore cleanup errors
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +188,7 @@ suite('Hypergraph Persistence Service Tests', () => {
 
 	teardown(() => {
 		persistenceService.dispose();
+		uninstallIndexedDBMock();
 	});
 
 	test('should report auto-save as disabled by default', () => {
