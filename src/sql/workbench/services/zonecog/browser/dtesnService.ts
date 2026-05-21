@@ -46,8 +46,6 @@ const MAX_TRAINING_BUFFER = 512;
 const LAYER_INIT_BASE_SEED = 0xC0FFEE;
 const LAYER_INIT_SEED_STRIDE = 0x1337;
 
-const MAX_TRAINING_BUFFER = 512;
-
 // ---------------------------------------------------------------------------
 // Utility: seeded pseudo-random number generator (Mulberry32)
 // ---------------------------------------------------------------------------
@@ -229,7 +227,7 @@ export class DTESNService extends Disposable implements IDTESNService {
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
-		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
+		@IHypergraphStore private readonly _hypergraphStore: IHypergraphStore,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
 	) {
 		super();
