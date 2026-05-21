@@ -7,7 +7,6 @@ import {
 	IAAROrchestrationService,
 	AARAgent,
 	AARAgentRole,
-	AARArenaState,
 	AARRelation,
 	AARRelationType,
 	AARTask,
@@ -102,7 +101,7 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 		@IECANAttentionService private readonly ecanService: IECANAttentionService,
 		@IZoneCogService private readonly zonecogService: IZoneCogService,
 		@ICognitiveWorkspaceService private readonly workspaceService: ICognitiveWorkspaceService,
-		@ICognitiveLoopService private readonly loopService: ICognitiveLoopService,
+		@ICognitiveLoopService private readonly _loopService: ICognitiveLoopService,
 	) {
 		super();
 		this._bootstrapBuiltinAgents();
@@ -403,7 +402,7 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 		// BFS from orchestrator through relations, collecting capability-matching nodes
 		const visited = new Set<string>();
 		const pipeline: string[] = [];
-		const queue = [BUILTIN_AGENT_IDS.ORCHESTRATOR];
+		const queue: string[] = [BUILTIN_AGENT_IDS.ORCHESTRATOR];
 
 		while (queue.length > 0) {
 			const current = queue.shift()!;

@@ -140,4 +140,9 @@ export interface IHypergraphPersistenceService {
 	 * Return current storage statistics.
 	 */
 	getStats(): Promise<PersistenceStats>;
+
+	/**
+	 * Dispose of the service and release any resources.
+	 */
+	dispose(): void;
 }
