@@ -14,9 +14,25 @@ import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 
 // ---------------------------------------------------------------------------
 // Minimal IndexedDB stub for the test environment
+//
+// IMPORTANT: This mock fires callbacks synchronously via setImmediate/setTimeout(0)
+// to ensure proper ordering with Promise-based code in the service.
 // ---------------------------------------------------------------------------
 
 interface IDBRecord { [key: string]: unknown }
+
+/**
+ * Schedule a callback to fire asynchronously but in a way that's compatible
+ * with the service's Promise-wrapped IndexedDB operations.
+ */
+function scheduleCallback(fn: () => void): void {
+	// Use setImmediate if available (Node.js), otherwise setTimeout
+	if (typeof setImmediate !== 'undefined') {
+		setImmediate(fn);
+	} else {
+		setTimeout(fn, 0);
+	}
+}
 
 class MockIDBObjectStore {
 	private _data = new Map<string, IDBRecord>();
@@ -28,14 +44,14 @@ class MockIDBObjectStore {
 		const key = record[this.keyPath] as string;
 		this._data.set(String(key), { ...record });
 		const req = { onsuccess: null as (() => void) | null, onerror: null as ((e: unknown) => void) | null };
-		Promise.resolve().then(() => req.onsuccess?.());
+		scheduleCallback(() => req.onsuccess?.());
 		return req;
 	}
 
 	clear(): { onsuccess: (() => void) | null; onerror: ((e: unknown) => void) | null } {
 		this._data.clear();
 		const req = { onsuccess: null as (() => void) | null, onerror: null as ((e: unknown) => void) | null };
-		Promise.resolve().then(() => req.onsuccess?.());
+		scheduleCallback(() => req.onsuccess?.());
 		return req;
 	}
 
@@ -46,7 +62,7 @@ class MockIDBObjectStore {
 			onerror: null as ((e: unknown) => void) | null,
 			result,
 		};
-		Promise.resolve().then(() => req.onsuccess?.());
+		scheduleCallback(() => req.onsuccess?.());
 		return req;
 	}
 
@@ -57,7 +73,7 @@ class MockIDBObjectStore {
 			onerror: null as ((e: unknown) => void) | null,
 			result,
 		};
-		Promise.resolve().then(() => req.onsuccess?.());
+		scheduleCallback(() => req.onsuccess?.());
 		return req;
 	}
 
@@ -66,17 +82,38 @@ class MockIDBObjectStore {
 
 class MockIDBTransaction {
 	private _stores: Map<string, MockIDBObjectStore>;
-	oncomplete: (() => void) | null = null;
+	private _oncompleteFn: (() => void) | null = null;
 	onerror: ((e: unknown) => void) | null = null;
 	error: null = null;
+	private _completionScheduled = false;
 
 	constructor(stores: Map<string, MockIDBObjectStore>) {
 		this._stores = stores;
-		Promise.resolve().then(() => this.oncomplete?.());
 	}
 
 	objectStore(name: string): MockIDBObjectStore {
 		return this._stores.get(name)!;
+	}
+
+	/**
+	 * oncomplete is handled via getter/setter to schedule completion
+	 * only after the handler is actually assigned (after all operations are queued).
+	 */
+	set oncomplete(fn: (() => void) | null) {
+		this._oncompleteFn = fn;
+		if (fn && !this._completionScheduled) {
+			this._completionScheduled = true;
+			// Schedule oncomplete after multiple ticks to ensure all operation callbacks fire first
+			scheduleCallback(() => {
+				scheduleCallback(() => {
+					this._oncompleteFn?.();
+				});
+			});
+		}
+	}
+
+	get oncomplete(): (() => void) | null {
+		return this._oncompleteFn;
 	}
 }
 
@@ -91,6 +128,8 @@ class MockIDBDatabase {
 
 	transaction(storeNames: string | string[], _mode: string): MockIDBTransaction {
 		const names = Array.isArray(storeNames) ? storeNames : [storeNames];
+		// IMPORTANT: Reuse the database's stores instead of creating new ones.
+		// This ensures data persisted in one transaction is visible in subsequent transactions.
 		const stores = new Map<string, MockIDBObjectStore>();
 		for (const n of names) {
 			const store = this._stores.get(n);
@@ -116,7 +155,7 @@ function installIndexedDBMock(): MockIDBDatabase {
 	};
 	const mockIndexedDB = {
 		open: (_name: string, _version: number) => {
-			Promise.resolve().then(() => openReq.onsuccess?.({ target: { result: db } }));
+			scheduleCallback(() => openReq.onsuccess?.({ target: { result: db } }));
 			return openReq;
 		},
 	};
