@@ -197,6 +197,7 @@ describe('Manage Package Providers', () => {
 
 		// Try to fetch an empty string to ensure retrieval fails
 		await should(pypiClient.fetchPypiPackage('')).be.rejected();
+		await should(pypiClient.fetchPypiPackage('   ')).be.rejected();
 	});
 
 	function createContext(): TestContext {
