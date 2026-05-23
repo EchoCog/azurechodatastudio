@@ -155,7 +155,7 @@ export class ECANAttentionService extends Disposable implements IECANAttentionSe
 			}
 		}
 
-		// Phase 3: Rent collection — charge flat rent from all nodes
+		// Phase 3: Rent collection - charge flat rent from all nodes
 		let rentThisCycle = 0;
 		for (const [nodeId, av] of this._attentionValues) {
 			const newSti = this._clampSTI(av.sti - RENT_PER_CYCLE);
@@ -184,7 +184,7 @@ export class ECANAttentionService extends Disposable implements IECANAttentionSe
 		this._onDidSpread.fire(event);
 
 		this.logService.trace(
-			`ECANAttentionService: spreading cycle ${this._spreadingCycles} — ` +
+			`ECANAttentionService: spreading cycle ${this._spreadingCycles} - ` +
 			`boosted=${boosted.length} decayed=${decayed.length} evicted=${evicted.length} (${durationMs}ms)`
 		);
 

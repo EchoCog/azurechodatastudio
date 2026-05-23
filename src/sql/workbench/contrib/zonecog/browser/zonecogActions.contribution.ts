@@ -679,8 +679,8 @@ class ZoneCogCognitiveLoopStatusAction extends Action2 {
 
 		if (recent.length > 0) {
 			const recentLines = recent.reverse().map((it, i) => {
-				const phases = it.phases.map(p => p.name).join('→');
-				return `  #${it.iteration}: ${it.durationMs}ms [${phases}] ${it.success ? '✓' : '✗'}`;
+				const phases = it.phases.map(p => p.name).join('->');
+				return `  #${it.iteration}: ${it.durationMs}ms [${phases}] ${it.success ? 'OK' : 'FAIL'}`;
 			});
 			message += '\n\nRecent Iterations:\n' + recentLines.join('\n');
 		}
@@ -690,7 +690,7 @@ class ZoneCogCognitiveLoopStatusAction extends Action2 {
 }
 
 // =============================================================================
-// Phase 4 actions — DTESN, AAR Orchestration, Hypergraph Persistence
+// Phase 4 actions - DTESN, AAR Orchestration, Hypergraph Persistence
 // =============================================================================
 
 /**
@@ -729,7 +729,7 @@ class ZoneCogDTESNForwardAction extends Action2 {
 		const outputStr = result.output.map(v => v.toFixed(4)).join(', ');
 		const layerNorms = result.layerStates.map((ls, i) => {
 			const norm = Math.sqrt(ls.activation.reduce((s, v) => s + v * v, 0));
-			return `L${i}=‖${norm.toFixed(3)}‖`;
+			return `L${i}=||${norm.toFixed(3)}||`;
 		}).join(' ');
 
 		notificationService.info(localize('zonecog.dtesnResult',
@@ -823,15 +823,15 @@ class ZoneCogAAROrchestrationAction extends Action2 {
 				priority: 0.7,
 			});
 
-			const agentPath = result.agentPath.join(' → ');
-			const statusIcon = result.success ? '✓' : '✗';
+			const agentPath = result.agentPath.join(' -> ');
+			const statusIcon = result.success ? '[OK]' : '[FAIL]';
 
 			notificationService.info(localize('zonecog.aarResult',
 				'AAR Task Complete {0}\nPath: {1}\nDuration: {2}ms\nSuccess: {3}',
 				statusIcon,
 				agentPath,
 				result.totalDurationMs,
-				result.success ? 'Yes' : `No — ${result.error}`
+				result.success ? 'Yes' : `No - ${result.error}`
 			));
 		} catch (err) {
 			notificationService.error(localize('zonecog.aarError',
@@ -864,7 +864,7 @@ class ZoneCogAARArenaStatusAction extends Action2 {
 		const arenaState = aarService.getArenaState();
 		const agents = aarService.getAllAgents();
 		const agentLines = agents.map(a =>
-			`  [${a.role}] ${a.name} — tasks: ${a.totalTasksProcessed}, ` +
+			`  [${a.role}] ${a.name} - tasks: ${a.totalTasksProcessed}, ` +
 			`active: ${a.active ? 'yes' : 'no'}`
 		).join('\n');
 

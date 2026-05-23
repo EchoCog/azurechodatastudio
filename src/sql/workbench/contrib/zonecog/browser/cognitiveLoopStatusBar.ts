@@ -14,9 +14,9 @@ import { ICognitiveLoopService, CognitiveLoopState } from 'sql/workbench/service
  * status bar.
  *
  * Appearance:
- *   Stopped  — $(circle-outline) Zone-Cog
- *   Running  — $(sync~spin) Zone-Cog #<n>
- *   Paused   — $(debug-pause) Zone-Cog #<n>
+ *   Stopped  - $(circle-outline) Zone-Cog
+ *   Running  - $(sync~spin) Zone-Cog #<n>
+ *   Paused   - $(debug-pause) Zone-Cog #<n>
  *
  * Clicking the item triggers the `zonecog.toggleCognitiveLoop` command so the
  * user can start, stop, or resume the loop directly from the status bar.
@@ -52,7 +52,7 @@ export class CognitiveLoopStatusBarContribution extends Disposable implements IW
 				},
 				CognitiveLoopStatusBarContribution.ENTRY_ID,
 				StatusbarAlignment.LEFT,
-				-1000  // Low priority — appears towards the right end of left-aligned items
+				-1000  // Low priority - appears towards the right end of left-aligned items
 			)
 		);
 

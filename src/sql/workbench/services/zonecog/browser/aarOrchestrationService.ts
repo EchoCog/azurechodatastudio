@@ -106,7 +106,7 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 		super();
 		this._bootstrapBuiltinAgents();
 		this._bootstrapBuiltinRelations();
-		this.logService.info(`AAROrchestrationService: Arena '${this._sessionId}' ready — ` +
+		this.logService.info(`AAROrchestrationService: Arena '${this._sessionId}' ready - ` +
 			`${this._agents.size} agents, ${this._relations.size} relations`);
 		this.membraneService.recordActivity('autonomic');
 	}
@@ -118,7 +118,7 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 	private _bootstrapBuiltinAgents(): void {
 		this._registerBuiltin(BUILTIN_AGENT_IDS.ORCHESTRATOR, 'AAR Orchestrator', 'orchestrator',
 			['orchestration', 'routing'],
-			async (payload) => payload); // identity — orchestrator just routes
+			async (payload) => payload); // identity - orchestrator just routes
 
 		this._registerBuiltin(BUILTIN_AGENT_IDS.PERCEIVER, 'Perceive Agent', 'perceiver',
 			['perception', 'sensing', 'embodiment'],
@@ -350,7 +350,7 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 				try {
 					currentPayload = await handler(currentPayload, taskContext);
 				} catch (err) {
-					this.logService.warn(`AAROrchestrationService: agent '${agentId}' error — ${err}`);
+					this.logService.warn(`AAROrchestrationService: agent '${agentId}' error - ${err}`);
 					this.membraneService.recordError('autonomic', `AAR agent ${agentId}: ${err}`);
 					// Continue pipeline even on agent error (graceful degradation)
 				}
@@ -428,7 +428,7 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 	}
 
 	private _failTask(task: AARTask, agentPath: string[], error: string): AARTaskResult {
-		this.logService.error(`AAROrchestrationService: task '${task.id}' failed — ${error}`);
+		this.logService.error(`AAROrchestrationService: task '${task.id}' failed - ${error}`);
 		this.membraneService.recordError('autonomic', `AAR task failed: ${error}`);
 		return {
 			task, agentPath, output: null, success: false, error,
@@ -499,7 +499,7 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 		if (perceptId) { parts.push(`percept:${perceptId}`); }
 		if (confidence !== undefined) { parts.push(`conf:${(confidence as number).toFixed(2)}`); }
 		if (focusNodes?.length) { parts.push(`focus:${focusNodes.length}nodes`); }
-		return `AAR orchestration — ${parts.join(', ') || 'no context'}`;
+		return `AAR orchestration - ${parts.join(', ') || 'no context'}`;
 	}
 
 	// -------------------------------------------------------------------------

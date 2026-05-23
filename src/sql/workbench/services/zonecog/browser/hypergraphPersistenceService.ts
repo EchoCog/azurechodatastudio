@@ -102,14 +102,14 @@ function idbCount(db: IDBDatabase, storeName: string): Promise<number> {
 // ---------------------------------------------------------------------------
 
 /**
- * Hypergraph Persistence Service — stores the Zone-Cog knowledge graph in
+ * Hypergraph Persistence Service - stores the Zone-Cog knowledge graph in
  * the browser's built-in IndexedDB for durable cross-session persistence.
  *
  * IndexedDB schema:
  *   DB: "zonecog-hypergraph" (version 1)
- *   - nodes     → HypergraphNode records keyed by id
- *   - links     → HypergraphLink records keyed by id
- *   - snapshots → HypergraphSnapshot metadata keyed by id
+ *   - nodes     -> HypergraphNode records keyed by id
+ *   - links     -> HypergraphLink records keyed by id
+ *   - snapshots -> HypergraphSnapshot metadata keyed by id
  */
 export class HypergraphPersistenceService extends Disposable implements IHypergraphPersistenceService {
 
@@ -150,7 +150,7 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			})
 			.catch(err => {
 				this._dbAvailable = false;
-				this.logService.warn(`HypergraphPersistenceService: IndexedDB not available — ${err}`);
+				this.logService.warn(`HypergraphPersistenceService: IndexedDB not available - ${err}`);
 				throw err;
 			});
 		this.membraneService.recordActivity('autonomic');
@@ -214,7 +214,7 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			return snapshot;
 		} catch (err) {
 			const msg = String(err);
-			this.logService.error(`HypergraphPersistenceService: save failed — ${msg}`);
+			this.logService.error(`HypergraphPersistenceService: save failed - ${msg}`);
 			this._onDidError.fire({ operation: 'save', message: msg });
 			throw err;
 		}
@@ -297,7 +297,7 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			try {
 				await this.save('auto-save');
 			} catch (err) {
-				this.logService.warn(`HypergraphPersistenceService: auto-save failed — ${err}`);
+				this.logService.warn(`HypergraphPersistenceService: auto-save failed - ${err}`);
 			}
 		}, ms);
 		this.logService.info(`HypergraphPersistenceService: auto-save enabled (interval=${ms}ms)`);
