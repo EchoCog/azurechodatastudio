@@ -61,9 +61,9 @@ export interface PersistenceStats {
  *
  * Database schema:
  *   DB name : "zonecog-hypergraph"
- *   Store 1 : "nodes"     — HypergraphNode objects keyed by id
- *   Store 2 : "links"     — HypergraphLink objects keyed by id
- *   Store 3 : "snapshots" — HypergraphSnapshot metadata keyed by id
+ *   Store 1 : "nodes"     - HypergraphNode objects keyed by id
+ *   Store 2 : "links"     - HypergraphLink objects keyed by id
+ *   Store 3 : "snapshots" - HypergraphSnapshot metadata keyed by id
  *
  * Lifecycle:
  *   1. Service opens the DB on first use (auto-upgrade / create if needed).

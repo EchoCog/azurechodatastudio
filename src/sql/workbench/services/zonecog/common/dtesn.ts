@@ -109,9 +109,9 @@ export interface DTESNTrainingSample {
  * This maps directly to the Deep Tree Echo architecture described in the
  * EchoCog manifesto:
  *
- *   Input ──► Layer 0 (ESN) ──► Layer 1 (ESN) ──► … ──► Layer N (ESN)
- *                  │                  │                        │
- *                  └──────────── concatenate ─────────────► Readout W_out
+ *   Input --> Layer 0 (ESN) --> Layer 1 (ESN) --> ... --> Layer N (ESN)
+ *                  |                  |                        |
+ *                  +------------ concatenate ------------> Readout W_out
  *
  * Role in the 4E Embodied AI Framework:
  * - Temporal encoding of sensorimotor sequences

@@ -13,7 +13,7 @@ export const IAAROrchestrationService = createDecorator<IAAROrchestrationService
 // ---------------------------------------------------------------------------
 
 /**
- * A cognitive Agent — an autonomous participant in the Arena.
+ * A cognitive Agent - an autonomous participant in the Arena.
  *
  * In the Zone-Cog system the built-in agents map directly to the
  * existing cognitive services (EmbodiedCognition, ECAN, ZoneCog, etc.)
@@ -43,16 +43,16 @@ export interface AARAgent {
  * Canonical agent roles that map to the perceive→attend→think→act→reflect cycle.
  */
 export type AARAgentRole =
-	| 'perceiver'    // EmbodiedCognitionService — senses the environment
-	| 'attender'     // ECANAttentionService — focuses cognitive resources
-	| 'thinker'      // ZoneCogService — performs deep reasoning
-	| 'actor'        // CognitiveWorkspaceService — produces outputs / actions
-	| 'reflector'    // CognitiveLoopService — meta-cognition / self-model update
+	| 'perceiver'    // EmbodiedCognitionService - senses the environment
+	| 'attender'     // ECANAttentionService - focuses cognitive resources
+	| 'thinker'      // ZoneCogService - performs deep reasoning
+	| 'actor'        // CognitiveWorkspaceService - produces outputs / actions
+	| 'reflector'    // CognitiveLoopService - meta-cognition / self-model update
 	| 'orchestrator' // AAROrchestrationService itself
 	| 'custom';      // User-defined extension agents
 
 /**
- * The Arena — the shared computational environment in which agents operate.
+ * The Arena - the shared computational environment in which agents operate.
  *
  * The Arena holds global state that all agents can read/write via Relations.
  */
@@ -175,8 +175,8 @@ export interface AARActiveTask {
  * Implements the triadic AAR architecture as the core orchestration layer
  * for the Zone-Cog cognitive system:
  *
- *   Agent ─── Relation ──► Agent
- *      └────────────────────── Arena (shared env)
+ *   Agent --- Relation --> Agent
+ *      \\---------------------- Arena (shared env)
  *
  * All cognitive services are wrapped as Agents.  The Arena holds shared
  * state.  Relations define the permitted communication pathways.

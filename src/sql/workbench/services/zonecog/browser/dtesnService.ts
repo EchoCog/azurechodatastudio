@@ -240,7 +240,7 @@ export class DTESNService extends Disposable implements IDTESNService {
 		let currentInputDim = this._config.inputDim;
 		for (let d = 0; d < this._config.treeDepth; d++) {
 			const layerCfg = this._config.layers[Math.min(d, this._config.layers.length - 1)];
-		const layer = new ESNLayer(d, currentInputDim, layerCfg, LAYER_INIT_BASE_SEED + d * LAYER_INIT_SEED_STRIDE);
+			const layer = new ESNLayer(d, currentInputDim, layerCfg, LAYER_INIT_BASE_SEED + d * LAYER_INIT_SEED_STRIDE);
 			this._layers.push(layer);
 			currentInputDim = this._config.inputDim + layerCfg.reservoirSize;
 			this._totalReservoirSize += layerCfg.reservoirSize;

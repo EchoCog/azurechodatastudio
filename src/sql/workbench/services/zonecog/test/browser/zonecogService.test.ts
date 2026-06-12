@@ -229,7 +229,7 @@ suite('ZoneCog Service Tests', () => {
 
 		await zoneCogService.processQuery('Load test');
 		const stateAfter = zoneCogService.getCognitiveState();
-		// Load increases then decreases — final value should be > 0 and <= 1
+		// Load increases then decreases - final value should be > 0 and <= 1
 		assert.ok(stateAfter.cognitiveLoad >= 0);
 		assert.ok(stateAfter.cognitiveLoad <= 1);
 	});
