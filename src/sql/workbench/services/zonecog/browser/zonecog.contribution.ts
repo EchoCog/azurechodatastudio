@@ -33,6 +33,8 @@ import { SQLAnalyzerAgent } from 'sql/workbench/services/zonecog/browser/sqlAnal
 import { SchemaReasonerAgent } from 'sql/workbench/services/zonecog/browser/schemaReasonerAgent';
 import { PerformanceAdvisorAgent } from 'sql/workbench/services/zonecog/browser/performanceAdvisorAgent';
 import { DataPatternAgent } from 'sql/workbench/services/zonecog/browser/dataPatternAgent';
+import { ICognitiveWorkflowAutomationService } from 'sql/workbench/services/zonecog/common/cognitiveWorkflowAutomation';
+import { CognitiveWorkflowAutomationService } from 'sql/workbench/services/zonecog/browser/cognitiveWorkflowAutomationService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -87,6 +89,11 @@ registerSingleton(IPerformanceAdvisorAgent, PerformanceAdvisorAgent, Instantiati
 
 // Register the Data Pattern Agent (statistical pattern recognition)
 registerSingleton(IDataPatternAgent, DataPatternAgent, InstantiationType.Eager);
+
+// Register Phase 6 services
+
+// Register the Cognitive Workflow Automation service (custom workflow DSL execution)
+registerSingleton(ICognitiveWorkflowAutomationService, CognitiveWorkflowAutomationService, InstantiationType.Eager);
 
 // Register the ZoneCog service as a singleton
 registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
