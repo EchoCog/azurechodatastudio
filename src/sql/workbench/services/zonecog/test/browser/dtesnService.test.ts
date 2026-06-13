@@ -55,12 +55,12 @@ suite('DTESN Service Tests', () => {
 	});
 
 	test('should pad/truncate input to match inputDim', () => {
-		// Too short — should be padded
+		// Too short - should be padded
 		const shortInput = [0.5, 0.3];
 		const result1 = dtesnService.forward(shortInput);
 		assert.strictEqual(result1.output.length, 4);
 
-		// Too long — should be truncated
+		// Too long - should be truncated
 		const longInput = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 		const result2 = dtesnService.forward(longInput);
 		assert.strictEqual(result2.output.length, 4);
@@ -127,7 +127,7 @@ suite('DTESN Service Tests', () => {
 		const samples = 10;
 		for (let i = 0; i < samples; i++) {
 			const input = [i / samples, (i + 1) / samples, (i + 2) / samples, (i + 3) / samples,
-				(i + 4) / samples, (i + 5) / samples, (i + 6) / samples, (i + 7) / samples];
+			(i + 4) / samples, (i + 5) / samples, (i + 6) / samples, (i + 7) / samples];
 			const target = [i / samples, 1 - i / samples, 0.5, 0.5];
 			dtesnService.recordTrainingSample(input, target);
 		}

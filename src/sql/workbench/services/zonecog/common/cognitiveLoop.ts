@@ -67,7 +67,7 @@ export interface CognitiveLoopState {
 // ---------------------------------------------------------------------------
 
 /**
- * Cognitive Loop Service — the autonomous heartbeat of the Zone-Cog system.
+ * Cognitive Loop Service - the autonomous heartbeat of the Zone-Cog system.
  *
  * Orchestrates a continuous perceive → attend → think → act → reflect cycle:
  *
