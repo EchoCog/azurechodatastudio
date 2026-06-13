@@ -26,6 +26,11 @@ import { IHypergraphPersistenceService } from 'sql/workbench/services/zonecog/co
 import { HypergraphPersistenceService } from 'sql/workbench/services/zonecog/browser/hypergraphPersistenceService';
 import { ISchemaPerceptionService } from 'sql/workbench/services/zonecog/common/schemaPerception';
 import { SchemaPerceptionService } from 'sql/workbench/services/zonecog/browser/schemaPerceptionService';
+import { IAphroditeService } from 'sql/workbench/services/zonecog/common/aphrodite';
+import { AphroditeService } from 'sql/workbench/services/zonecog/browser/aphroditeService';
+import { ISQLAnalyzerAgent, ISchemaReasonerAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
+import { SQLAnalyzerAgent } from 'sql/workbench/services/zonecog/browser/sqlAnalyzerAgent';
+import { SchemaReasonerAgent } from 'sql/workbench/services/zonecog/browser/schemaReasonerAgent';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -63,6 +68,17 @@ registerSingleton(IHypergraphPersistenceService, HypergraphPersistenceService, I
 
 // Register the Schema Perception service (database schema embodied cognition interface)
 registerSingleton(ISchemaPerceptionService, SchemaPerceptionService, InstantiationType.Eager);
+
+// Register the Aphrodite service (Aphrodite LLM inference engine integration)
+registerSingleton(IAphroditeService, AphroditeService, InstantiationType.Eager);
+
+// Register Cognitive Agents (P2: Multi-Agent Extensions)
+
+// Register the SQL Analyzer Agent (deep SQL query analysis)
+registerSingleton(ISQLAnalyzerAgent, SQLAnalyzerAgent, InstantiationType.Eager);
+
+// Register the Schema Reasoner Agent (database schema understanding)
+registerSingleton(ISchemaReasonerAgent, SchemaReasonerAgent, InstantiationType.Eager);
 
 // Register the ZoneCog service as a singleton
 registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);

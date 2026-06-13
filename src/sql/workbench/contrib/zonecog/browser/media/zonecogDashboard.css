@@ -1,0 +1,352 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* Zone-Cog Cognitive Dashboard Styles */
+
+/* Main container */
+.zonecog-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 8px;
+	overflow: auto;
+}
+
+/* Section headers */
+.zonecog-section {
+	margin-bottom: 16px;
+}
+
+.zonecog-section-header {
+	font-weight: 600;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 8px;
+	color: var(--vscode-foreground);
+	opacity: 0.8;
+}
+
+/* Cognitive state widget */
+.zonecog-cognitive-state {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px;
+}
+
+.zonecog-stat-card {
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	padding: 12px;
+}
+
+.zonecog-stat-label {
+	font-size: 10px;
+	text-transform: uppercase;
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: 4px;
+}
+
+.zonecog-stat-value {
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.zonecog-stat-value.positive {
+	color: var(--vscode-testing-iconPassed);
+}
+
+.zonecog-stat-value.warning {
+	color: var(--vscode-editorWarning-foreground);
+}
+
+.zonecog-stat-value.negative {
+	color: var(--vscode-testing-iconFailed);
+}
+
+/* Membrane health indicators */
+.zonecog-membrane-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 8px;
+}
+
+.zonecog-membrane-card {
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	padding: 12px;
+	text-align: center;
+}
+
+.zonecog-membrane-card.healthy {
+	border-color: var(--vscode-testing-iconPassed);
+}
+
+.zonecog-membrane-card.unhealthy {
+	border-color: var(--vscode-testing-iconFailed);
+}
+
+.zonecog-membrane-icon {
+	font-size: 24px;
+	margin-bottom: 4px;
+}
+
+.zonecog-membrane-name {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: capitalize;
+}
+
+.zonecog-membrane-status {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-membrane-count {
+	font-size: 9px;
+	margin-top: 4px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ECAN attention view */
+.zonecog-ecan-container {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.zonecog-ecan-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.zonecog-ecan-label {
+	flex: 0 0 100px;
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.zonecog-ecan-track {
+	flex: 1;
+	height: 8px;
+	background: var(--vscode-progressBar-background);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.zonecog-ecan-fill {
+	height: 100%;
+	background: var(--vscode-progressBar-foreground);
+	border-radius: 4px;
+	transition: width 0.3s ease;
+}
+
+.zonecog-ecan-value {
+	flex: 0 0 40px;
+	font-size: 10px;
+	text-align: right;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Working memory list */
+.zonecog-wm-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.zonecog-wm-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-wm-category {
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-size: 9px;
+	font-weight: 600;
+	text-transform: uppercase;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+}
+
+.zonecog-wm-content {
+	flex: 1;
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.zonecog-wm-relevance {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Cognitive load gauge */
+.zonecog-load-gauge {
+	position: relative;
+	height: 20px;
+	background: var(--vscode-progressBar-background);
+	border-radius: 10px;
+	overflow: hidden;
+}
+
+.zonecog-load-fill {
+	position: absolute;
+	top: 0;
+	left: 0;
+	height: 100%;
+	background: linear-gradient(90deg, 
+		var(--vscode-testing-iconPassed) 0%, 
+		var(--vscode-editorWarning-foreground) 60%, 
+		var(--vscode-testing-iconFailed) 100%
+	);
+	border-radius: 10px;
+	transition: width 0.3s ease;
+}
+
+.zonecog-load-text {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--vscode-editor-foreground);
+}
+
+/* Cognitive loop status */
+.zonecog-loop-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-loop-indicator {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+}
+
+.zonecog-loop-indicator.running {
+	background: var(--vscode-testing-iconPassed);
+	animation: pulse 1.5s ease infinite;
+}
+
+.zonecog-loop-indicator.paused {
+	background: var(--vscode-editorWarning-foreground);
+}
+
+.zonecog-loop-indicator.stopped {
+	background: var(--vscode-descriptionForeground);
+}
+
+@keyframes pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
+}
+
+.zonecog-loop-label {
+	flex: 1;
+	font-size: 11px;
+}
+
+.zonecog-loop-stats {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Empty state */
+.zonecog-empty-message {
+	text-align: center;
+	padding: 24px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+}
+
+/* Hypergraph visualization placeholder */
+.zonecog-hypergraph-canvas {
+	width: 100%;
+	height: 200px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.zonecog-hypergraph-placeholder {
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+}
+
+/* Node count badge */
+.zonecog-node-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 18px;
+	height: 18px;
+	padding: 0 6px;
+	border-radius: 9px;
+	font-size: 10px;
+	font-weight: 600;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+}
+
+/* Action buttons */
+.zonecog-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.zonecog-action-button {
+	flex: 1;
+	padding: 6px 12px;
+	border: none;
+	border-radius: 4px;
+	font-size: 11px;
+	cursor: pointer;
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.zonecog-action-button:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.zonecog-action-button.secondary {
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+}
+
+.zonecog-action-button.secondary:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
