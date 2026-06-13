@@ -24,6 +24,8 @@ import { IAAROrchestrationService } from 'sql/workbench/services/zonecog/common/
 import { AAROrchestrationService } from 'sql/workbench/services/zonecog/browser/aarOrchestrationService';
 import { IHypergraphPersistenceService } from 'sql/workbench/services/zonecog/common/hypergraphPersistence';
 import { HypergraphPersistenceService } from 'sql/workbench/services/zonecog/browser/hypergraphPersistenceService';
+import { ISchemaPerceptionService } from 'sql/workbench/services/zonecog/common/schemaPerception';
+import { SchemaPerceptionService } from 'sql/workbench/services/zonecog/browser/schemaPerceptionService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -56,6 +58,11 @@ registerSingleton(IAAROrchestrationService, AAROrchestrationService, Instantiati
 
 // Register the Hypergraph Persistence service (IndexedDB-backed durable knowledge store)
 registerSingleton(IHypergraphPersistenceService, HypergraphPersistenceService, InstantiationType.Eager);
+
+// Register Phase 5 services
+
+// Register the Schema Perception service (database schema embodied cognition interface)
+registerSingleton(ISchemaPerceptionService, SchemaPerceptionService, InstantiationType.Eager);
 
 // Register the ZoneCog service as a singleton
 registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
