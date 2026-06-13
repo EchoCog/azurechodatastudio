@@ -375,7 +375,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 			'Content-Type': 'application/json',
 		};
 		if (this._config.apiKey) {
-			headers['Authorization'] = `******;
+			headers['Authorization'] = `Bearer ${this._config.apiKey}`;
 		}
 		return headers;
 	}
