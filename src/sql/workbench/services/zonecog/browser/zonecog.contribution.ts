@@ -24,6 +24,17 @@ import { IAAROrchestrationService } from 'sql/workbench/services/zonecog/common/
 import { AAROrchestrationService } from 'sql/workbench/services/zonecog/browser/aarOrchestrationService';
 import { IHypergraphPersistenceService } from 'sql/workbench/services/zonecog/common/hypergraphPersistence';
 import { HypergraphPersistenceService } from 'sql/workbench/services/zonecog/browser/hypergraphPersistenceService';
+import { ISchemaPerceptionService } from 'sql/workbench/services/zonecog/common/schemaPerception';
+import { SchemaPerceptionService } from 'sql/workbench/services/zonecog/browser/schemaPerceptionService';
+import { IAphroditeService } from 'sql/workbench/services/zonecog/common/aphrodite';
+import { AphroditeService } from 'sql/workbench/services/zonecog/browser/aphroditeService';
+import { ISQLAnalyzerAgent, ISchemaReasonerAgent, IPerformanceAdvisorAgent, IDataPatternAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
+import { SQLAnalyzerAgent } from 'sql/workbench/services/zonecog/browser/sqlAnalyzerAgent';
+import { SchemaReasonerAgent } from 'sql/workbench/services/zonecog/browser/schemaReasonerAgent';
+import { PerformanceAdvisorAgent } from 'sql/workbench/services/zonecog/browser/performanceAdvisorAgent';
+import { DataPatternAgent } from 'sql/workbench/services/zonecog/browser/dataPatternAgent';
+import { ICognitiveWorkflowAutomationService } from 'sql/workbench/services/zonecog/common/cognitiveWorkflowAutomation';
+import { CognitiveWorkflowAutomationService } from 'sql/workbench/services/zonecog/browser/cognitiveWorkflowAutomationService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -56,6 +67,33 @@ registerSingleton(IAAROrchestrationService, AAROrchestrationService, Instantiati
 
 // Register the Hypergraph Persistence service (IndexedDB-backed durable knowledge store)
 registerSingleton(IHypergraphPersistenceService, HypergraphPersistenceService, InstantiationType.Eager);
+
+// Register Phase 5 services
+
+// Register the Schema Perception service (database schema embodied cognition interface)
+registerSingleton(ISchemaPerceptionService, SchemaPerceptionService, InstantiationType.Eager);
+
+// Register the Aphrodite service (Aphrodite LLM inference engine integration)
+registerSingleton(IAphroditeService, AphroditeService, InstantiationType.Eager);
+
+// Register Cognitive Agents (P2: Multi-Agent Extensions)
+
+// Register the SQL Analyzer Agent (deep SQL query analysis)
+registerSingleton(ISQLAnalyzerAgent, SQLAnalyzerAgent, InstantiationType.Eager);
+
+// Register the Schema Reasoner Agent (database schema understanding)
+registerSingleton(ISchemaReasonerAgent, SchemaReasonerAgent, InstantiationType.Eager);
+
+// Register the Performance Advisor Agent (query optimization suggestions)
+registerSingleton(IPerformanceAdvisorAgent, PerformanceAdvisorAgent, InstantiationType.Eager);
+
+// Register the Data Pattern Agent (statistical pattern recognition)
+registerSingleton(IDataPatternAgent, DataPatternAgent, InstantiationType.Eager);
+
+// Register Phase 6 services
+
+// Register the Cognitive Workflow Automation service (custom workflow DSL execution)
+registerSingleton(ICognitiveWorkflowAutomationService, CognitiveWorkflowAutomationService, InstantiationType.Eager);
 
 // Register the ZoneCog service as a singleton
 registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
