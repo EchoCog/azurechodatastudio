@@ -28,9 +28,11 @@ import { ISchemaPerceptionService } from 'sql/workbench/services/zonecog/common/
 import { SchemaPerceptionService } from 'sql/workbench/services/zonecog/browser/schemaPerceptionService';
 import { IAphroditeService } from 'sql/workbench/services/zonecog/common/aphrodite';
 import { AphroditeService } from 'sql/workbench/services/zonecog/browser/aphroditeService';
-import { ISQLAnalyzerAgent, ISchemaReasonerAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
+import { ISQLAnalyzerAgent, ISchemaReasonerAgent, IPerformanceAdvisorAgent, IDataPatternAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
 import { SQLAnalyzerAgent } from 'sql/workbench/services/zonecog/browser/sqlAnalyzerAgent';
 import { SchemaReasonerAgent } from 'sql/workbench/services/zonecog/browser/schemaReasonerAgent';
+import { PerformanceAdvisorAgent } from 'sql/workbench/services/zonecog/browser/performanceAdvisorAgent';
+import { DataPatternAgent } from 'sql/workbench/services/zonecog/browser/dataPatternAgent';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -79,6 +81,12 @@ registerSingleton(ISQLAnalyzerAgent, SQLAnalyzerAgent, InstantiationType.Eager);
 
 // Register the Schema Reasoner Agent (database schema understanding)
 registerSingleton(ISchemaReasonerAgent, SchemaReasonerAgent, InstantiationType.Eager);
+
+// Register the Performance Advisor Agent (query optimization suggestions)
+registerSingleton(IPerformanceAdvisorAgent, PerformanceAdvisorAgent, InstantiationType.Eager);
+
+// Register the Data Pattern Agent (statistical pattern recognition)
+registerSingleton(IDataPatternAgent, DataPatternAgent, InstantiationType.Eager);
 
 // Register the ZoneCog service as a singleton
 registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
