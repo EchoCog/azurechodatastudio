@@ -9,6 +9,7 @@ import {
 	LLMCompletionRequest,
 	LLMCompletionResponse
 } from 'sql/workbench/services/zonecog/common/llmProvider';
+import { ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ILogService } from 'vs/platform/log/common/log';
@@ -30,18 +31,51 @@ const BUILTIN_CONFIG: LLMProviderConfig = {
 };
 
 /**
- * LLM Provider Service implementation with pluggable backends.
+ * Circuit breaker state for a provider.
+ */
+interface CircuitBreakerState {
+	/** Number of consecutive failures */
+	failureCount: number;
+	/** Last failure timestamp */
+	lastFailureTime: number;
+	/** Whether the circuit is open (blocking requests) */
+	isOpen: boolean;
+	/** Time when the circuit was opened */
+	openedAt: number;
+}
+
+/**
+ * Circuit breaker configuration.
+ */
+const CIRCUIT_BREAKER_CONFIG = {
+	/** Number of failures before opening the circuit */
+	failureThreshold: 3,
+	/** Time in ms before attempting to close the circuit (half-open state) */
+	resetTimeoutMs: 30000,
+	/** Time window in ms for counting failures */
+	failureWindowMs: 60000,
+};
+
+/**
+ * LLM Provider Service implementation with pluggable backends and circuit breaker.
  *
  * Ships with a rule-based built-in fallback so the cognitive protocol
  * works out-of-the-box without any external API keys. External providers
  * (OpenAI-compatible, Aphrodite Engine, local models) can be registered
  * at runtime.
+ *
+ * Includes circuit breaker pattern for resilient error recovery:
+ * - After 3 consecutive failures, the circuit opens
+ * - While open, requests fall back to built-in provider
+ * - After 30s, the circuit enters half-open state to test recovery
+ * - On success, the circuit closes; on failure, it reopens
  */
 export class LLMProviderService extends Disposable implements ILLMProviderService {
 
 	declare readonly _serviceBrand: undefined;
 
 	private readonly _providers = new Map<string, LLMProviderConfig>();
+	private readonly _circuitBreakers = new Map<string, CircuitBreakerState>();
 	private _activeProviderId: string;
 
 	private readonly _onDidChangeProvider = this._register(new Emitter<LLMProviderConfig>());
@@ -51,7 +85,8 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 	readonly onDidChangeAvailability: Event<{ providerId: string; available: boolean }> = this._onDidChangeAvailability.event;
 
 	constructor(
-		@ILogService private readonly logService: ILogService
+		@ILogService private readonly logService: ILogService,
+		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService
 	) {
 		super();
 
@@ -59,7 +94,7 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 		this._providers.set(BUILTIN_PROVIDER_ID, BUILTIN_CONFIG);
 		this._activeProviderId = BUILTIN_PROVIDER_ID;
 
-		this.logService.info('LLMProviderService: initialized with built-in fallback provider');
+		this.logService.info('LLMProviderService: initialized with built-in fallback provider and circuit breaker');
 	}
 
 	// -- Provider management -------------------------------------------------
@@ -120,16 +155,146 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 
 	async complete(request: LLMCompletionRequest): Promise<LLMCompletionResponse> {
 		const provider = this.getActiveProvider();
+		this.membraneService.recordActivity('cerebral');
 
 		if (provider.id === BUILTIN_PROVIDER_ID) {
 			return this._builtinComplete(request);
 		}
 
-		try {
-			return await this._externalComplete(provider, request);
-		} catch (err) {
-			this.logService.warn(`LLMProviderService: external provider '${provider.id}' failed, falling back`, err);
+		// Check circuit breaker state
+		const circuitState = this._getCircuitState(provider.id);
+
+		if (this._isCircuitOpen(circuitState)) {
+			// Check if we should try half-open
+			if (this._shouldTryHalfOpen(circuitState)) {
+				this.logService.info(`LLMProviderService: circuit for '${provider.id}' entering half-open state`);
+				return this._tryHalfOpenRequest(provider, request, circuitState);
+			}
+
+			// Circuit is open - fall back immediately
+			this.logService.warn(`LLMProviderService: circuit open for '${provider.id}', using fallback`);
+			this.membraneService.recordActivity('autonomic'); // Record error recovery
 			return this._builtinComplete(request);
+		}
+
+		// Circuit is closed - try normal request
+		try {
+			const response = await this._externalCompleteWithRetry(provider, request);
+			this._recordSuccess(provider.id);
+			return response;
+		} catch (err) {
+			this._recordFailure(provider.id);
+			this.logService.warn(`LLMProviderService: external provider '${provider.id}' failed, falling back`, err);
+			this.membraneService.recordActivity('autonomic'); // Record error recovery
+			return this._builtinComplete(request);
+		}
+	}
+
+	// -- Circuit Breaker Logic -----------------------------------------------
+
+	private _getCircuitState(providerId: string): CircuitBreakerState {
+		let state = this._circuitBreakers.get(providerId);
+		if (!state) {
+			state = {
+				failureCount: 0,
+				lastFailureTime: 0,
+				isOpen: false,
+				openedAt: 0,
+			};
+			this._circuitBreakers.set(providerId, state);
+		}
+		return state;
+	}
+
+	private _isCircuitOpen(state: CircuitBreakerState): boolean {
+		if (!state.isOpen) {
+			return false;
+		}
+
+		// Check if failures are outside the failure window (auto-reset)
+		const now = Date.now();
+		if (now - state.lastFailureTime > CIRCUIT_BREAKER_CONFIG.failureWindowMs) {
+			state.isOpen = false;
+			state.failureCount = 0;
+			this.logService.info('LLMProviderService: circuit auto-reset due to failure window expiry');
+			return false;
+		}
+
+		return true;
+	}
+
+	private _shouldTryHalfOpen(state: CircuitBreakerState): boolean {
+		const now = Date.now();
+		return now - state.openedAt >= CIRCUIT_BREAKER_CONFIG.resetTimeoutMs;
+	}
+
+	private async _tryHalfOpenRequest(
+		provider: LLMProviderConfig,
+		request: LLMCompletionRequest,
+		state: CircuitBreakerState
+	): Promise<LLMCompletionResponse> {
+		try {
+			const response = await this._externalComplete(provider, request);
+			// Success! Close the circuit
+			state.isOpen = false;
+			state.failureCount = 0;
+			this.logService.info(`LLMProviderService: circuit for '${provider.id}' closed after successful half-open request`);
+			this._onDidChangeAvailability.fire({ providerId: provider.id, available: true });
+			return response;
+		} catch (err) {
+			// Still failing - reopen the circuit
+			state.isOpen = true;
+			state.openedAt = Date.now();
+			state.lastFailureTime = Date.now();
+			this.logService.warn(`LLMProviderService: circuit for '${provider.id}' remains open after failed half-open request`);
+			return this._builtinComplete(request);
+		}
+	}
+
+	private _recordSuccess(providerId: string): void {
+		const state = this._circuitBreakers.get(providerId);
+		if (state) {
+			state.failureCount = 0;
+		}
+	}
+
+	private _recordFailure(providerId: string): void {
+		const state = this._getCircuitState(providerId);
+		state.failureCount++;
+		state.lastFailureTime = Date.now();
+
+		if (state.failureCount >= CIRCUIT_BREAKER_CONFIG.failureThreshold) {
+			state.isOpen = true;
+			state.openedAt = Date.now();
+			this.logService.warn(`LLMProviderService: circuit for '${providerId}' opened after ${state.failureCount} failures`);
+			this._onDidChangeAvailability.fire({ providerId, available: false });
+		}
+	}
+
+	/**
+	 * Get circuit breaker status for a provider.
+	 */
+	getCircuitBreakerStatus(providerId: string): { isOpen: boolean; failureCount: number; lastFailureTime: number } {
+		const state = this._getCircuitState(providerId);
+		return {
+			isOpen: this._isCircuitOpen(state),
+			failureCount: state.failureCount,
+			lastFailureTime: state.lastFailureTime,
+		};
+	}
+
+	/**
+	 * Manually reset the circuit breaker for a provider.
+	 */
+	resetCircuitBreaker(providerId: string): void {
+		const state = this._circuitBreakers.get(providerId);
+		if (state) {
+			state.isOpen = false;
+			state.failureCount = 0;
+			state.lastFailureTime = 0;
+			state.openedAt = 0;
+			this.logService.info(`LLMProviderService: circuit for '${providerId}' manually reset`);
+			this._onDidChangeAvailability.fire({ providerId, available: true });
 		}
 	}
 
@@ -171,6 +336,57 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 			providerId: BUILTIN_PROVIDER_ID,
 			isFallback: true,
 		};
+	}
+
+	// -- External provider (OpenAI-compatible) with retry --------------------
+
+	/**
+	 * External completion with exponential backoff retry.
+	 */
+	private async _externalCompleteWithRetry(
+		provider: LLMProviderConfig,
+		request: LLMCompletionRequest,
+		maxRetries: number = 2
+	): Promise<LLMCompletionResponse> {
+		let lastError: Error | undefined;
+
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			try {
+				return await this._externalComplete(provider, request);
+			} catch (err) {
+				lastError = err as Error;
+
+				// Don't retry on non-transient errors
+				if (this._isNonTransientError(err)) {
+					throw err;
+				}
+
+				if (attempt < maxRetries) {
+					// Exponential backoff: 100ms, 200ms, 400ms...
+					const delay = 100 * Math.pow(2, attempt);
+					this.logService.info(`LLMProviderService: retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+					await this._sleep(delay);
+				}
+			}
+		}
+
+		throw lastError;
+	}
+
+	/**
+	 * Check if an error is non-transient (should not be retried).
+	 */
+	private _isNonTransientError(err: unknown): boolean {
+		const message = String(err);
+		// 4xx errors except 429 (rate limit) are usually non-transient
+		return /\b(401|403|404|400|422)\b/.test(message) && !/\b429\b/.test(message);
+	}
+
+	/**
+	 * Sleep helper for retry delays.
+	 */
+	private _sleep(ms: number): Promise<void> {
+		return new Promise(resolve => setTimeout(resolve, ms));
 	}
 
 	// -- External provider (OpenAI-compatible) --------------------------------

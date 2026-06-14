@@ -154,6 +154,8 @@
 - [x] System prompt using Zone-Cog protocol for LLM-enhanced responses
 - [x] Streaming thinking phase events (`onDidCompleteThinkingPhase`)
 - [x] Context window management with hypergraph-based working memory
+- [x] Circuit breaker pattern for resilient LLM calls (auto-recovery, half-open state)
+- [x] Exponential backoff retry for transient failures
 - [ ] Streaming response generation with thinking tokens (real-time LLM output)
 
 ### 3.2 AtomSpace Reasoning
