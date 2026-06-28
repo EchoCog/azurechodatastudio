@@ -24,3 +24,12 @@ export const ZONECOG_WORKSPACE_VIEW_ID = 'zonecog.workspaceView';
 
 /** Hypergraph visualization view ID. */
 export const ZONECOG_HYPERGRAPH_VIEW_ID = 'zonecog.hypergraphView';
+
+/** DTESN Neural Network view ID. */
+export const ZONECOG_DTESN_VIEW_ID = 'zonecog.dtesnView';
+
+/** AAR Orchestration view ID. */
+export const ZONECOG_AAR_VIEW_ID = 'zonecog.aarView';
+
+/** Cognitive Workflows view ID. */
+export const ZONECOG_WORKFLOWS_VIEW_ID = 'zonecog.workflowsView';

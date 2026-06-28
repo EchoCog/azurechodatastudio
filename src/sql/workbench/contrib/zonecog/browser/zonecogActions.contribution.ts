@@ -13,6 +13,9 @@ import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cog
 import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
 import { IAAROrchestrationService } from 'sql/workbench/services/zonecog/common/aarOrchestration';
 import { IHypergraphPersistenceService } from 'sql/workbench/services/zonecog/common/hypergraphPersistence';
+import { ISchemaPerceptionService } from 'sql/workbench/services/zonecog/common/schemaPerception';
+import { IAphroditeService } from 'sql/workbench/services/zonecog/common/aphrodite';
+import { ICognitiveWorkflowAutomationService } from 'sql/workbench/services/zonecog/common/cognitiveWorkflowAutomation';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { IQuickInputService } from 'vs/platform/quickinput/common/quickInput';
 import { ILogService } from 'vs/platform/log/common/log';
@@ -1032,6 +1035,530 @@ registerAction2(ZoneCogAARArenaStatusAction);
 registerAction2(ZoneCogPersistenceSaveAction);
 registerAction2(ZoneCogPersistenceLoadAction);
 registerAction2(ZoneCogPersistenceStatsAction);
+
+// =============================================================================
+// Phase 5 actions - Schema Perception, Aphrodite Engine
+// =============================================================================
+
+/**
+ * Action to perceive a database schema through the embodied cognition interface
+ */
+class ZoneCogPerceiveSchemaAction extends Action2 {
+
+	static ID = 'zonecog.perceiveSchema';
+	constructor() {
+		super({
+			id: ZoneCogPerceiveSchemaAction.ID,
+			title: { value: localize('zonecog.perceiveSchema', 'Perceive Database Schema'), original: 'Perceive Database Schema' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.database,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const schemaService = accessor.get(ISchemaPerceptionService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const connectionUri = await quickInputService.input({
+			prompt: localize('zonecog.schemaConnectionPrompt', 'Enter connection URI to perceive'),
+			placeHolder: localize('zonecog.schemaConnectionPlaceholder', 'e.g., mssql://localhost/AdventureWorks'),
+		});
+
+		if (!connectionUri) { return; }
+
+		try {
+			notificationService.info(localize('zonecog.perceivingSchema', 'Perceiving schema for: {0}...', connectionUri));
+
+			const elements = await schemaService.perceiveSchema(connectionUri);
+
+			const tables = elements.filter(e => e.elementType === 'table').length;
+			const views = elements.filter(e => e.elementType === 'view').length;
+			const columns = elements.filter(e => e.elementType === 'column').length;
+
+			notificationService.info(localize('zonecog.schemaPerceived',
+				'Schema Perceived:\nElements: {0}\nTables: {1}\nViews: {2}\nColumns: {3}',
+				elements.length, tables, views, columns
+			));
+		} catch (err) {
+			notificationService.error(localize('zonecog.perceiveSchemaError',
+				'Failed to perceive schema: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to view schema perception statistics
+ */
+class ZoneCogSchemaStatsAction extends Action2 {
+
+	static ID = 'zonecog.schemaStats';
+	constructor() {
+		super({
+			id: ZoneCogSchemaStatsAction.ID,
+			title: { value: localize('zonecog.schemaStats', 'Show Schema Perception Stats'), original: 'Show Schema Perception Stats' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.graphScatter,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const schemaService = accessor.get(ISchemaPerceptionService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const connectionUri = await quickInputService.input({
+			prompt: localize('zonecog.schemaStatsPrompt', 'Enter connection URI for stats'),
+			placeHolder: localize('zonecog.schemaStatsPlaceholder', 'e.g., mssql://localhost/AdventureWorks'),
+		});
+
+		if (!connectionUri) { return; }
+
+		const stats = schemaService.getQueryStatistics(connectionUri);
+		const elements = schemaService.getPerceivedElements(connectionUri);
+
+		const frequentTables = stats.frequentTables.slice(0, 5)
+			.map(t => `  ${t.table}: ${t.accessCount} accesses`)
+			.join('\n');
+
+		notificationService.info(localize('zonecog.schemaStatsInfo',
+			'Schema Perception Stats for {0}:\nTotal Elements: {1}\nQueries Observed: {2}\nSuccess Rate: {3}%\nAvg Duration: {4}ms\n\nMost Accessed Tables:\n{5}',
+			connectionUri,
+			elements.length,
+			stats.totalQueries,
+			stats.totalQueries > 0 ? Math.round((stats.successfulQueries / stats.totalQueries) * 100) : 0,
+			Math.round(stats.averageDurationMs),
+			frequentTables || '  (none)'
+		));
+	}
+}
+
+/**
+ * Action to register schema elements in the hypergraph
+ */
+class ZoneCogRegisterSchemaInHypergraphAction extends Action2 {
+
+	static ID = 'zonecog.registerSchemaHypergraph';
+	constructor() {
+		super({
+			id: ZoneCogRegisterSchemaInHypergraphAction.ID,
+			title: { value: localize('zonecog.registerSchemaHypergraph', 'Register Schema in Hypergraph'), original: 'Register Schema in Hypergraph' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.symbolStructure,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const schemaService = accessor.get(ISchemaPerceptionService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const connectionUri = await quickInputService.input({
+			prompt: localize('zonecog.registerSchemaPrompt', 'Enter connection URI to register'),
+			placeHolder: localize('zonecog.registerSchemaPlaceholder', 'e.g., mssql://localhost/AdventureWorks'),
+		});
+
+		if (!connectionUri) { return; }
+
+		try {
+			const nodeCount = await schemaService.registerSchemaInHypergraph(connectionUri);
+			notificationService.info(localize('zonecog.schemaRegistered',
+				'Schema registered in hypergraph: {0} nodes created', nodeCount));
+		} catch (err) {
+			notificationService.error(localize('zonecog.registerSchemaError',
+				'Failed to register schema: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to connect to Aphrodite LLM engine
+ */
+class ZoneCogAphroditeConnectAction extends Action2 {
+
+	static ID = 'zonecog.aphroditeConnect';
+	constructor() {
+		super({
+			id: ZoneCogAphroditeConnectAction.ID,
+			title: { value: localize('zonecog.aphroditeConnect', 'Connect to Aphrodite Engine'), original: 'Connect to Aphrodite Engine' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.vm,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aphroditeService = accessor.get(IAphroditeService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const baseUrl = await quickInputService.input({
+			prompt: localize('zonecog.aphroditeUrlPrompt', 'Enter Aphrodite API URL'),
+			placeHolder: 'http://localhost:2242',
+			value: 'http://localhost:2242',
+		});
+
+		if (!baseUrl) { return; }
+
+		try {
+			await aphroditeService.initialize({ baseUrl });
+
+			if (aphroditeService.isConnected()) {
+				const models = await aphroditeService.listModels();
+				const modelList = models.slice(0, 5).map(m => m.id).join(', ');
+
+				notificationService.info(localize('zonecog.aphroditeConnected',
+					'Connected to Aphrodite Engine at {0}\nAvailable models: {1}',
+					baseUrl, modelList || '(none)'
+				));
+			} else {
+				notificationService.warn(localize('zonecog.aphroditeNotConnected',
+					'Aphrodite Engine not available at {0}', baseUrl));
+			}
+		} catch (err) {
+			notificationService.error(localize('zonecog.aphroditeConnectError',
+				'Failed to connect to Aphrodite: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to view Aphrodite engine status and stats
+ */
+class ZoneCogAphroditeStatusAction extends Action2 {
+
+	static ID = 'zonecog.aphroditeStatus';
+	constructor() {
+		super({
+			id: ZoneCogAphroditeStatusAction.ID,
+			title: { value: localize('zonecog.aphroditeStatus', 'Show Aphrodite Engine Status'), original: 'Show Aphrodite Engine Status' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.serverProcess,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aphroditeService = accessor.get(IAphroditeService);
+		const notificationService = accessor.get(INotificationService);
+
+		const connected = aphroditeService.isConnected();
+		const config = aphroditeService.getConfig();
+
+		if (!connected) {
+			notificationService.info(localize('zonecog.aphroditeDisconnected',
+				'Aphrodite Engine: Not connected\nConfigured URL: {0}\nModel: {1}',
+				config.baseUrl, config.model
+			));
+			return;
+		}
+
+		try {
+			const stats = await aphroditeService.getStats();
+			const model = await aphroditeService.getCurrentModel();
+
+			const gpuMem = stats.gpuMemoryTotal > 0
+				? `${(stats.gpuMemoryUsed / 1024 / 1024 / 1024).toFixed(1)}/${(stats.gpuMemoryTotal / 1024 / 1024 / 1024).toFixed(1)} GB`
+				: 'N/A';
+
+			notificationService.info(localize('zonecog.aphroditeStatusInfo',
+				'Aphrodite Engine Status:\nConnected: Yes\nModel: {0}\nContext Length: {1}\nTokens/sec: {2}\nActive Requests: {3}\nQueued: {4}\nGPU Memory: {5}\nGPU Util: {6}%',
+				model?.name || 'Unknown',
+				model?.contextLength || 'Unknown',
+				stats.tokensPerSecond.toFixed(1),
+				stats.activeRequests,
+				stats.queuedRequests,
+				gpuMem,
+				stats.gpuUtilization.toFixed(1)
+			));
+		} catch (err) {
+			notificationService.error(localize('zonecog.aphroditeStatusError',
+				'Failed to get Aphrodite stats: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to run a completion through Aphrodite
+ */
+class ZoneCogAphroditeCompleteAction extends Action2 {
+
+	static ID = 'zonecog.aphroditeComplete';
+	constructor() {
+		super({
+			id: ZoneCogAphroditeCompleteAction.ID,
+			title: { value: localize('zonecog.aphroditeComplete', 'Run Aphrodite Completion'), original: 'Run Aphrodite Completion' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.sparkle,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aphroditeService = accessor.get(IAphroditeService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		if (!aphroditeService.isConnected()) {
+			notificationService.warn(localize('zonecog.aphroditeNotConnectedWarn',
+				'Aphrodite Engine is not connected. Use "Connect to Aphrodite Engine" first.'));
+			return;
+		}
+
+		const prompt = await quickInputService.input({
+			prompt: localize('zonecog.aphroditePrompt', 'Enter prompt for Aphrodite'),
+			placeHolder: localize('zonecog.aphroditePlaceholder', 'e.g., "Explain this SQL query..."'),
+		});
+
+		if (!prompt) { return; }
+
+		try {
+			notificationService.info(localize('zonecog.aphroditeProcessing', 'Processing...'));
+
+			const response = await aphroditeService.complete({
+				prompt,
+				maxTokens: 256,
+			});
+
+			notificationService.info(localize('zonecog.aphroditeResponse',
+				'Aphrodite Response:\n{0}\n\nTokens: {1} prompt + {2} completion\nTime: {3}ms',
+				response.text.substring(0, 500) + (response.text.length > 500 ? '...' : ''),
+				response.promptTokens,
+				response.completionTokens,
+				response.generationTimeMs
+			));
+		} catch (err) {
+			notificationService.error(localize('zonecog.aphroditeCompleteError',
+				'Aphrodite completion failed: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+// =============================================================================
+// Phase 6 actions - Cognitive Workflow Automation
+// =============================================================================
+
+/**
+ * Action to list all registered workflows
+ */
+class ZoneCogListWorkflowsAction extends Action2 {
+
+	static ID = 'zonecog.listWorkflows';
+	constructor() {
+		super({
+			id: ZoneCogListWorkflowsAction.ID,
+			title: { value: localize('zonecog.listWorkflows', 'List Cognitive Workflows'), original: 'List Cognitive Workflows' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.listTree,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const workflowService = accessor.get(ICognitiveWorkflowAutomationService);
+		const notificationService = accessor.get(INotificationService);
+
+		const workflows = workflowService.getWorkflows();
+
+		if (workflows.length === 0) {
+			notificationService.info(localize('zonecog.noWorkflows', 'No cognitive workflows registered.'));
+			return;
+		}
+
+		const workflowList = workflows.map(w =>
+			`  [${w.enabled ? 'ON' : 'OFF'}] ${w.definition.id} - ${w.definition.name}\n` +
+			`       Executions: ${w.executionCount} (${w.successCount} successful)`
+		).join('\n');
+
+		notificationService.info(localize('zonecog.workflowList',
+			'Registered Cognitive Workflows ({0}):\n{1}',
+			workflows.length, workflowList
+		));
+	}
+}
+
+/**
+ * Action to execute a workflow
+ */
+class ZoneCogExecuteWorkflowAction extends Action2 {
+
+	static ID = 'zonecog.executeWorkflow';
+	constructor() {
+		super({
+			id: ZoneCogExecuteWorkflowAction.ID,
+			title: { value: localize('zonecog.executeWorkflow', 'Execute Cognitive Workflow'), original: 'Execute Cognitive Workflow' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.run,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const workflowService = accessor.get(ICognitiveWorkflowAutomationService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const workflows = workflowService.getWorkflows().filter(w => w.enabled);
+
+		if (workflows.length === 0) {
+			notificationService.info(localize('zonecog.noEnabledWorkflows', 'No enabled workflows available.'));
+			return;
+		}
+
+		const items = workflows.map(w => ({
+			label: w.definition.name,
+			description: w.definition.id,
+			detail: w.definition.description,
+		}));
+
+		const selected = await quickInputService.pick(items, {
+			placeHolder: localize('zonecog.selectWorkflow', 'Select a workflow to execute'),
+		});
+
+		if (!selected) { return; }
+
+		const workflowId = selected.description!;
+
+		try {
+			notificationService.info(localize('zonecog.workflowStarting',
+				'Starting workflow: {0}...', selected.label));
+
+			const result = await workflowService.executeWorkflow(workflowId);
+
+			const statusIcon = result.success ? '✓' : '✗';
+			notificationService.info(localize('zonecog.workflowResult',
+				'Workflow {0} {1}\n{2}\nDuration: {3}ms',
+				statusIcon,
+				result.success ? 'completed' : 'failed',
+				result.summary,
+				result.durationMs
+			));
+		} catch (err) {
+			notificationService.error(localize('zonecog.workflowError',
+				'Workflow execution failed: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to view workflow execution history
+ */
+class ZoneCogWorkflowHistoryAction extends Action2 {
+
+	static ID = 'zonecog.workflowHistory';
+	constructor() {
+		super({
+			id: ZoneCogWorkflowHistoryAction.ID,
+			title: { value: localize('zonecog.workflowHistory', 'Show Workflow Execution History'), original: 'Show Workflow Execution History' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.history,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const workflowService = accessor.get(ICognitiveWorkflowAutomationService);
+		const notificationService = accessor.get(INotificationService);
+
+		const history = workflowService.getExecutionHistory(undefined, 10);
+
+		if (history.length === 0) {
+			notificationService.info(localize('zonecog.noWorkflowHistory', 'No workflow executions in history.'));
+			return;
+		}
+
+		const historyLines = history.map((exec, i) => {
+			const duration = exec.endTime ? exec.endTime - exec.startTime : 0;
+			const statusIcon = exec.status === 'completed' ? '✓' : exec.status === 'failed' ? '✗' : '○';
+			return `${i + 1}. ${statusIcon} ${exec.workflowId} - ${exec.status} (${duration}ms, ${new Date(exec.startTime).toLocaleTimeString()})`;
+		}).join('\n');
+
+		notificationService.info(localize('zonecog.workflowHistoryList',
+			'Recent Workflow Executions:\n{0}', historyLines));
+	}
+}
+
+/**
+ * Action to toggle a workflow enabled/disabled
+ */
+class ZoneCogToggleWorkflowAction extends Action2 {
+
+	static ID = 'zonecog.toggleWorkflow';
+	constructor() {
+		super({
+			id: ZoneCogToggleWorkflowAction.ID,
+			title: { value: localize('zonecog.toggleWorkflow', 'Toggle Workflow Enabled'), original: 'Toggle Workflow Enabled' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.gear,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const workflowService = accessor.get(ICognitiveWorkflowAutomationService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const workflows = workflowService.getWorkflows();
+
+		if (workflows.length === 0) {
+			notificationService.info(localize('zonecog.noWorkflowsToToggle', 'No workflows available.'));
+			return;
+		}
+
+		const items = workflows.map(w => ({
+			label: `${w.enabled ? '$(check)' : '$(circle-outline)'} ${w.definition.name}`,
+			description: w.definition.id,
+			detail: w.enabled ? 'Currently enabled' : 'Currently disabled',
+		}));
+
+		const selected = await quickInputService.pick(items, {
+			placeHolder: localize('zonecog.selectWorkflowToggle', 'Select a workflow to toggle'),
+		});
+
+		if (!selected) { return; }
+
+		const workflowId = selected.description!;
+		const workflow = workflowService.getWorkflow(workflowId);
+		if (!workflow) { return; }
+
+		const newState = !workflow.enabled;
+		workflowService.setWorkflowEnabled(workflowId, newState);
+
+		notificationService.info(localize('zonecog.workflowToggled',
+			'Workflow "{0}" is now {1}',
+			workflow.definition.name,
+			newState ? 'enabled' : 'disabled'
+		));
+	}
+}
+
+// Phase 5 actions
+registerAction2(ZoneCogPerceiveSchemaAction);
+registerAction2(ZoneCogSchemaStatsAction);
+registerAction2(ZoneCogRegisterSchemaInHypergraphAction);
+registerAction2(ZoneCogAphroditeConnectAction);
+registerAction2(ZoneCogAphroditeStatusAction);
+registerAction2(ZoneCogAphroditeCompleteAction);
+
+// Phase 6 actions
+registerAction2(ZoneCogListWorkflowsAction);
+registerAction2(ZoneCogExecuteWorkflowAction);
+registerAction2(ZoneCogWorkflowHistoryAction);
+registerAction2(ZoneCogToggleWorkflowAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.

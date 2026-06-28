@@ -23,9 +23,13 @@ import {
 	ZONECOG_MEMBRANE_VIEW_ID,
 	ZONECOG_ECAN_VIEW_ID,
 	ZONECOG_WORKSPACE_VIEW_ID,
+	ZONECOG_DTESN_VIEW_ID,
+	ZONECOG_AAR_VIEW_ID,
+	ZONECOG_WORKFLOWS_VIEW_ID,
 } from 'sql/workbench/contrib/zonecog/common/zonecog';
 import { CognitiveStateView, MembraneHealthView } from 'sql/workbench/contrib/zonecog/browser/zonecogViews';
 import { ECANAttentionView, WorkingMemoryView } from 'sql/workbench/contrib/zonecog/browser/zonecogAttentionViews';
+import { DTESNNetworkView, AAROrchestrationView, CognitiveWorkflowsView } from 'sql/workbench/contrib/zonecog/browser/zonecogAdvancedViews';
 import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
 import { IHypergraphStore } from 'sql/workbench/services/zonecog/common/zonecogService';
 
@@ -152,6 +156,30 @@ Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews
 		canMoveView: false,
 		ctorDescriptor: new SyncDescriptor(WorkingMemoryView),
 		order: 4,
+	},
+	{
+		id: ZONECOG_DTESN_VIEW_ID,
+		name: localize('zonecog.dtesn', 'DTESN Network'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(DTESNNetworkView),
+		order: 5,
+	},
+	{
+		id: ZONECOG_AAR_VIEW_ID,
+		name: localize('zonecog.aar', 'AAR Orchestration'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(AAROrchestrationView),
+		order: 6,
+	},
+	{
+		id: ZONECOG_WORKFLOWS_VIEW_ID,
+		name: localize('zonecog.workflowsView', 'Workflows'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(CognitiveWorkflowsView),
+		order: 7,
 	},
 ], VIEW_CONTAINER);
 
