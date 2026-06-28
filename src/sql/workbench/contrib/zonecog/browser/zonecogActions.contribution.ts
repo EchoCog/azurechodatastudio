@@ -1436,6 +1436,7 @@ class ZoneCogExecuteWorkflowAction extends Action2 {
 
 			const result = await workflowService.executeWorkflow(workflowId);
 
+			// allow-any-unicode-next-line
 			const statusIcon = result.success ? '✓' : '✗';
 			notificationService.info(localize('zonecog.workflowResult',
 				'Workflow {0} {1}\n{2}\nDuration: {3}ms',
@@ -1481,6 +1482,7 @@ class ZoneCogWorkflowHistoryAction extends Action2 {
 
 		const historyLines = history.map((exec, i) => {
 			const duration = exec.endTime ? exec.endTime - exec.startTime : 0;
+			// allow-any-unicode-next-line
 			const statusIcon = exec.status === 'completed' ? '✓' : exec.status === 'failed' ? '✗' : '○';
 			return `${i + 1}. ${statusIcon} ${exec.workflowId} - ${exec.status} (${duration}ms, ${new Date(exec.startTime).toLocaleTimeString()})`;
 		}).join('\n');

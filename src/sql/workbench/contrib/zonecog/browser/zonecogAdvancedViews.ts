@@ -123,6 +123,7 @@ export class DTESNNetworkView extends ViewPane {
 
 			// Layer details
 			const details = append(layerEl, $('.zonecog-dtesn-layer-details'));
+			// allow-any-unicode-next-line
 			details.textContent = `${layerConfig.reservoirSize} units, ρ=${spectralRadius.toFixed(3)}`;
 
 			// Visual indicator bar
@@ -269,17 +270,23 @@ export class AAROrchestrationView extends ViewPane {
 
 			// Status indicator
 			const status = append(agentEl, $('.zonecog-aar-agent-status'));
+			// allow-any-unicode-next-line
 			status.textContent = agent.active ? '●' : '○';
 		}
 	}
 
 	private _getRoleIcon(role: string): string {
 		switch (role) {
+			// allow-any-unicode-next-line
 			case 'analyzer': return '🔍';
+			// allow-any-unicode-next-line
 			case 'reasoner': return '🧠';
+			// allow-any-unicode-next-line
 			case 'advisor': return '💡';
+			// allow-any-unicode-next-line
 			case 'pattern': return '📊';
 			case 'orchestrator': return '🎯';
+			// allow-any-unicode-next-line
 			default: return '🤖';
 		}
 	}
@@ -377,6 +384,7 @@ export class CognitiveWorkflowsView extends ViewPane {
 
 		// Status indicator
 		const status = append(item, $('.zonecog-workflow-status'));
+		// allow-any-unicode-next-line
 		status.textContent = workflow.enabled ? '●' : '○';
 		status.title = workflow.enabled ? 'Enabled' : 'Disabled';
 
@@ -419,6 +427,7 @@ export class CognitiveWorkflowsView extends ViewPane {
 			item.classList.add('running');
 
 			const statusIcon = append(item, $('.zonecog-execution-status'));
+			// allow-any-unicode-next-line
 			statusIcon.textContent = '◐';
 			statusIcon.title = 'Running';
 
@@ -436,6 +445,7 @@ export class CognitiveWorkflowsView extends ViewPane {
 			item.classList.add(exec.status);
 
 			const statusIcon = append(item, $('.zonecog-execution-status'));
+			// allow-any-unicode-next-line
 			statusIcon.textContent = exec.status === 'completed' ? '✓' : exec.status === 'failed' ? '✗' : '○';
 
 			const info = append(item, $('.zonecog-execution-info'));

@@ -238,8 +238,11 @@ export class MembraneHealthView extends ViewPane {
 
 		const triads: MembraneTriad[] = ['cerebral', 'somatic', 'autonomic'];
 		const icons: Record<MembraneTriad, string> = {
+			// allow-any-unicode-next-line
 			cerebral: '🧠',
+			// allow-any-unicode-next-line
 			somatic: '💪',
+			// allow-any-unicode-next-line
 			autonomic: '⚡',
 		};
 

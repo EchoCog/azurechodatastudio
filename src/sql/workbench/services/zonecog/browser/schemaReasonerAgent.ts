@@ -470,7 +470,7 @@ Return a structured analysis.`;
 						const targetExists = elements.some(e =>
 							e.type === 'table' &&
 							(e.name.toLowerCase() === targetTable.toLowerCase() ||
-							 e.name.toLowerCase() === targetTable.toLowerCase() + 's'));
+								e.name.toLowerCase() === targetTable.toLowerCase() + 's'));
 
 						if (targetExists && !relationships.some(r =>
 							r.sourceTable === element.name && r.foreignKeyColumns.includes(col.name))) {
