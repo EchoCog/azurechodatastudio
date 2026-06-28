@@ -110,7 +110,11 @@ export class SchemaReasonerAgent extends Disposable implements ISchemaReasonerAg
 				case 'analyze_schema':
 					return await this.analyzeSchema(action.target);
 				case 'discover_relationships':
-					return await this.discoverRelationships(action.parameters?.tables ?? []);
+					return await this.discoverRelationships(
+						Array.isArray(action.parameters?.tables)
+							? action.parameters.tables.filter((table): table is string => typeof table === 'string')
+							: []
+					);
 				case 'infer_domain':
 					return await this.inferDomainModel(action.target);
 				case 'suggest_improvements':
@@ -118,7 +122,10 @@ export class SchemaReasonerAgent extends Disposable implements ISchemaReasonerAg
 				case 'generate_docs':
 					return await this.generateDocumentation(action.target);
 				case 'compare_schemas':
-					return await this.compareSchemas(action.target, action.parameters?.schema2);
+					return await this.compareSchemas(
+						action.target,
+						typeof action.parameters?.schema2 === 'string' ? action.parameters.schema2 : ''
+					);
 				default:
 					throw new Error(`Unknown action: ${action.action}`);
 			}
@@ -195,7 +202,7 @@ Identify:
 
 Return a structured analysis.`;
 
-		const llmResponse = await this.llmService.complete(prompt);
+		await this.llmService.complete(prompt);
 
 		// Parse entities from schema
 		const entities = this._extractEntities(schemaDefinition);
@@ -407,8 +414,6 @@ Return a structured analysis.`;
 	}
 
 	private _inferTablePurpose(tableName: string, columns: ColumnAnalysis[]): string {
-		const nameLower = tableName.toLowerCase();
-
 		if (/users?$/i.test(tableName)) return 'Stores user account information';
 		if (/products?$/i.test(tableName)) return 'Product catalog';
 		if (/orders?$/i.test(tableName)) return 'Order records';

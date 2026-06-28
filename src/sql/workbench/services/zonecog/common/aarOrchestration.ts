@@ -109,6 +109,49 @@ export type AARRelationType =
 	| 'inhibits'        // Source suppresses / reduces target's activation
 	| 'excites';        // Source boosts / amplifies target's activation
 
+/**
+ * Backward-compatible cognitive agent status values used by the higher-level
+ * Zone-Cog agents built on top of the AAR layer.
+ */
+export type AgentStatus = 'idle' | 'active' | 'error' | 'disabled';
+
+/**
+ * Backward-compatible capability contract for cognitive agents.
+ */
+export interface AgentCapabilities {
+	canPerceive: boolean;
+	canReason: boolean;
+	canAct: boolean;
+	supportedActions: string[];
+	maxConcurrentTasks: number;
+}
+
+/**
+ * Backward-compatible action envelope dispatched to cognitive agents.
+ */
+export interface AgentAction {
+	action: string;
+	target: string;
+	parameters?: Record<string, unknown>;
+	confidence: number;
+}
+
+/**
+ * Shared cognitive agent contract used by the specialized Zone-Cog agents.
+ */
+export interface CognitiveAgent {
+	readonly id: string;
+	readonly name: string;
+	readonly description: string;
+	readonly onDidChangeStatus: Event<AgentStatus>;
+	getCapabilities(): AgentCapabilities;
+	getStatus(): AgentStatus;
+	getCurrentLoad(): number;
+	perceive(input: unknown): Promise<void>;
+	decide(context: unknown): Promise<AgentAction | null>;
+	execute(action: AgentAction): Promise<unknown>;
+}
+
 // ---------------------------------------------------------------------------
 // Task / orchestration types
 // ---------------------------------------------------------------------------
@@ -259,6 +302,11 @@ export interface IAAROrchestrationService {
 	 * If no path is found, the default perceive→attend→think→act chain is used.
 	 */
 	orchestrate(task: Omit<AARTask, 'id' | 'createdAt'>): Promise<AARTaskResult>;
+
+	/**
+	 * Dispatch a direct action to a registered agent by ID.
+	 */
+	dispatchAction(agentId: string, action: AgentAction): Promise<unknown>;
 
 	/**
 	 * Get currently active (in-flight) tasks.

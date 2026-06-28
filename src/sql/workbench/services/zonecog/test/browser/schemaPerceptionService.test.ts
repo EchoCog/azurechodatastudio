@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
-import { ISchemaPerceptionService, ObservedQuery, QueryOperationType } from 'sql/workbench/services/zonecog/common/schemaPerception';
+import { ISchemaPerceptionService, ObservedQuery } from 'sql/workbench/services/zonecog/common/schemaPerception';
 import { SchemaPerceptionService } from 'sql/workbench/services/zonecog/browser/schemaPerceptionService';
 import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';

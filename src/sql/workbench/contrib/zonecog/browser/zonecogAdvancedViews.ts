@@ -17,7 +17,7 @@ import { IContextMenuService } from 'vs/platform/contextview/browser/contextView
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 
-import { IDTESNService, DTESNState } from 'sql/workbench/services/zonecog/common/dtesn';
+import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
 import { IAAROrchestrationService } from 'sql/workbench/services/zonecog/common/aarOrchestration';
 import { ICognitiveWorkflowAutomationService, RegisteredWorkflow } from 'sql/workbench/services/zonecog/common/cognitiveWorkflowAutomation';
 

@@ -1,0 +1,12 @@
+"use strict";
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.IDataPatternAgent = exports.IPerformanceAdvisorAgent = exports.ISchemaReasonerAgent = exports.ISQLAnalyzerAgent = void 0;
+const instantiation_1 = require("vs/platform/instantiation/common/instantiation");
+exports.ISQLAnalyzerAgent = (0, instantiation_1.createDecorator)('sqlAnalyzerAgent');
+exports.ISchemaReasonerAgent = (0, instantiation_1.createDecorator)('schemaReasonerAgent');
+exports.IPerformanceAdvisorAgent = (0, instantiation_1.createDecorator)('performanceAdvisorAgent');
+exports.IDataPatternAgent = (0, instantiation_1.createDecorator)('dataPatternAgent');

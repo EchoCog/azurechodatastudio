@@ -300,6 +300,16 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 		return Array.from(this._relations.values()).filter(r => r.targetAgentId === agentId && r.active);
 	}
 
+	async dispatchAction(agentId: string, action: import('sql/workbench/services/zonecog/common/aarOrchestration').AgentAction): Promise<unknown> {
+		const handler = this._agentHandlers.get(agentId);
+		if (!handler) {
+			throw new Error(`AAROrchestrationService: unknown agent '${agentId}'`);
+		}
+
+		this.membraneService.recordActivity('somatic');
+		return handler(action.parameters ?? action.target, new Map<string, unknown>());
+	}
+
 	// -------------------------------------------------------------------------
 	// Orchestration
 	// -------------------------------------------------------------------------

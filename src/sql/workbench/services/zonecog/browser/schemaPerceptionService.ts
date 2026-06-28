@@ -77,7 +77,6 @@ export class SchemaPerceptionService extends Disposable implements ISchemaPercep
 		}
 
 		const elements: PerceivedSchemaElement[] = [];
-		const elementMap = this._elements.get(connectionUri)!;
 
 		try {
 			// In a full implementation, this would query the actual database schema
@@ -95,7 +94,7 @@ export class SchemaPerceptionService extends Disposable implements ISchemaPercep
 
 			// Feed perception to embodied cognition layer
 			this.embodiedService.perceive(
-				'database',
+				'schema',
 				`Schema perception completed for ${connectionUri}`,
 				JSON.stringify({ connectionUri, elementCount: elements.length }),
 				0.6

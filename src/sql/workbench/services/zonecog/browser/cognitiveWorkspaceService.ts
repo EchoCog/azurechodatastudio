@@ -69,6 +69,7 @@ export class CognitiveWorkspaceService extends Disposable implements ICognitiveW
 
 	private readonly _onDidChangeWorkingMemory = this._register(new Emitter<WorkingMemoryItem[]>());
 	readonly onDidChangeWorkingMemory: Event<WorkingMemoryItem[]> = this._onDidChangeWorkingMemory.event;
+	readonly onDidChangeWorkspace: Event<WorkingMemoryItem[]> = this._onDidChangeWorkingMemory.event;
 
 	private readonly _onDidRecordEpisode = this._register(new Emitter<CognitiveEpisode>());
 	readonly onDidRecordEpisode: Event<CognitiveEpisode> = this._onDidRecordEpisode.event;
@@ -93,9 +94,12 @@ export class CognitiveWorkspaceService extends Disposable implements ICognitiveW
 
 		const item: WorkingMemoryItem = {
 			id,
+			type: category,
 			category,
 			content,
+			activation: clampedRelevance,
 			relevance: clampedRelevance,
+			timestamp: now,
 			addedAt: now,
 			lastAccessed: now,
 		};
@@ -138,6 +142,7 @@ export class CognitiveWorkspaceService extends Disposable implements ICognitiveW
 		item.lastAccessed = Date.now();
 		// Boost relevance slightly on access
 		item.relevance = Math.min(1, item.relevance + 0.1);
+		item.activation = item.relevance;
 		this._fireWorkingMemoryChange();
 		return true;
 	}
@@ -159,6 +164,7 @@ export class CognitiveWorkspaceService extends Disposable implements ICognitiveW
 		const toEvict: string[] = [];
 		for (const [id, item] of this._workingMemory) {
 			item.relevance *= RELEVANCE_DECAY_FACTOR;
+			item.activation = item.relevance;
 			if (item.relevance < RELEVANCE_EVICTION_THRESHOLD) {
 				toEvict.push(id);
 			}

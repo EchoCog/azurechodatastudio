@@ -4,8 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
-import { Event } from 'vs/base/common/event';
-import { CognitiveAgentConfig, CognitiveAgent, AgentCapabilities, AgentAction } from 'sql/workbench/services/zonecog/common/aarOrchestration';
+import { CognitiveAgent } from 'sql/workbench/services/zonecog/common/aarOrchestration';
 
 /**
  * SQL Analysis result containing parsed query information.

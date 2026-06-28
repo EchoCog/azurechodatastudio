@@ -112,7 +112,10 @@ export class SQLAnalyzerAgent extends Disposable implements ISQLAnalyzerAgent {
 				case 'explain_plan':
 					return await this.explainPlan(action.target);
 				case 'nl_to_sql':
-					return await this.naturalLanguageToSQL(action.target, action.parameters?.schemaContext);
+					return await this.naturalLanguageToSQL(
+						action.target,
+						typeof action.parameters?.schemaContext === 'string' ? action.parameters.schemaContext : undefined
+					);
 				case 'sql_to_nl':
 					return await this.sqlToNaturalLanguage(action.target);
 				default:
@@ -344,14 +347,9 @@ Provide a clear, concise explanation that a non-technical person could understan
 
 	private _extractSubqueries(query: string): any[] {
 		const subqueries: any[] = [];
-		// Simple subquery detection
-		const subqueryPattern = /\(\s*SELECT\s+/gi;
-		let match;
-		let depth = 0;
 
 		for (let i = 0; i < query.length; i++) {
 			if (query[i] === '(' && query.substring(i).match(/^\(\s*SELECT/i)) {
-				depth++;
 				// Find matching closing paren
 				let parenCount = 1;
 				let j = i + 1;
