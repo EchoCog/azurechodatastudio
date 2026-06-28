@@ -148,6 +148,7 @@ llmProviderService.setActiveProvider('my-llm');
 
 Available through Command Palette (`Ctrl+Shift+P`):
 
+### Core Cognitive Commands
 - `Zone-Cog: Test Cognitive Processing` — Interactive query processing with full protocol
 - `Zone-Cog: Toggle Thinking Mode` — Enable/disable comprehensive thinking
 - `Zone-Cog: Show Status` — Display cognitive state, membrane health, hypergraph stats
@@ -163,6 +164,41 @@ Available through Command Palette (`Ctrl+Shift+P`):
 - `Zone-Cog: Toggle Cognitive Loop` — Start/stop the autonomous cognitive cycle
 - `Zone-Cog: Show Cognitive Loop Status` — Loop iterations and performance
 
+### Phase 4 - DTESN, AAR, Persistence
+- `Zone-Cog: Run DTESN Forward Pass` — Test the Deep Tree Echo State Network
+- `Zone-Cog: Show DTESN Network Status` — View neural network diagnostics
+- `Zone-Cog: AAR: Orchestrate Cognitive Task` — Route tasks through the agent network
+- `Zone-Cog: Show AAR Arena Status` — View agents and orchestration stats
+- `Zone-Cog: Save Hypergraph to IndexedDB` — Persist knowledge graph
+- `Zone-Cog: Load Hypergraph from IndexedDB` — Restore knowledge graph
+- `Zone-Cog: Show Hypergraph Persistence Stats` — View storage statistics
+
+### Phase 5 - Schema Perception, Aphrodite Engine
+- `Zone-Cog: Perceive Database Schema` — Discover schema elements as sensory inputs
+- `Zone-Cog: Show Schema Perception Stats` — View query statistics and patterns
+- `Zone-Cog: Register Schema in Hypergraph` — Create knowledge nodes from schema
+- `Zone-Cog: Connect to Aphrodite Engine` — Connect to local LLM inference
+- `Zone-Cog: Show Aphrodite Engine Status` — View model and performance stats
+- `Zone-Cog: Run Aphrodite Completion` — Test LLM inference
+
+### Phase 6 - Cognitive Workflow Automation
+- `Zone-Cog: List Cognitive Workflows` — View all registered workflows
+- `Zone-Cog: Execute Cognitive Workflow` — Run a workflow manually
+- `Zone-Cog: Show Workflow Execution History` — View recent executions
+- `Zone-Cog: Toggle Workflow Enabled` — Enable/disable a workflow
+
+## Panel Views
+
+The Zone-Cog panel (View > Zone-Cog) includes seven dashboard views:
+
+1. **Cognitive State** — Overall system status, thinking mode, node count
+2. **Membrane Health** — Cerebral/Somatic/Autonomic triad health
+3. **ECAN Attention** — Attention values and spreading activation
+4. **Working Memory** — Current working memory items
+5. **DTESN Network** — Neural network layers and spectral radii
+6. **AAR Orchestration** — Agent network and task orchestration
+7. **Workflows** — Registered workflows and execution history
+
 ## File Structure
 
 ```
@@ -174,7 +210,14 @@ services/zonecog/
 │   ├── embodiedCognition.ts       # IEmbodiedCognitionService interface and types
 │   ├── cognitiveWorkspace.ts      # ICognitiveWorkspaceService interface and types
 │   ├── ecanAttention.ts           # IECANAttentionService interface and types
-│   └── cognitiveLoop.ts           # ICognitiveLoopService interface and types
+│   ├── cognitiveLoop.ts           # ICognitiveLoopService interface and types
+│   ├── dtesn.ts                   # IDTESNService interface and types
+│   ├── aarOrchestration.ts        # IAAROrchestrationService interface and types
+│   ├── hypergraphPersistence.ts   # IHypergraphPersistenceService interface
+│   ├── schemaPerception.ts        # ISchemaPerceptionService interface
+│   ├── aphrodite.ts               # IAphroditeService interface (LLM engine)
+│   ├── cognitiveAgents.ts         # Cognitive agent interfaces
+│   └── cognitiveWorkflowAutomation.ts # Workflow DSL and automation
 ├── browser/
 │   ├── zonecogService.ts          # ZoneCogService implementation
 │   ├── hypergraphStore.ts         # HypergraphStore implementation
@@ -184,10 +227,20 @@ services/zonecog/
 │   ├── cognitiveWorkspaceService.ts # CognitiveWorkspaceService implementation
 │   ├── ecanAttentionService.ts    # ECANAttentionService implementation
 │   ├── cognitiveLoopService.ts    # CognitiveLoopService implementation
+│   ├── dtesnService.ts            # DTESNService (neural reservoir)
+│   ├── aarOrchestrationService.ts # AAROrchestrationService (agents)
+│   ├── hypergraphPersistenceService.ts # IndexedDB persistence
+│   ├── schemaPerceptionService.ts # Schema perception
+│   ├── aphroditeService.ts        # Aphrodite LLM engine
+│   ├── sqlAnalyzerAgent.ts        # SQL analysis agent
+│   ├── schemaReasonerAgent.ts     # Schema reasoning agent
+│   ├── performanceAdvisorAgent.ts # Performance advisor agent
+│   ├── dataPatternAgent.ts        # Data pattern agent
+│   ├── cognitiveWorkflowAutomationService.ts # Workflow engine
 │   └── zonecog.contribution.ts    # DI service registration
 ├── test/
 │   └── browser/
-│       └── zonecogService.test.ts # Tests for all eight services
+│       └── *.test.ts              # Tests for all services
 └── README.md                      # This file
 ```
 
