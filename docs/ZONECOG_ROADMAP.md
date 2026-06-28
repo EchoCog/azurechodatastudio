@@ -11,6 +11,7 @@
 | 1 | Foundation | Complete (ECH-2) | Basic service scaffold, bridge, extension |
 | 2 | Cognitive Core | **Complete** (ECH-1/5/61) | Full protocol, hypergraph store, membrane architecture |
 | 2.5 | Embodied Workbench | **Complete** (ECH-62) | Sensorimotor grounding, workspace memory, workbench actions |
+| 2.6 | Test Suite | **Complete** (ECH-27) | Comprehensive tests for all agents and services |
 | 3 | Intelligence Layer | **In Progress** (ECH-61) | AI/LLM integration, pattern mining, reasoning |
 | 4 | Workbench UX | Planned | Visual cognitive maps, interactive exploration |
 | 5 | Post-ADS Migration | Planned | VS Code standalone, portable cognitive workbench |
@@ -120,6 +121,29 @@
 
 ---
 
+## Phase 2.6: Comprehensive Test Suite (Complete)
+
+**Goal**: Complete unit tests for all cognitive agents and services.
+
+### 2.6.1 Cognitive Agent Tests
+- [x] SQLAnalyzerAgent unit tests (query analysis, performance issues, indexes)
+- [x] SchemaReasonerAgent unit tests (schema analysis, relationships, domain inference)
+- [x] PerformanceAdvisorAgent unit tests (performance analysis, anti-patterns, reports)
+- [x] DataPatternAgent unit tests (patterns, anomalies, data quality)
+
+### 2.6.2 Service Tests
+- [x] CognitiveWorkflowAutomationService unit tests (workflow DSL, execution, events)
+- [x] HypergraphPersistenceService unit tests (save, load, snapshots)
+- [x] AAROrchestrationService unit tests (agents, arena, relations)
+- [x] DTESNService unit tests (reservoir, temporal processing)
+- [x] AphroditeService unit tests (LLM integration, streaming)
+- [x] SchemaPerceptionService unit tests (database integration)
+- [x] CognitiveLoopService unit tests (autonomous cycle)
+- [x] ECANAttentionService unit tests (attention allocation)
+- [x] LLMProviderService unit tests (provider management)
+
+---
+
 ## Phase 3: Intelligence Layer (Planned)
 
 **Goal**: Connect cognitive processing to real AI/reasoning capabilities.
@@ -130,6 +154,8 @@
 - [x] System prompt using Zone-Cog protocol for LLM-enhanced responses
 - [x] Streaming thinking phase events (`onDidCompleteThinkingPhase`)
 - [x] Context window management with hypergraph-based working memory
+- [x] Circuit breaker pattern for resilient LLM calls (auto-recovery, half-open state)
+- [x] Exponential backoff retry for transient failures
 - [ ] Streaming response generation with thinking tokens (real-time LLM output)
 
 ### 3.2 AtomSpace Reasoning

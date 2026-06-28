@@ -6,18 +6,29 @@
 import * as assert from 'assert';
 import { ILLMProviderService, LLMProviderConfig, LLMCompletionRequest } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { LLMProviderService } from 'sql/workbench/services/zonecog/browser/llmProviderService';
+import { ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 
 suite('LLM Provider Service Tests', () => {
 
 	let instantiationService: TestInstantiationService;
-	let llmService: ILLMProviderService;
+	let llmService: ILLMProviderService & { getCircuitBreakerStatus(id: string): any; resetCircuitBreaker(id: string): void };
+	let membraneService: CognitiveMembraneService;
 
 	setup(() => {
 		instantiationService = new TestInstantiationService();
 		instantiationService.stub(ILogService, new NullLogService());
-		llmService = instantiationService.createInstance(LLMProviderService);
+
+		membraneService = instantiationService.createInstance(CognitiveMembraneService);
+		instantiationService.stub(ICognitiveMembraneService, membraneService);
+
+		llmService = instantiationService.createInstance(LLMProviderService) as any;
+	});
+
+	teardown(() => {
+		membraneService.dispose();
 	});
 
 	// --- Initial State Tests ---
@@ -373,5 +384,54 @@ suite('LLM Provider Service Tests', () => {
 
 		const response = await llmService.complete(request);
 		assert.ok(response.content);
+	});
+
+	// --- Circuit Breaker Tests ---
+
+	test('should initialize with circuit closed', () => {
+		const config: LLMProviderConfig = {
+			id: 'circuit-test-provider',
+			displayName: 'Circuit Test',
+			baseUrl: 'http://localhost:9999',
+			model: 'test',
+			maxContextLength: 1024,
+		};
+		llmService.registerProvider(config);
+
+		const status = llmService.getCircuitBreakerStatus('circuit-test-provider');
+		assert.strictEqual(status.isOpen, false);
+		assert.strictEqual(status.failureCount, 0);
+	});
+
+	test('should be able to reset circuit breaker', () => {
+		const config: LLMProviderConfig = {
+			id: 'reset-test-provider',
+			displayName: 'Reset Test',
+			baseUrl: 'http://localhost:9999',
+			model: 'test',
+			maxContextLength: 1024,
+		};
+		llmService.registerProvider(config);
+
+		// Reset should not throw
+		llmService.resetCircuitBreaker('reset-test-provider');
+
+		const status = llmService.getCircuitBreakerStatus('reset-test-provider');
+		assert.strictEqual(status.isOpen, false);
+		assert.strictEqual(status.failureCount, 0);
+	});
+
+	test('should record membrane activity during completion', async () => {
+		const initialCerebral = membraneService.getActivity('cerebral');
+
+		const request: LLMCompletionRequest = {
+			systemPrompt: 'You are a helpful assistant.',
+			userMessage: 'Test membrane activity',
+		};
+
+		await llmService.complete(request);
+
+		const afterCerebral = membraneService.getActivity('cerebral');
+		assert.ok(afterCerebral > initialCerebral);
 	});
 });
