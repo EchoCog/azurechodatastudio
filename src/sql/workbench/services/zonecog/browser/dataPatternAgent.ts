@@ -258,7 +258,8 @@ export class DataPatternAgent extends Disposable implements IDataPatternAgent {
 					anomalies.push({
 						type: 'outlier',
 						severity: outliers.indices.length > values.length * 0.05 ? 'high' : 'medium',
-						description: `Column '${column}' has ${outliers.indices.length} outliers (outside ${outliers.threshold.toFixed(2)}σ)`,
+						// allow-any-unicode-next-line
+					description: `Column '${column}' has ${outliers.indices.length} outliers (outside ${outliers.threshold.toFixed(2)}σ)`,
 						affectedRows: outliers.indices.slice(0, 100),
 					});
 				}

@@ -248,12 +248,18 @@ export class WorkingMemoryView extends ViewPane {
 
 	private _getTypeIcon(type: string): string {
 		switch (type) {
+			// allow-any-unicode-next-line
 			case 'percept': return '👁️';
+			// allow-any-unicode-next-line
 			case 'thought': return '💭';
 			case 'goal': return '🎯';
+			// allow-any-unicode-next-line
 			case 'action': return '⚡';
+			// allow-any-unicode-next-line
 			case 'query': return '🔍';
+			// allow-any-unicode-next-line
 			case 'result': return '📊';
+			// allow-any-unicode-next-line
 			default: return '📝';
 		}
 	}
