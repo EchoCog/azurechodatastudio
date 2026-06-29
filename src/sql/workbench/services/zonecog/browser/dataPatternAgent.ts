@@ -124,6 +124,20 @@ export class DataPatternAgent extends Disposable implements IDataPatternAgent {
 	}
 
 	async detectPatterns(data: any[]): Promise<DataPattern[]> {
+		this._status = 'active';
+		this._currentLoad += 0.5;
+		this._onDidChangeStatus.fire(this._status);
+
+		try {
+			return await this._detectPatternsInternal(data);
+		} finally {
+			this._currentLoad = Math.max(0, this._currentLoad - 0.5);
+			this._status = this._currentLoad > 0 ? 'active' : 'idle';
+			this._onDidChangeStatus.fire(this._status);
+		}
+	}
+
+	private async _detectPatternsInternal(data: any[]): Promise<DataPattern[]> {
 		this.membraneService.recordActivity('cerebral');
 		this.logService.info(`[DataPatternAgent] Detecting patterns in ${data.length} rows...`);
 
@@ -239,7 +253,7 @@ export class DataPatternAgent extends Disposable implements IDataPatternAgent {
 				.map((v, i) => v === null || v === undefined ? i : -1)
 				.filter(i => i >= 0);
 
-			if (nullIndices.length > 0 && nullIndices.length < values.length * 0.5) {
+			if (nullIndices.length > 0 && nullIndices.length < values.length) {
 				anomalies.push({
 					type: 'missing',
 					severity: nullIndices.length > values.length * 0.1 ? 'high' : 'low',
@@ -258,8 +272,7 @@ export class DataPatternAgent extends Disposable implements IDataPatternAgent {
 					anomalies.push({
 						type: 'outlier',
 						severity: outliers.indices.length > values.length * 0.05 ? 'high' : 'medium',
-						// allow-any-unicode-next-line
-					description: `Column '${column}' has ${outliers.indices.length} outliers (outside ${outliers.threshold.toFixed(2)}σ)`,
+						description: `Column '${column}' has ${outliers.indices.length} outliers (IQR method, fence multiplier: ${outliers.threshold.toFixed(2)})`,
 						affectedRows: outliers.indices.slice(0, 100),
 					});
 				}
@@ -577,22 +590,36 @@ export class DataPatternAgent extends Disposable implements IDataPatternAgent {
 	}
 
 	private _findOutliers(numValues: number[], allValues: any[]): { indices: number[]; threshold: number } {
-		const mean = numValues.reduce((a, b) => a + b, 0) / numValues.length;
-		const stdDev = this._calculateStdDev(numValues);
-		const threshold = 3; // 3 standard deviations
+		if (numValues.length < 4) {
+			// Not enough data for meaningful outlier detection
+			return { indices: [], threshold: 1.5 };
+		}
+
+		const sorted = [...numValues].sort((a, b) => a - b);
+		const q1 = sorted[Math.floor(sorted.length * 0.25)];
+		const q3 = sorted[Math.floor(sorted.length * 0.75)];
+		const iqr = q3 - q1;
+
+		// If IQR is 0 (all values equal), no outliers possible
+		if (iqr === 0) {
+			return { indices: [], threshold: 1.5 };
+		}
+
+		const lowerFence = q1 - 1.5 * iqr;
+		const upperFence = q3 + 1.5 * iqr;
 
 		const indices: number[] = [];
 		for (let i = 0; i < allValues.length; i++) {
 			const value = allValues[i];
 			if (value !== null && value !== undefined) {
-				const z = Math.abs(Number(value) - mean) / stdDev;
-				if (z > threshold) {
+				const num = Number(value);
+				if (num < lowerFence || num > upperFence) {
 					indices.push(i);
 				}
 			}
 		}
 
-		return { indices, threshold };
+		return { indices, threshold: 1.5 };
 	}
 
 	private _findInconsistencies(strValues: string[], allValues: any[]): string[] {

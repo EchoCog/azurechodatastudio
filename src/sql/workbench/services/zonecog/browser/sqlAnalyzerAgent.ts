@@ -129,6 +129,20 @@ export class SQLAnalyzerAgent extends Disposable implements ISQLAnalyzerAgent {
 	}
 
 	async analyzeQuery(query: string): Promise<SQLAnalysisResult> {
+		this._status = 'active';
+		this._currentLoad += 0.33;
+		this._onDidChangeStatus.fire(this._status);
+
+		try {
+			return await this._analyzeQueryInternal(query);
+		} finally {
+			this._currentLoad = Math.max(0, this._currentLoad - 0.33);
+			this._status = this._currentLoad > 0 ? 'active' : 'idle';
+			this._onDidChangeStatus.fire(this._status);
+		}
+	}
+
+	private async _analyzeQueryInternal(query: string): Promise<SQLAnalysisResult> {
 		this.membraneService.recordActivity('cerebral');
 		this.logService.info(`[SQLAnalyzerAgent] Analyzing query: ${query.substring(0, 100)}...`);
 
