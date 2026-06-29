@@ -45,6 +45,17 @@ export interface ECANSnapshot {
 }
 
 /**
+ * Backward-compatible ECAN state shape used by existing UI components.
+ */
+export interface ECANState {
+	totalNodes: number;
+	importantCount: number;
+	totalAttention: number;
+	rentCycles: number;
+	importantThreshold: number;
+}
+
+/**
  * Fired when an ECAN spreading activation cycle completes.
  */
 export interface ECANSpreadEvent {
@@ -81,6 +92,12 @@ export interface IECANAttentionService {
 	/** Fired after each spreading activation cycle. */
 	readonly onDidSpread: Event<ECANSpreadEvent>;
 
+	/** Backward-compatible event fired whenever tracked attention values change. */
+	readonly onDidChangeAttention: Event<void>;
+
+	/** Backward-compatible alias for onDidSpread. */
+	readonly onDidSpreadingActivation: Event<ECANSpreadEvent>;
+
 	/** Fired when the attentional focus boundary changes. */
 	readonly onDidChangeFocusBoundary: Event<number>;
 
@@ -108,6 +125,11 @@ export interface IECANAttentionService {
 	 */
 	getAttentionalFocus(): string[];
 
+	/**
+	 * Get the top N nodes sorted by attention value.
+	 */
+	getTopByAttention(n: number): Array<{ nodeId: string; attentionValue: number }>;
+
 	// -- Spreading activation ------------------------------------------------
 
 	/**
@@ -133,6 +155,11 @@ export interface IECANAttentionService {
 	 * Get a diagnostic snapshot of the ECAN state.
 	 */
 	getSnapshot(): ECANSnapshot;
+
+	/**
+	 * Backward-compatible state summary used by existing UI components.
+	 */
+	getState(): ECANState;
 
 	/**
 	 * Reset all attention values and cycle counters.

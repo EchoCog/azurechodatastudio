@@ -13,6 +13,9 @@ import { AAROrchestrationService } from 'sql/workbench/services/zonecog/browser/
 import { EmbodiedCognitionService } from 'sql/workbench/services/zonecog/browser/embodiedCognitionService';
 import { ECANAttentionService } from 'sql/workbench/services/zonecog/browser/ecanAttentionService';
 import { LLMProviderService } from 'sql/workbench/services/zonecog/browser/llmProviderService';
+import { ZoneCogService } from 'sql/workbench/services/zonecog/browser/zonecogService';
+import { CognitiveWorkspaceService } from 'sql/workbench/services/zonecog/browser/cognitiveWorkspaceService';
+import { CognitiveLoopService } from 'sql/workbench/services/zonecog/browser/cognitiveLoopService';
 
 suite('CognitiveWorkflowAutomationService', () => {
 	let service: CognitiveWorkflowAutomationService;
@@ -23,6 +26,9 @@ suite('CognitiveWorkflowAutomationService', () => {
 	let embodiedService: EmbodiedCognitionService;
 	let ecanService: ECANAttentionService;
 	let llmService: LLMProviderService;
+	let zonecogService: ZoneCogService;
+	let workspaceService: CognitiveWorkspaceService;
+	let loopService: CognitiveLoopService;
 
 	// Sample workflow definitions
 	const simpleWorkflow: CognitiveWorkflowDefinition = {
@@ -112,15 +118,20 @@ suite('CognitiveWorkflowAutomationService', () => {
 		membraneService = new CognitiveMembraneService(logService);
 		hypergraphStore = new HypergraphStore(logService);
 		ecanService = new ECANAttentionService(logService, hypergraphStore, membraneService);
-		embodiedService = new EmbodiedCognitionService(logService, hypergraphStore, membraneService, ecanService);
+		embodiedService = new EmbodiedCognitionService(logService, hypergraphStore, membraneService);
 		llmService = new LLMProviderService(logService, membraneService);
+		zonecogService = new ZoneCogService(logService, hypergraphStore, membraneService, llmService);
+		workspaceService = new CognitiveWorkspaceService(logService, hypergraphStore);
+		loopService = new CognitiveLoopService(logService, hypergraphStore, membraneService, ecanService, embodiedService, workspaceService);
 		aarService = new AAROrchestrationService(
 			logService,
 			hypergraphStore,
 			membraneService,
 			embodiedService,
 			ecanService,
-			llmService
+			zonecogService,
+			workspaceService,
+			loopService
 		);
 		service = new CognitiveWorkflowAutomationService(
 			logService,
@@ -135,6 +146,9 @@ suite('CognitiveWorkflowAutomationService', () => {
 		aarService.dispose();
 		embodiedService.dispose();
 		ecanService.dispose();
+		loopService.dispose();
+		workspaceService.dispose();
+		zonecogService.dispose();
 		llmService.dispose();
 		membraneService.dispose();
 		hypergraphStore.dispose();

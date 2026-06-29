@@ -45,10 +45,23 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 
 	// -- Node CRUD -----------------------------------------------------------
 
-	addNode(node: HypergraphNode): void {
-		this._nodes.set(node.id, HypergraphStore._cloneNode(node));
-		this._onDidChangeNode.fire(node);
-		this.logService.trace(`HypergraphStore: added node ${node.id} (${node.node_type})`);
+	addNode(node: HypergraphNode): void;
+	addNode(node: Omit<HypergraphNode, 'id'>): HypergraphNode;
+	addNode(node: HypergraphNode | Omit<HypergraphNode, 'id'>): HypergraphNode | void {
+		const fullNode: HypergraphNode = 'id' in node
+			? node
+			: {
+				...node,
+				id: `hypernode_${Date.now()}_${this._nodes.size + 1}`,
+			};
+
+		this._nodes.set(fullNode.id, HypergraphStore._cloneNode(fullNode));
+		this._onDidChangeNode.fire(fullNode);
+		this.logService.trace(`HypergraphStore: added node ${fullNode.id} (${fullNode.node_type})`);
+
+		if (!('id' in node)) {
+			return HypergraphStore._cloneNode(fullNode);
+		}
 	}
 
 	getNode(id: string): HypergraphNode | undefined {
@@ -84,6 +97,10 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 			}
 		}
 		return result;
+	}
+
+	findNodesByType(nodeType: string): HypergraphNode[] {
+		return this.getNodesByType(nodeType);
 	}
 
 	getAllNodes(): HypergraphNode[] {

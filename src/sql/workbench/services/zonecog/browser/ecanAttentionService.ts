@@ -6,6 +6,7 @@
 import {
 	IECANAttentionService,
 	AttentionValue,
+	ECANState,
 	ECANSnapshot,
 	ECANSpreadEvent
 } from 'sql/workbench/services/zonecog/common/ecanAttention';
@@ -58,6 +59,10 @@ export class ECANAttentionService extends Disposable implements IECANAttentionSe
 	private readonly _onDidSpread = this._register(new Emitter<ECANSpreadEvent>());
 	readonly onDidSpread: Event<ECANSpreadEvent> = this._onDidSpread.event;
 
+	private readonly _onDidChangeAttention = this._register(new Emitter<void>());
+	readonly onDidChangeAttention: Event<void> = this._onDidChangeAttention.event;
+	readonly onDidSpreadingActivation: Event<ECANSpreadEvent> = this._onDidSpread.event;
+
 	private readonly _onDidChangeFocusBoundary = this._register(new Emitter<number>());
 	readonly onDidChangeFocusBoundary: Event<number> = this._onDidChangeFocusBoundary.event;
 
@@ -77,6 +82,7 @@ export class ECANAttentionService extends Disposable implements IECANAttentionSe
 			sti: this._clampSTI(av.sti),
 			lti: this._clampLTI(av.lti),
 		});
+		this._onDidChangeAttention.fire();
 	}
 
 	getAttentionValue(nodeId: string): AttentionValue {
@@ -99,6 +105,13 @@ export class ECANAttentionService extends Disposable implements IECANAttentionSe
 			}
 		}
 		return result;
+	}
+
+	getTopByAttention(n: number): Array<{ nodeId: string; attentionValue: number }> {
+		return Array.from(this._attentionValues.entries())
+			.sort((a, b) => b[1].sti - a[1].sti)
+			.slice(0, n)
+			.map(([nodeId, av]) => ({ nodeId, attentionValue: av.sti }));
 	}
 
 	// -- Spreading activation ------------------------------------------------
@@ -182,6 +195,7 @@ export class ECANAttentionService extends Disposable implements IECANAttentionSe
 
 		const event: ECANSpreadEvent = { boosted, decayed, evicted, durationMs };
 		this._onDidSpread.fire(event);
+		this._onDidChangeAttention.fire();
 
 		this.logService.trace(
 			`ECANAttentionService: spreading cycle ${this._spreadingCycles} - ` +
@@ -215,11 +229,27 @@ export class ECANAttentionService extends Disposable implements IECANAttentionSe
 		};
 	}
 
+	getState(): ECANState {
+		let totalAttention = 0;
+		for (const av of this._attentionValues.values()) {
+			totalAttention += av.sti;
+		}
+
+		return {
+			totalNodes: this._attentionValues.size,
+			importantCount: this.getAttentionalFocus().length,
+			totalAttention,
+			rentCycles: this._spreadingCycles,
+			importantThreshold: this._focusBoundary,
+		};
+	}
+
 	reset(): void {
 		this._attentionValues.clear();
 		this._focusBoundary = DEFAULT_FOCUS_BOUNDARY;
 		this._spreadingCycles = 0;
 		this._totalRentCollected = 0;
+		this._onDidChangeAttention.fire();
 		this.logService.info('ECANAttentionService: reset all attention values and counters');
 	}
 

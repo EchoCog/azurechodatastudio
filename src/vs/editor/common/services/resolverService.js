@@ -1,0 +1,14 @@
+"use strict";
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ITextModelService = void 0;
+exports.isResolvedTextEditorModel = isResolvedTextEditorModel;
+const instantiation_1 = require("vs/platform/instantiation/common/instantiation");
+exports.ITextModelService = (0, instantiation_1.createDecorator)('textModelService');
+function isResolvedTextEditorModel(model) {
+    const candidate = model;
+    return !!candidate.textEditorModel;
+}

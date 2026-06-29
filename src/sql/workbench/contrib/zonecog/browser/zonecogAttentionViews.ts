@@ -17,7 +17,7 @@ import { IContextMenuService } from 'vs/platform/contextview/browser/contextView
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 
-import { IECANAttentionService, ECANState } from 'sql/workbench/services/zonecog/common/ecanAttention';
+import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
 import { ICognitiveWorkspaceService, WorkingMemoryItem } from 'sql/workbench/services/zonecog/common/cognitiveWorkspace';
 
 /**

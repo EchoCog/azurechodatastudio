@@ -19,12 +19,18 @@ export const ICognitiveWorkspaceService = createDecorator<ICognitiveWorkspaceSer
 export interface WorkingMemoryItem {
 	/** Unique identifier. */
 	id: string;
+	/** Backward-compatible alias for category. */
+	type: string;
 	/** Category label (e.g. "schema", "query", "insight", "goal"). */
 	category: string;
 	/** Human-readable content. */
 	content: string;
+	/** Backward-compatible alias for relevance. */
+	activation: number;
 	/** Relevance weight in [0, 1].  Items below a threshold are evicted. */
 	relevance: number;
+	/** Backward-compatible alias for addedAt. */
+	timestamp: number;
 	/** Epoch-ms when this item entered working memory. */
 	addedAt: number;
 	/** Epoch-ms of last access (refreshes relevance decay). */
@@ -117,6 +123,9 @@ export interface ICognitiveWorkspaceService {
 
 	/** Fired when working memory changes (item added, evicted, or updated). */
 	readonly onDidChangeWorkingMemory: Event<WorkingMemoryItem[]>;
+
+	/** Backward-compatible alias for working-memory change notifications. */
+	readonly onDidChangeWorkspace: Event<WorkingMemoryItem[]>;
 
 	/** Fired when a new episode is recorded. */
 	readonly onDidRecordEpisode: Event<CognitiveEpisode>;

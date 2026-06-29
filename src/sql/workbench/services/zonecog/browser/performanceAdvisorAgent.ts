@@ -36,11 +36,12 @@ export class PerformanceAdvisorAgent extends Disposable implements IPerformanceA
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
-		@ILLMProviderService private readonly llmService: ILLMProviderService,
+		@ILLMProviderService llmService: ILLMProviderService,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore
 	) {
 		super();
+		void llmService;
 		this.logService.info('[PerformanceAdvisorAgent] Initialized');
 	}
 
@@ -113,7 +114,10 @@ export class PerformanceAdvisorAgent extends Disposable implements IPerformanceA
 		try {
 			switch (action.action) {
 				case 'analyze_performance':
-					return await this.analyzePerformance(action.target, action.parameters?.executionPlan);
+					return await this.analyzePerformance(
+						action.target,
+						typeof action.parameters?.executionPlan === 'string' ? action.parameters.executionPlan : undefined
+					);
 				case 'suggest_indexes':
 					return await this.suggestIndexes(JSON.parse(action.target));
 				case 'identify_antipatterns':

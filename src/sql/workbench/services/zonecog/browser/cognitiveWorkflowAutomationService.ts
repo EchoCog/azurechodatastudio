@@ -11,7 +11,6 @@ import {
 	ICognitiveWorkflowAutomationService,
 	CognitiveWorkflowDefinition,
 	WorkflowStep,
-	WorkflowTrigger,
 	WorkflowCondition,
 	WorkflowExecution,
 	WorkflowError,

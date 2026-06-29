@@ -18,7 +18,7 @@ import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 
 import { IZoneCogService, ZoneCogState } from 'sql/workbench/services/zonecog/common/zonecogService';
-import { ICognitiveLoopService, CognitiveLoopState } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
+import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
 import { ICognitiveMembraneService, MembraneStatus, MembraneTriad } from 'sql/workbench/services/zonecog/common/zonecogService';
 
 /**
@@ -68,6 +68,7 @@ export class CognitiveStateView extends ViewPane {
 		// Subscribe to state changes
 		this._register(this.zonecogService.onDidChangeCognitiveState(() => this._refreshCognitiveState()));
 		this._register(this.loopService.onDidChangeState(() => this._refreshLoopStatus()));
+		this._register(this.membraneService.onDidChangeMembraneStatus(() => this._refreshCognitiveState()));
 
 		// Initial render
 		this._refreshCognitiveState();

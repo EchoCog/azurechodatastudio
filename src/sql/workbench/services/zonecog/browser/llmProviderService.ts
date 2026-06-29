@@ -153,12 +153,22 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 
 	// -- Completion ----------------------------------------------------------
 
-	async complete(request: LLMCompletionRequest): Promise<LLMCompletionResponse> {
+	complete(request: LLMCompletionRequest): Promise<LLMCompletionResponse>;
+	complete(prompt: string): Promise<string>;
+	async complete(requestOrPrompt: LLMCompletionRequest | string): Promise<LLMCompletionResponse | string> {
+		const request = typeof requestOrPrompt === 'string'
+			? {
+				systemPrompt: 'You are a helpful assistant within the Zone-Cog cognitive workbench.',
+				userMessage: requestOrPrompt,
+			}
+			: requestOrPrompt;
+
 		const provider = this.getActiveProvider();
 		this.membraneService.recordActivity('cerebral');
 
 		if (provider.id === BUILTIN_PROVIDER_ID) {
-			return this._builtinComplete(request);
+			const response = this._builtinComplete(request);
+			return typeof requestOrPrompt === 'string' ? response.content : response;
 		}
 
 		// Check circuit breaker state
@@ -174,19 +184,21 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 			// Circuit is open - fall back immediately
 			this.logService.warn(`LLMProviderService: circuit open for '${provider.id}', using fallback`);
 			this.membraneService.recordActivity('autonomic'); // Record error recovery
-			return this._builtinComplete(request);
+			const response = this._builtinComplete(request);
+			return typeof requestOrPrompt === 'string' ? response.content : response;
 		}
 
 		// Circuit is closed - try normal request
 		try {
 			const response = await this._externalCompleteWithRetry(provider, request);
 			this._recordSuccess(provider.id);
-			return response;
+			return typeof requestOrPrompt === 'string' ? response.content : response;
 		} catch (err) {
 			this._recordFailure(provider.id);
 			this.logService.warn(`LLMProviderService: external provider '${provider.id}' failed, falling back`, err);
 			this.membraneService.recordActivity('autonomic'); // Record error recovery
-			return this._builtinComplete(request);
+			const response = this._builtinComplete(request);
+			return typeof requestOrPrompt === 'string' ? response.content : response;
 		}
 	}
 

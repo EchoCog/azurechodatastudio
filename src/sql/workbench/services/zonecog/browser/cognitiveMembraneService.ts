@@ -96,6 +96,10 @@ export class CognitiveMembraneService extends Disposable implements ICognitiveMe
 		};
 	}
 
+	getActivity(triad: MembraneTriad): number {
+		return this._getState(triad).activeProcesses;
+	}
+
 	getAllStatuses(): MembraneStatus[] {
 		const triads: MembraneTriad[] = ['cerebral', 'somatic', 'autonomic'];
 		return triads.map(t => this.getStatus(t));

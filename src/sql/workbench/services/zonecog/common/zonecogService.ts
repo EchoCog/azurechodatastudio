@@ -121,10 +121,12 @@ export interface IHypergraphStore {
 
 	// Node CRUD
 	addNode(node: HypergraphNode): void;
+	addNode(node: Omit<HypergraphNode, 'id'>): HypergraphNode;
 	getNode(id: string): HypergraphNode | undefined;
 	updateNode(id: string, patch: Partial<Omit<HypergraphNode, 'id'>>): HypergraphNode | undefined;
 	removeNode(id: string): boolean;
 	getNodesByType(nodeType: string): HypergraphNode[];
+	findNodesByType(nodeType: string): HypergraphNode[];
 	getAllNodes(): HypergraphNode[];
 
 	// Link CRUD
@@ -177,6 +179,9 @@ export interface ICognitiveMembraneService {
 
 	/** Get status for a single triad. */
 	getStatus(triad: MembraneTriad): MembraneStatus;
+
+	/** Get the cumulative activity count for a single triad. */
+	getActivity(triad: MembraneTriad): number;
 
 	/** Get status for all three triads. */
 	getAllStatuses(): MembraneStatus[];

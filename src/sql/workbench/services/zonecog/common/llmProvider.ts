@@ -108,6 +108,7 @@ export interface ILLMProviderService {
 	 * Falls back to the built-in provider on errors.
 	 */
 	complete(request: LLMCompletionRequest): Promise<LLMCompletionResponse>;
+	complete(prompt: string): Promise<string>;
 
 	/**
 	 * Check if an external LLM provider is available (non-fallback).

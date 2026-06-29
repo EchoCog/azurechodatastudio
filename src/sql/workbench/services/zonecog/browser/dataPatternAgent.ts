@@ -608,7 +608,7 @@ export class DataPatternAgent extends Disposable implements IDataPatternAgent {
 		}
 
 		// Find cases where same normalized value has different original forms
-		for (const [norm, originals] of normalized) {
+		for (const [, originals] of normalized) {
 			const unique = [...new Set(originals)];
 			if (unique.length > 1) {
 				inconsistencies.push(`"${unique.slice(0, 3).join('" vs "')}"${unique.length > 3 ? ` (and ${unique.length - 3} more)` : ''}`);
