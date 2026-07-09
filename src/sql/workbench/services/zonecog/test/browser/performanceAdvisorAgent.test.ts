@@ -143,6 +143,23 @@ suite('PerformanceAdvisorAgent', () => {
 		assert.ok(Array.isArray(suggestions));
 	});
 
+	test('should attribute subquery predicates to the subquery table', async () => {
+		const queries = [
+			'SELECT * FROM orders WHERE status = \'pending\' AND customer_id IN (SELECT id FROM customers WHERE region = \'EU\')',
+		];
+
+		const suggestions = await agent.suggestIndexes(queries);
+
+		const ordersSuggestion = suggestions.find(s => s.tableName === 'orders');
+		assert.ok(ordersSuggestion);
+		assert.ok(ordersSuggestion.columns.includes('status'));
+		assert.ok(!ordersSuggestion.columns.includes('region'));
+
+		const customersSuggestion = suggestions.find(s => s.tableName === 'customers');
+		assert.ok(customersSuggestion);
+		assert.ok(customersSuggestion.columns.includes('region'));
+	});
+
 	// --- Anti-pattern Detection Tests ---
 
 	test('should detect SELECT * anti-pattern', async () => {

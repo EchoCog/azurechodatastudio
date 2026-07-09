@@ -457,15 +457,20 @@ export class PerformanceAdvisorAgent extends Disposable implements IPerformanceA
 			}
 		}
 
-		// Also handle unqualified column names in WHERE/AND clauses
-		// Extract primary table name from FROM clause
-		const fromMatch = query.match(/FROM\s+(\w+)/i);
-		const primaryTable = fromMatch ? fromMatch[1] : null;
+		// Also handle unqualified column names in WHERE/AND clauses.
+		// Attribute them per SELECT scope so predicates inside nested
+		// subqueries are credited to the subquery's own FROM table rather
+		// than the outer query's table.
+		for (const scope of this._splitQueryScopes(query)) {
+			const fromMatch = scope.match(/FROM\s+(\w+)/i);
+			const primaryTable = fromMatch ? fromMatch[1] : null;
+			if (!primaryTable) {
+				continue;
+			}
 
-		if (primaryTable) {
 			const unqualifiedPattern = /(?:WHERE|AND)\s+(\w+)\s*(?:=|<|>|<=|>=|<>|!=|LIKE|IN)/gi;
 			let match;
-			while ((match = unqualifiedPattern.exec(query)) !== null) {
+			while ((match = unqualifiedPattern.exec(scope)) !== null) {
 				const column = match[1];
 				// Skip SQL keywords
 				if (/^(WHERE|AND|OR|NOT|NULL|TRUE|FALSE|SELECT|FROM|JOIN|ON|AS|IN|IS|LIKE|BETWEEN|EXISTS)$/i.test(column)) {
@@ -478,6 +483,53 @@ export class PerformanceAdvisorAgent extends Disposable implements IPerformanceA
 				tableUsage.set(column, (tableUsage.get(column) || 0) + 1);
 			}
 		}
+	}
+
+	/**
+	 * Splits a query into per-SELECT scopes: the outer query text with nested
+	 * `(SELECT ...)` subqueries masked out, followed by each subquery's own
+	 * scopes (recursively). Non-subquery parentheses (function calls, IN
+	 * value lists) remain part of the enclosing scope.
+	 */
+	private _splitQueryScopes(query: string): string[] {
+		let outerText = '';
+		const subqueries: string[] = [];
+		let depth = 0;
+		let subqueryStart = -1;
+
+		for (let i = 0; i < query.length; i++) {
+			const ch = query[i];
+			if (ch === '(') {
+				if (depth === 0 && subqueryStart < 0 && /^\(\s*SELECT\b/i.test(query.substring(i))) {
+					subqueryStart = i + 1;
+				}
+				depth++;
+				if (subqueryStart < 0) {
+					outerText += ch;
+				}
+			} else if (ch === ')') {
+				depth = Math.max(0, depth - 1);
+				if (depth === 0 && subqueryStart >= 0) {
+					subqueries.push(query.substring(subqueryStart, i));
+					subqueryStart = -1;
+				} else if (subqueryStart < 0) {
+					outerText += ch;
+				}
+			} else if (subqueryStart < 0) {
+				outerText += ch;
+			}
+		}
+
+		// Unbalanced parentheses: treat the remainder as the subquery text
+		if (subqueryStart >= 0) {
+			subqueries.push(query.substring(subqueryStart));
+		}
+
+		const scopes = [outerText];
+		for (const subquery of subqueries) {
+			scopes.push(...this._splitQueryScopes(subquery));
+		}
+		return scopes;
 	}
 
 	private _estimateImprovement(usageCount: number, totalQueries: number): string {
