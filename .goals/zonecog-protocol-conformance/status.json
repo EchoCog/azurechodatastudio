@@ -1,0 +1,16 @@
+{
+  "goal_id": "zonecog-protocol-conformance",
+  "status": "inspecting",
+  "iteration": 1,
+  "builder_model": "Claude:Sonnet-4.6",
+  "inspector_model": "Claude:Haiku-4.5",
+  "initial_sha": "7f77fdd24249953336791cf5a33e6ee3aa1560bc",
+  "created_at": "2026-07-09T12:58:00+02:00",
+  "history": [
+    {
+      "iteration": 1,
+      "summary": "All 11 phases implemented, correctly ordered, tested comprehensively, zero zonecog TypeScript errors.",
+      "verdict": "PASS"
+    }
+  ]
+}
