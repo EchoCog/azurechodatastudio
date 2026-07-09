@@ -308,8 +308,9 @@ suite('ZoneCog Service Tests', () => {
 
 		// Moderate: adds Hypothesis Generation, Natural Discovery, Progress Tracking
 		const moderateResponse = await zoneCogService.processQuery(
-			'How do I connect to a remote PostgreSQL database and optimize my queries?'
+			'How do I connect to a remote PostgreSQL database and speed up my queries?'
 		);
+		assert.strictEqual(moderateResponse.metadata.queryComplexity, 'moderate');
 		assert.strictEqual(moderateResponse.metadata.thinkingDepth, 'moderate');
 		const modPhaseNames = moderateResponse.phases.map(p => p.name);
 		assert.ok(modPhaseNames.includes('Multiple Hypothesis Generation'));
