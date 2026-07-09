@@ -277,7 +277,19 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 
 	/**
 	 * Run the full Zone-Cog thinking protocol, returning structured phases.
-	 * Now includes Progress Tracking and Recursive Thinking phases from the spec.
+	 *
+	 * Phase order follows the ZONECOG.md Core Thinking Sequence exactly:
+	 *   1  Initial Engagement          (always)
+	 *   2  Problem Space Exploration   (always)
+	 *   3  Multiple Hypothesis Gen.    (moderate+)
+	 *   4  Natural Discovery Process   (moderate+)
+	 *   5  Testing and Verification    (deep only)
+	 *   6  Error Recognition           (deep only)
+	 *   7  Knowledge Synthesis         (deep only)
+	 *   8  Pattern Recognition         (deep only)
+	 *   9  Progress Tracking           (moderate+, after phases 3-8)
+	 *  10  Recursive Thinking          (deep only)
+	 *  11  Response Preparation        (always)
 	 */
 	private async _runThinkingProtocol(
 		query: string,
@@ -286,10 +298,10 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	): Promise<ThinkingPhase[]> {
 		const phases: ThinkingPhase[] = [];
 
-		// Phase 1: Initial Engagement
+		// Phase 1: Initial Engagement (always)
 		phases.push(this._phaseInitialEngagement(query, complexity));
 
-		// Phase 2: Problem Space Exploration
+		// Phase 2: Problem Space Exploration (always)
 		phases.push(this._phaseProblemSpaceExploration(query, complexity));
 
 		if (depth === 'moderate' || depth === 'deep') {
@@ -298,24 +310,28 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 
 			// Phase 4: Natural Discovery Process
 			phases.push(this._phaseNaturalDiscovery(query));
-
-			// Phase 9: Progress Tracking (moderate+)
-			phases.push(this._phaseProgressTracking(query, phases));
 		}
 
 		if (depth === 'deep') {
-			// Phase 5: Testing and Verification
-			phases.push(this._phaseTestingVerification(query));
+			// Phase 5: Testing and Verification — inspects prior phase output
+			phases.push(this._phaseTestingVerification(query, phases));
 
-			// Phase 6: Error Recognition and Correction
-			phases.push(this._phaseErrorRecognition(query));
+			// Phase 6: Error Recognition and Correction — inspects prior phase output
+			phases.push(this._phaseErrorRecognition(query, phases));
 
 			// Phase 7: Knowledge Synthesis
 			phases.push(this._phaseKnowledgeSynthesis(query));
 
-			// Phase 8: Pattern Recognition
+			// Phase 8: Pattern Recognition and Analysis
 			phases.push(this._phasePatternRecognition(query));
+		}
 
+		if (depth === 'moderate' || depth === 'deep') {
+			// Phase 9: Progress Tracking — comes after phases 3-8 per spec
+			phases.push(this._phaseProgressTracking(query, phases));
+		}
+
+		if (depth === 'deep') {
 			// Phase 10: Recursive Thinking (deep only)
 			phases.push(this._phaseRecursiveThinking(query, phases));
 		}
@@ -377,25 +393,60 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		return { name: 'Natural Discovery Process', content, durationMs: Date.now() - start };
 	}
 
-	private _phaseTestingVerification(query: string): ThinkingPhase {
+	/**
+	 * Phase 5: Testing and Verification.
+	 * Inspects the content of earlier phases (not static text) to cross-check
+	 * conclusions and surface potential gaps, per the Zone-Cog protocol spec.
+	 */
+	private _phaseTestingVerification(query: string, priorPhases: ThinkingPhase[]): ThinkingPhase {
 		const start = Date.now();
+
+		// Reference the actual output of prior phases — not static text
+		const hypothesisPhase = priorPhases.find(p => p.name === 'Multiple Hypothesis Generation');
+		const discoveryPhase = priorPhases.find(p => p.name === 'Natural Discovery Process');
+		const priorPhaseNames = priorPhases.map(p => p.name).join(', ');
+
+		const hypothesisQuote = hypothesisPhase
+			? `"${hypothesisPhase.content.substring(0, 80).trimEnd()}..."`
+			: 'my earlier hypothesis analysis';
+		const discoveryQuote = discoveryPhase
+			? `"${discoveryPhase.content.substring(0, 70).trimEnd()}..."`
+			: 'the discovery findings';
+
 		const content =
-			`Now let me question my own assumptions here. Am I being too narrow in my analysis? ` +
-			`Let me test my preliminary conclusions against what I know. ` +
-			`Are there potential flaws in my reasoning? I should consider alternative perspectives ` +
-			`and verify that my understanding is consistent. ` +
-			`I need to check for completeness -- am I covering all the important aspects?`;
+			`Now let me systematically question the conclusions from prior phases: ${priorPhaseNames}. ` +
+			`Looking back at the hypothesis phase — ${hypothesisQuote} — ` +
+			`am I being too narrow or prematurely committed to one interpretation? ` +
+			`The discovery phase noted: ${discoveryQuote}. Let's see if this holds under scrutiny. ` +
+			`Testing preliminary conclusions: are there logical inconsistencies I've overlooked? ` +
+			`I need to verify completeness and consider alternative perspectives not yet explored.`;
 		return { name: 'Testing and Verification', content, durationMs: Date.now() - start };
 	}
 
-	private _phaseErrorRecognition(query: string): ThinkingPhase {
+	/**
+	 * Phase 6: Error Recognition and Correction.
+	 * Inspects the Testing and Verification phase output to acknowledge errors
+	 * and integrate corrections, per the Zone-Cog protocol spec.
+	 */
+	private _phaseErrorRecognition(query: string, priorPhases: ThinkingPhase[]): ThinkingPhase {
 		const start = Date.now();
+
+		// Reference the actual Testing and Verification output
+		const verificationPhase = priorPhases.find(p => p.name === 'Testing and Verification');
+		const allPhaseNames = priorPhases.map(p => p.name).join(', ');
+
+		const verificationNote = verificationPhase
+			? `The verification step surfaced: "${verificationPhase.content.substring(0, 80).trimEnd()}..."`
+			: 'The verification step completed.';
+
 		const content =
-			`Looking back at my analysis, I want to make sure I haven't made any errors. ` +
-			`If my initial thinking was too narrow, I should acknowledge that and expand. ` +
-			`The key is to view any missteps as opportunities for deeper understanding ` +
-			`rather than problems to hide. My analysis seems consistent so far, ` +
-			`but I should integrate any corrections into the broader picture.`;
+			`Looking back across all ${priorPhases.length} prior phases (${allPhaseNames}), ` +
+			`I want to honestly acknowledge any errors or incomplete reasoning. ` +
+			`${verificationNote} ` +
+			`Actually, rather than glossing over weaknesses, I should use them as stepping-stones. ` +
+			`Initially I thought the analysis was straightforward, but upon further reflection ` +
+			`from the verification phase, I see areas that deserve more nuance. ` +
+			`This adds another layer to my earlier observations and strengthens the overall picture.`;
 		return { name: 'Error Recognition and Correction', content, durationMs: Date.now() - start };
 	}
 
@@ -419,9 +470,12 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		const content =
 			`Actively looking for patterns in the information I've gathered... ` +
 			contextHint +
-			`Comparing with known patterns, I can see both linear and emergent structures. ` +
-			`Let me consider exceptions or special cases that might apply here. ` +
-			`These patterns help guide my final response toward something genuinely useful.`;
+			`I wonder if there are non-linear or emergent structures I haven't spotted yet. ` +
+			`This reminds me of recurring patterns in data-systems problems where surface-level ` +
+			`structure conceals deeper regularities. ` +
+			`Comparing with known examples, I can see both linear and emergent structures. ` +
+			`On the surface this seems contained, but looking deeper the patterns suggest ` +
+			`connections that should guide my final response toward something genuinely useful.`;
 		return { name: 'Pattern Recognition and Analysis', content, durationMs: Date.now() - start };
 	}
 

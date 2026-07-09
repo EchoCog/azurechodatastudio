@@ -243,6 +243,291 @@ suite('ZoneCog Service Tests', () => {
 		const state2 = zoneCogService.getCognitiveState();
 		assert.ok(state2.hypergraphNodeCount > 0);
 	});
+
+	// -----------------------------------------------------------------------
+	// Criterion 1: All 11 phases present and non-empty at deep depth
+	// -----------------------------------------------------------------------
+
+	test('deep queries should produce all 11 Zone-Cog phases with non-empty content', async () => {
+		await zoneCogService.initialize();
+		const complexQuery =
+			'Please analyze and compare the multi-tenant database architecture strategies, ' +
+			'synthesize the optimal indexing approaches, and evaluate the performance implications ' +
+			'for each cloud provider in our hybrid deployment.';
+		const response = await zoneCogService.processQuery(complexQuery);
+
+		assert.strictEqual(response.metadata.thinkingDepth, 'deep', 'Should use deep thinking');
+
+		const expectedPhases = [
+			'Initial Engagement',
+			'Problem Space Exploration',
+			'Multiple Hypothesis Generation',
+			'Natural Discovery Process',
+			'Testing and Verification',
+			'Error Recognition and Correction',
+			'Knowledge Synthesis',
+			'Pattern Recognition and Analysis',
+			'Progress Tracking',
+			'Recursive Thinking',
+			'Response Preparation',
+		];
+
+		assert.strictEqual(response.phases.length, 11, 'Deep queries must produce exactly 11 phases');
+
+		const phaseNames = response.phases.map(p => p.name);
+		for (const expected of expectedPhases) {
+			assert.ok(phaseNames.includes(expected), `Missing phase: ${expected}`);
+		}
+
+		// Every phase must produce non-empty content
+		for (const phase of response.phases) {
+			assert.ok(
+				phase.content.length > 0,
+				`Phase "${phase.name}" produced empty content`
+			);
+		}
+	});
+
+	// -----------------------------------------------------------------------
+	// Criterion 2: Adaptive depth scaling — simple queries run reduced set
+	// -----------------------------------------------------------------------
+
+	test('simple queries should run reduced phase set; Response Preparation always runs', async () => {
+		await zoneCogService.initialize();
+		const simpleResponse = await zoneCogService.processQuery('Hi');
+
+		assert.strictEqual(simpleResponse.metadata.queryComplexity, 'simple');
+		assert.strictEqual(simpleResponse.metadata.thinkingDepth, 'shallow');
+
+		// Shallow: only Initial Engagement, Problem Space Exploration, Response Preparation
+		assert.strictEqual(simpleResponse.phases.length, 3, 'Simple queries get exactly 3 phases');
+		const simplePhaseNames = simpleResponse.phases.map(p => p.name);
+		assert.ok(simplePhaseNames.includes('Initial Engagement'));
+		assert.ok(simplePhaseNames.includes('Problem Space Exploration'));
+		assert.ok(simplePhaseNames.includes('Response Preparation'));
+
+		// Moderate: adds Hypothesis Generation, Natural Discovery, Progress Tracking
+		const moderateResponse = await zoneCogService.processQuery(
+			'How do I connect to a remote PostgreSQL database and speed up my queries?'
+		);
+		assert.strictEqual(moderateResponse.metadata.queryComplexity, 'moderate');
+		assert.strictEqual(moderateResponse.metadata.thinkingDepth, 'moderate');
+		const modPhaseNames = moderateResponse.phases.map(p => p.name);
+		assert.ok(modPhaseNames.includes('Multiple Hypothesis Generation'));
+		assert.ok(modPhaseNames.includes('Natural Discovery Process'));
+		assert.ok(modPhaseNames.includes('Progress Tracking'));
+		// Should NOT include deep-only phases
+		assert.ok(!modPhaseNames.includes('Recursive Thinking'), 'Moderate should not include Recursive Thinking');
+	});
+
+	// -----------------------------------------------------------------------
+	// Criterion 3: Natural-language markers from the ZONECOG.md spec
+	// -----------------------------------------------------------------------
+
+	test('thinking output should contain natural-language markers from the ZONECOG spec', async () => {
+		await zoneCogService.initialize();
+		const complexQuery =
+			'Analyze the database schema and synthesize optimization strategies for our cloud deployment.';
+		const response = await zoneCogService.processQuery(complexQuery);
+
+		// The full thinking concatenation must contain spec-mandated markers
+		const thinking = response.thinking;
+
+		// From "Natural Language" section of ZONECOG.md
+		assert.ok(thinking.includes('Hmm'),
+			`thinking must contain "Hmm" (Natural Language marker)`);
+		assert.ok(thinking.includes('Wait, let me think'),
+			`thinking must contain "Wait, let me think" (Natural Language marker)`);
+		assert.ok(thinking.includes('This is interesting because'),
+			`thinking must contain "This is interesting because" (Natural Language marker)`);
+		assert.ok(thinking.includes('But then again'),
+			`thinking must contain "But then again" (Natural Language marker)`);
+		assert.ok(thinking.includes('Actually'),
+			`thinking must contain "Actually" (Natural Language marker)`);
+
+		// From "Depth Progression" section of ZONECOG.md
+		assert.ok(thinking.includes("Now I'm beginning to see"),
+			`thinking must contain "Now I'm beginning to see" (Depth Progression marker)`);
+
+		// From individual phases
+		assert.ok(thinking.includes("Let's see if"),
+			`thinking must contain "Let's see if" (Transitional marker)`);
+		assert.ok(thinking.includes('I wonder if'),
+			`thinking must contain "I wonder if" (Natural Language marker)`);
+		assert.ok(thinking.includes('This reminds me of'),
+			`thinking must contain "This reminds me of" (Natural Language marker)`);
+
+		// Depth progression markers
+		assert.ok(thinking.includes('On the surface'),
+			`thinking must contain "On the surface" (Depth Progression marker)`);
+		assert.ok(thinking.includes('but looking deeper') || thinking.includes('looking deeper'),
+			`thinking must contain "looking deeper" (Depth Progression marker)`);
+
+		// Transitional connections
+		assert.ok(thinking.includes('Initially I thought') || thinking.includes('upon further reflection'),
+			`thinking must contain depth-progression phrasing`);
+	});
+
+	// -----------------------------------------------------------------------
+	// Criterion 4: Verification phases inspect earlier phase output, confidence [0,1]
+	// -----------------------------------------------------------------------
+
+	test('Testing and Verification phase should reference earlier phase content, not static text', async () => {
+		await zoneCogService.initialize();
+		const complexQuery =
+			'Analyze and compare different indexing strategies for our distributed database.';
+		const response = await zoneCogService.processQuery(complexQuery);
+
+		const verificationPhase = response.phases.find(p => p.name === 'Testing and Verification');
+		assert.ok(verificationPhase, 'Testing and Verification phase must exist');
+
+		const hypothesisPhase = response.phases.find(p => p.name === 'Multiple Hypothesis Generation');
+		const discoveryPhase = response.phases.find(p => p.name === 'Natural Discovery Process');
+
+		// Verification phase must reference the names of phases it inspects
+		assert.ok(
+			verificationPhase.content.includes('Multiple Hypothesis Generation') ||
+			verificationPhase.content.includes('Natural Discovery Process'),
+			'Testing and Verification must reference earlier phase names'
+		);
+
+		// It must quote content from earlier phases (the first 60+ chars appear)
+		if (hypothesisPhase) {
+			const snippet = hypothesisPhase.content.substring(0, 40);
+			assert.ok(
+				verificationPhase.content.includes(snippet),
+				`Testing and Verification must quote from hypothesis phase content: "${snippet}"`
+			);
+		}
+		if (discoveryPhase) {
+			const snippet = discoveryPhase.content.substring(0, 40);
+			assert.ok(
+				verificationPhase.content.includes(snippet),
+				`Testing and Verification must quote from discovery phase content: "${snippet}"`
+			);
+		}
+	});
+
+	test('Error Recognition phase should reference Testing and Verification phase content', async () => {
+		await zoneCogService.initialize();
+		const complexQuery =
+			'Evaluate and optimize the query execution plan for our analytical workloads.';
+		const response = await zoneCogService.processQuery(complexQuery);
+
+		const errorPhase = response.phases.find(p => p.name === 'Error Recognition and Correction');
+		assert.ok(errorPhase, 'Error Recognition and Correction phase must exist');
+
+		const verificationPhase = response.phases.find(p => p.name === 'Testing and Verification');
+		assert.ok(verificationPhase, 'Testing and Verification must precede Error Recognition');
+
+		// Must reference verification content, not static text
+		const verSnippet = verificationPhase.content.substring(0, 40);
+		assert.ok(
+			errorPhase.content.includes(verSnippet),
+			`Error Recognition must quote verification phase content: "${verSnippet}"`
+		);
+
+		// Must count prior phases (dynamic, not hardcoded)
+		const priorCount = response.phases.indexOf(errorPhase);
+		assert.ok(
+			errorPhase.content.includes(String(priorCount)),
+			`Error Recognition content should reference prior phase count (${priorCount})`
+		);
+	});
+
+	test('response confidence should always be within [0, 1]', async () => {
+		await zoneCogService.initialize();
+
+		const simple = await zoneCogService.processQuery('Hi');
+		assert.ok(simple.confidence >= 0, `confidence must be >= 0, got ${simple.confidence}`);
+		assert.ok(simple.confidence <= 1, `confidence must be <= 1, got ${simple.confidence}`);
+
+		const moderate = await zoneCogService.processQuery('How do I optimize my SQL queries?');
+		assert.ok(moderate.confidence >= 0, `confidence must be >= 0, got ${moderate.confidence}`);
+		assert.ok(moderate.confidence <= 1, `confidence must be <= 1, got ${moderate.confidence}`);
+
+		const complex = await zoneCogService.processQuery(
+			'Analyze and compare the multi-tenant architecture strategies and synthesize ' +
+			'optimal indexing approaches for our cloud database deployment.'
+		);
+		assert.ok(complex.confidence >= 0, `confidence must be >= 0, got ${complex.confidence}`);
+		assert.ok(complex.confidence <= 1, `confidence must be <= 1, got ${complex.confidence}`);
+
+		// Deeper thinking should not reduce confidence below simple
+		assert.ok(complex.confidence >= simple.confidence - 0.2,
+			'Complex query confidence should not be drastically lower than simple');
+	});
+
+	// -----------------------------------------------------------------------
+	// Criterion 5: HypergraphNode schema compliance + membrane activity
+	// -----------------------------------------------------------------------
+
+	test('persisted hypergraph nodes should conform to the EchoCog HypergraphNode schema', async () => {
+		await zoneCogService.initialize();
+		const store = zoneCogService.getHypergraphStore();
+
+		await zoneCogService.processQuery('Schema compliance test query');
+
+		const allNodes = store.getAllNodes();
+		assert.ok(allNodes.length > 0, 'Nodes must be persisted after processing');
+
+		for (const node of allNodes) {
+			// Verify each required field from the EchoCog HypergraphNode schema
+			assert.ok(typeof node.id === 'string' && node.id.length > 0,
+				`Node missing or empty id: ${JSON.stringify(node)}`);
+			assert.ok(typeof node.node_type === 'string' && node.node_type.length > 0,
+				`Node missing or empty node_type: id=${node.id}`);
+			assert.ok(typeof node.content === 'string',
+				`Node content must be a string: id=${node.id}`);
+			assert.ok(Array.isArray(node.links),
+				`Node links must be an array: id=${node.id}`);
+			assert.ok(typeof node.metadata === 'object' && node.metadata !== null,
+				`Node metadata must be an object: id=${node.id}`);
+			assert.ok(typeof node.salience_score === 'number',
+				`Node salience_score must be a number: id=${node.id}`);
+			assert.ok(node.salience_score >= 0 && node.salience_score <= 1,
+				`Node salience_score must be in [0,1]: id=${node.id}, score=${node.salience_score}`);
+		}
+
+		// Verify the expected node types are all present
+		const nodeTypes = allNodes.map(n => n.node_type);
+		assert.ok(nodeTypes.includes('QueryInput'), 'QueryInput node type must be persisted');
+		assert.ok(nodeTypes.includes('ThinkingProcess'), 'ThinkingProcess node type must be persisted');
+		assert.ok(nodeTypes.includes('CognitiveResponse'), 'CognitiveResponse node type must be persisted');
+		assert.ok(nodeTypes.includes('QueryHistory'), 'QueryHistory node type must be persisted');
+	});
+
+	test('cerebral membrane activity should be recorded during query processing', async () => {
+		await zoneCogService.initialize();
+		const membraneService = instantiationService.get(ICognitiveMembraneService);
+
+		const activityBefore = membraneService.getActivity('cerebral');
+
+		await zoneCogService.processQuery('Activity recording test');
+
+		const activityAfter = membraneService.getActivity('cerebral');
+		assert.ok(
+			activityAfter > activityBefore,
+			`Cerebral membrane activity should increase during query processing. ` +
+			`Before: ${activityBefore}, After: ${activityAfter}`
+		);
+	});
+
+	test('somatic membrane activity should be recorded during response generation', async () => {
+		await zoneCogService.initialize();
+		const membraneService = instantiationService.get(ICognitiveMembraneService);
+
+		const somaticBefore = membraneService.getActivity('somatic');
+
+		await zoneCogService.processQuery('Somatic activity test');
+
+		const somaticAfter = membraneService.getActivity('somatic');
+		assert.ok(
+			somaticAfter > somaticBefore,
+			`Somatic membrane activity should increase during response generation. ` +
+			`Before: ${somaticBefore}, After: ${somaticAfter}`
+		);
+	});
 });
 
 suite('HypergraphStore Tests', () => {
