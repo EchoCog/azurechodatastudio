@@ -715,6 +715,10 @@ suite('LLMProviderService Tests', () => {
 	setup(() => {
 		instantiationService = new TestInstantiationService();
 		instantiationService.stub(ILogService, new NullLogService());
+
+		const membraneService = new CognitiveMembraneService(new NullLogService());
+		instantiationService.stub(ICognitiveMembraneService, membraneService);
+
 		llmService = instantiationService.createInstance(LLMProviderService);
 	});
 

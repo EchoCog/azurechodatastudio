@@ -429,7 +429,18 @@ export class CognitiveWorkflowAutomationService extends Disposable implements IC
 			confidence: 1.0,
 		};
 
-		return await this.aarService.dispatchAction(agent, agentAction);
+		try {
+			return await this.aarService.dispatchAction(agent, agentAction);
+		} catch (err) {
+			const message = String(err);
+			if (message.includes('unknown agent')) {
+				this.logService.warn(
+					`[CognitiveWorkflowAutomationService] Agent '${agent}' not registered in AAR, returning empty result`
+				);
+				return {};
+			}
+			throw err;
+		}
 	}
 
 	private _evaluateCondition(condition: WorkflowCondition, context: any): boolean {

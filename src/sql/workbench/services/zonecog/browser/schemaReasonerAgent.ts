@@ -137,6 +137,20 @@ export class SchemaReasonerAgent extends Disposable implements ISchemaReasonerAg
 	}
 
 	async analyzeSchema(schemaDefinition: string): Promise<SchemaReasoningResult> {
+		this._status = 'active';
+		this._currentLoad += 0.5;
+		this._onDidChangeStatus.fire(this._status);
+
+		try {
+			return await this._analyzeSchemaInternal(schemaDefinition);
+		} finally {
+			this._currentLoad = Math.max(0, this._currentLoad - 0.5);
+			this._status = this._currentLoad > 0 ? 'active' : 'idle';
+			this._onDidChangeStatus.fire(this._status);
+		}
+	}
+
+	private async _analyzeSchemaInternal(schemaDefinition: string): Promise<SchemaReasoningResult> {
 		this.membraneService.recordActivity('cerebral');
 		this.logService.info(`[SchemaReasonerAgent] Analyzing schema...`);
 
@@ -451,10 +465,11 @@ Return a structured analysis.`;
 			const fkColumn = match[1];
 			const refTable = match[2];
 
-			// Find the source table by looking backwards in the schema
+			// Find the source table by looking at all CREATE TABLE statements before this FK
 			const beforeMatch = schema.substring(0, match.index);
-			const tableMatch = beforeMatch.match(/CREATE\s+TABLE\s+[`"\[]?(\w+)[`"\]]?\s*\([^)]*$/i);
-			const sourceTable = tableMatch ? tableMatch[1] : 'unknown';
+			const allTableMatches = [...beforeMatch.matchAll(/CREATE\s+TABLE\s+[`"\[]?(\w+)[`"\]]?\s*\(/gi)];
+			const lastTableMatch = allTableMatches.length > 0 ? allTableMatches[allTableMatches.length - 1] : null;
+			const sourceTable = lastTableMatch ? lastTableMatch[1] : 'unknown';
 
 			relationships.push({
 				sourceTable,

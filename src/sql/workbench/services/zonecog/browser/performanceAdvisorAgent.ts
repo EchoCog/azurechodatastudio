@@ -135,6 +135,20 @@ export class PerformanceAdvisorAgent extends Disposable implements IPerformanceA
 	}
 
 	async analyzePerformance(query: string, executionPlan?: string): Promise<SQLPerformanceIssue[]> {
+		this._status = 'active';
+		this._currentLoad += 0.5;
+		this._onDidChangeStatus.fire(this._status);
+
+		try {
+			return await this._analyzePerformanceInternal(query, executionPlan);
+		} finally {
+			this._currentLoad = Math.max(0, this._currentLoad - 0.5);
+			this._status = this._currentLoad > 0 ? 'active' : 'idle';
+			this._onDidChangeStatus.fire(this._status);
+		}
+	}
+
+	private async _analyzePerformanceInternal(query: string, executionPlan?: string): Promise<SQLPerformanceIssue[]> {
 		this.membraneService.recordActivity('cerebral');
 		this.logService.info('[PerformanceAdvisorAgent] Analyzing query performance...');
 
@@ -411,14 +425,14 @@ export class PerformanceAdvisorAgent extends Disposable implements IPerformanceA
 	}
 
 	private _extractColumnUsage(query: string, usage: Map<string, Map<string, number>>): void {
-		// Extract table.column patterns from WHERE and JOIN clauses
-		const patterns = [
+		// Extract table.column patterns from WHERE and JOIN clauses (explicit table prefix)
+		const qualifiedPatterns = [
 			/WHERE\s+(\w+)\.(\w+)\s*(?:=|<|>|<=|>=|<>|!=|LIKE|IN)/gi,
 			/ON\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)/gi,
 			/AND\s+(\w+)\.(\w+)\s*(?:=|<|>|<=|>=|<>|!=|LIKE|IN)/gi,
 		];
 
-		for (const pattern of patterns) {
+		for (const pattern of qualifiedPatterns) {
 			let match;
 			while ((match = pattern.exec(query)) !== null) {
 				const table = match[1];
@@ -429,8 +443,93 @@ export class PerformanceAdvisorAgent extends Disposable implements IPerformanceA
 				}
 				const tableUsage = usage.get(table)!;
 				tableUsage.set(column, (tableUsage.get(column) || 0) + 1);
+
+				// For ON clause: also record the right-hand side
+				if (match[3] && match[4]) {
+					const table2 = match[3];
+					const column2 = match[4];
+					if (!usage.has(table2)) {
+						usage.set(table2, new Map());
+					}
+					const tableUsage2 = usage.get(table2)!;
+					tableUsage2.set(column2, (tableUsage2.get(column2) || 0) + 1);
+				}
 			}
 		}
+
+		// Also handle unqualified column names in WHERE/AND clauses.
+		// Attribute them per SELECT scope so predicates inside nested
+		// subqueries are credited to the subquery's own FROM table rather
+		// than the outer query's table.
+		for (const scope of this._splitQueryScopes(query)) {
+			const fromMatch = scope.match(/FROM\s+(\w+)/i);
+			const primaryTable = fromMatch ? fromMatch[1] : null;
+			if (!primaryTable) {
+				continue;
+			}
+
+			const unqualifiedPattern = /(?:WHERE|AND)\s+(\w+)\s*(?:=|<|>|<=|>=|<>|!=|LIKE|IN)/gi;
+			let match;
+			while ((match = unqualifiedPattern.exec(scope)) !== null) {
+				const column = match[1];
+				// Skip SQL keywords
+				if (/^(WHERE|AND|OR|NOT|NULL|TRUE|FALSE|SELECT|FROM|JOIN|ON|AS|IN|IS|LIKE|BETWEEN|EXISTS)$/i.test(column)) {
+					continue;
+				}
+				if (!usage.has(primaryTable)) {
+					usage.set(primaryTable, new Map());
+				}
+				const tableUsage = usage.get(primaryTable)!;
+				tableUsage.set(column, (tableUsage.get(column) || 0) + 1);
+			}
+		}
+	}
+
+	/**
+	 * Splits a query into per-SELECT scopes: the outer query text with nested
+	 * `(SELECT ...)` subqueries masked out, followed by each subquery's own
+	 * scopes (recursively). Non-subquery parentheses (function calls, IN
+	 * value lists) remain part of the enclosing scope.
+	 */
+	private _splitQueryScopes(query: string): string[] {
+		let outerText = '';
+		const subqueries: string[] = [];
+		let depth = 0;
+		let subqueryStart = -1;
+
+		for (let i = 0; i < query.length; i++) {
+			const ch = query[i];
+			if (ch === '(') {
+				if (depth === 0 && subqueryStart < 0 && /^\(\s*SELECT\b/i.test(query.substring(i))) {
+					subqueryStart = i + 1;
+				}
+				depth++;
+				if (subqueryStart < 0) {
+					outerText += ch;
+				}
+			} else if (ch === ')') {
+				depth = Math.max(0, depth - 1);
+				if (depth === 0 && subqueryStart >= 0) {
+					subqueries.push(query.substring(subqueryStart, i));
+					subqueryStart = -1;
+				} else if (subqueryStart < 0) {
+					outerText += ch;
+				}
+			} else if (subqueryStart < 0) {
+				outerText += ch;
+			}
+		}
+
+		// Unbalanced parentheses: treat the remainder as the subquery text
+		if (subqueryStart >= 0) {
+			subqueries.push(query.substring(subqueryStart));
+		}
+
+		const scopes = [outerText];
+		for (const subquery of subqueries) {
+			scopes.push(...this._splitQueryScopes(subquery));
+		}
+		return scopes;
 	}
 
 	private _estimateImprovement(usageCount: number, totalQueries: number): string {
