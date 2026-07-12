@@ -33,3 +33,6 @@ export const ZONECOG_AAR_VIEW_ID = 'zonecog.aarView';
 
 /** Cognitive Workflows view ID. */
 export const ZONECOG_WORKFLOWS_VIEW_ID = 'zonecog.workflowsView';
+
+/** AGI Studio view ID. */
+export const ZONECOG_AGI_STUDIO_VIEW_ID = 'zonecog.agiStudioView';

@@ -35,6 +35,8 @@ import { PerformanceAdvisorAgent } from 'sql/workbench/services/zonecog/browser/
 import { DataPatternAgent } from 'sql/workbench/services/zonecog/browser/dataPatternAgent';
 import { ICognitiveWorkflowAutomationService } from 'sql/workbench/services/zonecog/common/cognitiveWorkflowAutomation';
 import { CognitiveWorkflowAutomationService } from 'sql/workbench/services/zonecog/browser/cognitiveWorkflowAutomationService';
+import { IAgiStudioService } from 'sql/workbench/services/zonecog/common/agiStudio';
+import { AgiStudioService } from 'sql/workbench/services/zonecog/browser/agiStudioService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -94,6 +96,11 @@ registerSingleton(IDataPatternAgent, DataPatternAgent, InstantiationType.Eager);
 
 // Register the Cognitive Workflow Automation service (custom workflow DSL execution)
 registerSingleton(ICognitiveWorkflowAutomationService, CognitiveWorkflowAutomationService, InstantiationType.Eager);
+
+// Register Phase 7 services
+
+// Register the AGI Studio service (Agent-Zero-style hierarchical autonomous agents)
+registerSingleton(IAgiStudioService, AgiStudioService, InstantiationType.Eager);
 
 // Register the ZoneCog service as a singleton
 registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
