@@ -25,6 +25,7 @@ import { Registry } from 'vs/platform/registry/common/platform';
 import { IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions } from 'vs/workbench/common/contributions';
 import { LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle';
 import { CognitiveLoopStatusBarContribution } from 'sql/workbench/contrib/zonecog/browser/cognitiveLoopStatusBar';
+import { IAgiStudioService } from 'sql/workbench/services/zonecog/common/agiStudio';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
 
@@ -1561,6 +1562,159 @@ registerAction2(ZoneCogListWorkflowsAction);
 registerAction2(ZoneCogExecuteWorkflowAction);
 registerAction2(ZoneCogWorkflowHistoryAction);
 registerAction2(ZoneCogToggleWorkflowAction);
+
+// =============================================================================
+// Phase 7 actions - AGI Studio
+// =============================================================================
+
+/**
+ * Action to start an AGI Studio autonomous run
+ */
+class ZoneCogAgiStudioStartRunAction extends Action2 {
+
+	static ID = 'zonecog.agiStudio.startRun';
+	constructor() {
+		super({
+			id: ZoneCogAgiStudioStartRunAction.ID,
+			title: { value: localize('zonecog.agiStudio.startRun', 'AGI Studio: Start Autonomous Run'), original: 'AGI Studio: Start Autonomous Run' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.play,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const agiStudioService = accessor.get(IAgiStudioService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const goal = await quickInputService.input({
+			prompt: localize('zonecog.agiStudio.goalPrompt', 'Enter a goal for the AGI Studio autonomous agent'),
+			placeHolder: localize('zonecog.agiStudio.goalPlaceholder', 'e.g., "Analyze SQL query patterns and identify performance improvements"'),
+		});
+
+		if (!goal) {
+			return;
+		}
+
+		try {
+			const run = await agiStudioService.startRun(goal);
+			notificationService.info(localize('zonecog.agiStudio.runStarted',
+				'AGI Studio run started.\nRun ID: {0}\nGoal: {1}\nRoot Agent: {2}',
+				run.id.slice(-12),
+				run.goal.slice(0, 80),
+				run.rootAgentId.slice(-12)
+			));
+		} catch (err) {
+			notificationService.error(localize('zonecog.agiStudio.runError',
+				'Failed to start AGI Studio run: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to show AGI Studio run and agent-tree status
+ */
+class ZoneCogAgiStudioShowStatusAction extends Action2 {
+
+	static ID = 'zonecog.agiStudio.showStatus';
+	constructor() {
+		super({
+			id: ZoneCogAgiStudioShowStatusAction.ID,
+			title: { value: localize('zonecog.agiStudio.showStatus', 'AGI Studio: Show Run Status'), original: 'AGI Studio: Show Run Status' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.organization,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const agiStudioService = accessor.get(IAgiStudioService);
+		const notificationService = accessor.get(INotificationService);
+
+		const activeRun = agiStudioService.getActiveRun();
+		const allRuns = agiStudioService.getRuns();
+
+		if (!activeRun && allRuns.length === 0) {
+			notificationService.info(localize('zonecog.agiStudio.noRuns',
+				'AGI Studio: No runs yet. Use "AGI Studio: Start Autonomous Run" to begin.'));
+			return;
+		}
+
+		const runId = activeRun?.id ?? allRuns[0].id;
+		const run = activeRun ?? allRuns[0];
+
+		const agents = agiStudioService.getAgents(runId);
+		const messages = agiStudioService.getMessages(runId);
+		const toolCalls = agiStudioService.getToolCalls(runId);
+
+		const agentTree = agents.map(a => {
+			const indent = '  '.repeat(a.depth);
+			return `${indent}[${a.role}] ${a.name} — ${a.status}`;
+		}).join('\n');
+
+		const recentMessages = messages.slice(-5).map(m =>
+			`  [${m.messageType}] ${m.fromAgentId.slice(-8)} → ${m.toAgentId.slice(-8)}: ${m.content.slice(0, 60)}`
+		).join('\n');
+
+		notificationService.info(localize('zonecog.agiStudio.statusReport',
+			'AGI Studio Status:\nRun: {0} ({1})\nGoal: {2}\nAgents: {3}\nMessages: {4}\nTool Calls: {5}\n\nAgent Tree:\n{6}\n\nRecent Messages:\n{7}',
+			run.id.slice(-12),
+			run.status,
+			run.goal.slice(0, 60),
+			agents.length,
+			messages.length,
+			toolCalls.length,
+			agentTree || '  (none)',
+			recentMessages || '  (none)'
+		));
+	}
+}
+
+/**
+ * Action to stop the current AGI Studio run
+ */
+class ZoneCogAgiStudioStopRunAction extends Action2 {
+
+	static ID = 'zonecog.agiStudio.stopRun';
+	constructor() {
+		super({
+			id: ZoneCogAgiStudioStopRunAction.ID,
+			title: { value: localize('zonecog.agiStudio.stopRun', 'AGI Studio: Stop Current Run'), original: 'AGI Studio: Stop Current Run' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.debugStop,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const agiStudioService = accessor.get(IAgiStudioService);
+		const notificationService = accessor.get(INotificationService);
+
+		const activeRun = agiStudioService.getActiveRun();
+
+		if (!activeRun) {
+			notificationService.info(localize('zonecog.agiStudio.noActiveRun',
+				'AGI Studio: No active run to stop.'));
+			return;
+		}
+
+		agiStudioService.stopRun(activeRun.id);
+		notificationService.info(localize('zonecog.agiStudio.runStopped',
+			'AGI Studio run stopped.\nRun ID: {0}\nGoal: {1}',
+			activeRun.id.slice(-12),
+			activeRun.goal.slice(0, 80)
+		));
+	}
+}
+
+// Phase 7 actions
+registerAction2(ZoneCogAgiStudioStartRunAction);
+registerAction2(ZoneCogAgiStudioShowStatusAction);
+registerAction2(ZoneCogAgiStudioStopRunAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.

@@ -41,6 +41,71 @@ The system implements the P-System Membrane Architecture:
 | Cognitive Workspace | `ICognitiveWorkspaceService` | `CognitiveWorkspaceService` |
 | ECAN Attention | `IECANAttentionService` | `ECANAttentionService` |
 | Cognitive Loop | `ICognitiveLoopService` | `CognitiveLoopService` |
+| AGI Studio | `IAgiStudioService` | `AgiStudioService` |
+
+### AGI Studio (Phase 7)
+
+The AGI Studio provides **Agent-Zero-style hierarchical autonomous agents** for
+the cognitive workbench. See [`common/agiStudio.ts`](common/agiStudio.ts) for
+the full interface.
+
+#### Architecture
+
+```
+User Goal
+    │
+    ▼
+Root Orchestrator (depth 0)
+    ├── task-assignment ──► SQL Analyzer Agent (depth 1)
+    │                            └── invokes sql-analyze tool
+    │                            └── result-report ──► Root
+    ├── task-assignment ──► Schema Reasoner Agent (depth 1)
+    │                            └── invokes schema-reason tool
+    │                            └── result-report ──► Root
+    └── ... (up to 4 subordinates, 8 total agents cap)
+    │
+    ▼
+Synthesis → StudioRun.result
+```
+
+#### Key Types
+
+| Type | Description |
+|---|---|
+| `StudioRun` | End-to-end run: goal → rootAgentId → status → result |
+| `StudioAgent` | Agent node: id, role, depth, superiorId, subordinateIds, localMemory |
+| `AgentMessage` | Inter-agent message: task-assignment / result-report / status-update |
+| `AgentToolCall` | Tool invocation record: toolId, agentId, input, output, durationMs |
+| `AgentTool` | Tool interface: id, name, description, invoke(input, agent) |
+
+#### Registered Tools
+
+| Tool ID | Wraps | Description |
+|---|---|---|
+| `sql-analyze` | `ISQLAnalyzerAgent` | Analyze SQL queries |
+| `schema-reason` | `ISchemaReasonerAgent` | Analyze database schemas |
+| `perf-advise` | `IPerformanceAdvisorAgent` | Identify performance issues |
+| `data-pattern` | `IDataPatternAgent` | Detect data patterns |
+| `llm-reason` | `ILLMProviderService` | LLM-based reasoning (with fallback) |
+| `memory-save` | `ICognitiveWorkspaceService` | Save to agent-local + episodic memory |
+| `memory-recall` | `ICognitiveWorkspaceService` | Recall from agent-local + episodic memory |
+
+#### LLM Fallback Strategy
+
+The goal decomposition calls `ILLMProviderService.complete()` and attempts to
+parse the response as a JSON string array.  When the response is from the
+built-in fallback provider (keyless), or parsing fails, the service falls back
+to a deterministic keyword-based decomposition that always produces 2–4 valid
+subtasks.  This ensures the run always completes meaningfully with or without
+external API keys.
+
+#### Command Palette Actions
+
+| Command ID | Description |
+|---|---|
+| `zonecog.agiStudio.startRun` | Prompt for goal and start autonomous run |
+| `zonecog.agiStudio.showStatus` | Show run status and agent-tree summary |
+| `zonecog.agiStudio.stopRun` | Stop the currently active run |
 
 ### Thinking Protocol Phases
 
