@@ -406,6 +406,24 @@ suite('AGI Studio Service Tests', () => {
 		assert.doesNotThrow(() => service.stopRun(), 'Should not throw when no active run');
 	});
 
+	test('stopped run must never be resurrected to completed or failed', async () => {
+		const run = await service.startRun('long analysis task stopped mid-flight');
+		service.stopRun(run.id);
+
+		// Let the in-flight async executor fully settle past synthesis/error paths
+		await new Promise<void>(resolve => setTimeout(resolve, 250));
+
+		const settled = service.getRuns().find(r => r.id === run.id);
+		assert.ok(settled, 'Run should still exist after executor settles');
+		assert.strictEqual(settled!.status, 'stopped', 'Status must remain stopped after executor settles');
+		assert.strictEqual(service.getActiveRun(), undefined, 'No active run after stop');
+
+		// A subsequent run must start cleanly despite the earlier stop
+		const next = await service.startRun('follow-up goal after stop');
+		const completed = await waitForRunComplete(next.id);
+		assert.strictEqual(completed.status, 'completed', 'Follow-up run should complete normally');
+	});
+
 	// -- Test 12: Multiple runs ----------------------------------------------
 
 	test('should handle multiple sequential runs and maintain history', async () => {

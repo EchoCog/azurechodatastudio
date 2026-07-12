@@ -480,6 +480,10 @@ export class AgiStudioService extends Disposable implements IAgiStudioService {
 			// Step 3: Synthesise final result
 			const synthesis = await this._synthesiseResults(run.goal, results, rootAgent, run.id);
 
+			if (this._stopRequested.has(run.id)) {
+				return; // stopped during synthesis; stopRun() already finalised state
+			}
+
 			// Mark root agent complete
 			this._setAgentStatus(rootAgent.id, 'completed');
 
@@ -507,6 +511,8 @@ export class AgiStudioService extends Disposable implements IAgiStudioService {
 
 		} catch (err) {
 			this._failRun(run, err instanceof Error ? err.message : String(err));
+		} finally {
+			this._stopRequested.delete(run.id);
 		}
 	}
 
@@ -858,6 +864,9 @@ export class AgiStudioService extends Disposable implements IAgiStudioService {
 	// -- Run failure ---------------------------------------------------------
 
 	private _failRun(run: StudioRun, reason: string): void {
+		if (run.status !== 'running') {
+			return; // never overwrite a stopped/completed run
+		}
 		run.status = 'failed';
 		run.endTime = Date.now();
 		run.result = `Run failed: ${reason}`;
