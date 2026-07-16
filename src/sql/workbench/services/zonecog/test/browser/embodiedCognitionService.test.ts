@@ -252,9 +252,12 @@ suite('EmbodiedCognitionService Tests', () => {
 		assert.strictEqual(patterns.filter(p => p.kind === 'sequence').length, 0);
 	});
 
-	test('should detect a temporal cadence pattern for tightly-spaced interactions', () => {
+	test('should detect a temporal cadence pattern for regularly-spaced interactions', async () => {
+		const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
 		for (let i = 0; i < 5; i++) {
 			embodiedService.perceive('interaction', `step-${i}`, '');
+			await sleep(10);
 		}
 
 		const patterns = embodiedService.detectInteractionPatterns(3);
@@ -263,6 +266,30 @@ suite('EmbodiedCognitionService Tests', () => {
 		assert.strictEqual(temporal.length, 1);
 		assert.ok(temporal[0].confidence > 0);
 		assert.strictEqual(temporal[0].occurrences, 4);
+	});
+
+	test('should not report a cadence pattern for simultaneous (zero-gap) percepts', () => {
+		// Four rapid, synchronous perceive() calls typically land on the same
+		// Date.now() millisecond -- a burst, not a rhythm -- so no temporal
+		// pattern should be reported even though 3+ occurrences are recorded.
+		for (let i = 0; i < 4; i++) {
+			embodiedService.perceive('interaction', `burst-${i}`, '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const temporal = patterns.filter(p => p.kind === 'temporal');
+		assert.strictEqual(temporal.length, 0);
+	});
+
+	test('should not report a cadence pattern below the occurrence threshold', () => {
+		embodiedService.perceive('interaction', 'a', '');
+		embodiedService.perceive('interaction', 'b', '');
+		embodiedService.perceive('interaction', 'c', '');
+
+		// 3 percepts -> 2 gaps, below minOccurrences=3; must not be reported
+		// even if the two gaps happen to look regular.
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(patterns.filter(p => p.kind === 'temporal').length, 0);
 	});
 
 	test('should persist detected patterns in the hypergraph', () => {
@@ -296,6 +323,34 @@ suite('EmbodiedCognitionService Tests', () => {
 
 		const history = embodiedService.getInteractionPatterns();
 		assert.ok(history.length > 0);
+	});
+
+	test('should not re-report an already-known pattern on an unchanged history', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+
+		const first = embodiedService.detectInteractionPatterns(3);
+		assert.ok(first.length > 0);
+		const historySizeAfterFirst = embodiedService.getInteractionPatterns().length;
+
+		// No new percepts recorded -- re-running detection must not duplicate
+		// history entries or report the same patterns as newly detected.
+		const second = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(second.length, 0);
+		assert.strictEqual(embodiedService.getInteractionPatterns().length, historySizeAfterFirst);
+	});
+
+	test('should report a pattern again once its occurrence count changes', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		const first = embodiedService.detectInteractionPatterns(3);
+		assert.ok(first.some(p => p.kind === 'frequency'));
+
+		embodiedService.perceive('interaction', 'save-file', '');
+		const second = embodiedService.detectInteractionPatterns(3);
+		assert.ok(second.some(p => p.kind === 'frequency' && p.occurrences === 4));
 	});
 
 	test('should clear interaction patterns on reset', () => {

@@ -81,6 +81,7 @@ export class EmbodiedCognitionService extends Disposable implements IEmbodiedCog
 	private readonly _percepts: SensoryPercept[] = [];
 	private readonly _actions: MotorAction[] = [];
 	private readonly _interactionPatterns: InteractionPattern[] = [];
+	private readonly _knownPatternIds: Set<string> = new Set();
 	private _attentionalFocus: string | null = null;
 
 	private readonly _onDidPerceive = this._register(new Emitter<SensoryPercept>());
@@ -164,16 +165,25 @@ export class EmbodiedCognitionService extends Disposable implements IEmbodiedCog
 			return [];
 		}
 
-		const detected: InteractionPattern[] = [
+		const matches: InteractionPattern[] = [
 			...this._detectFrequencyPatterns(interactionPercepts, minOccurrences),
 			...this._detectSequencePatterns(interactionPercepts, minOccurrences),
 			...this._detectCadencePatterns(interactionPercepts, minOccurrences),
 		];
 
-		for (const pattern of detected) {
+		// Pattern ids are deterministic in (kind, key, occurrences); a match
+		// whose id is already known is the same pattern re-observed on an
+		// unchanged interaction history, not a new detection.
+		const newlyDetected = matches.filter(pattern => !this._knownPatternIds.has(pattern.id));
+
+		for (const pattern of newlyDetected) {
+			this._knownPatternIds.add(pattern.id);
 			this._interactionPatterns.push(pattern);
 			if (this._interactionPatterns.length > MAX_INTERACTION_PATTERNS) {
-				this._interactionPatterns.shift();
+				const evicted = this._interactionPatterns.shift();
+				if (evicted) {
+					this._knownPatternIds.delete(evicted.id);
+				}
 			}
 
 			this.hypergraphStore.addNode({
@@ -195,11 +205,11 @@ export class EmbodiedCognitionService extends Disposable implements IEmbodiedCog
 			this._onDidDetectInteractionPattern.fire(pattern);
 		}
 
-		if (detected.length > 0) {
-			this.logService.trace(`EmbodiedCognitionService: detected ${detected.length} interaction pattern(s)`);
+		if (newlyDetected.length > 0) {
+			this.logService.trace(`EmbodiedCognitionService: detected ${newlyDetected.length} interaction pattern(s)`);
 		}
 
-		return detected;
+		return newlyDetected;
 	}
 
 	getInteractionPatterns(limit: number = 20): InteractionPattern[] {
@@ -316,6 +326,7 @@ export class EmbodiedCognitionService extends Disposable implements IEmbodiedCog
 		this._percepts.length = 0;
 		this._actions.length = 0;
 		this._interactionPatterns.length = 0;
+		this._knownPatternIds.clear();
 		this._attentionalFocus = null;
 		this.logService.info('EmbodiedCognitionService: reset all sensory and motor history');
 		this._fireProprioception();
@@ -398,8 +409,10 @@ export class EmbodiedCognitionService extends Disposable implements IEmbodiedCog
 	 * of usage rather than sporadic activity.
 	 */
 	private _detectCadencePatterns(percepts: SensoryPercept[], minOccurrences: number): InteractionPattern[] {
-		const requiredGaps = Math.max(1, minOccurrences - 1);
-		if (percepts.length <= requiredGaps) {
+		// gaps.length === percepts.length - 1, so this guarantees the reported
+		// `occurrences` (gaps.length) meets the same >= minOccurrences invariant
+		// that frequency and sequence patterns enforce.
+		if (percepts.length <= minOccurrences) {
 			return [];
 		}
 
@@ -409,8 +422,14 @@ export class EmbodiedCognitionService extends Disposable implements IEmbodiedCog
 		}
 
 		const meanGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+		if (meanGap <= 0) {
+			// Simultaneous (or out-of-order) timestamps carry no rhythm
+			// information -- treat as "not a cadence" rather than a perfect one.
+			return [];
+		}
+
 		const variance = gaps.reduce((acc, g) => acc + Math.pow(g - meanGap, 2), 0) / gaps.length;
-		const coefficientOfVariation = meanGap > 0 ? Math.sqrt(variance) / meanGap : 0;
+		const coefficientOfVariation = Math.sqrt(variance) / meanGap;
 
 		if (coefficientOfVariation >= CADENCE_VARIATION_THRESHOLD) {
 			return [];
