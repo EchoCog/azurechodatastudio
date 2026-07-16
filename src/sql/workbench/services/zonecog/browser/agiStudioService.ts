@@ -18,7 +18,6 @@ import {
 	AgentTool,
 	AgentToolCall,
 	StudioRun,
-	StudioRunStatus,
 } from 'sql/workbench/services/zonecog/common/agiStudio';
 import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
@@ -525,6 +524,11 @@ export class AgiStudioService extends Disposable implements IAgiStudioService {
 		superiorId: string | undefined,
 		depth: number,
 	): StudioAgent {
+		if (depth > MAX_DEPTH) {
+			this.logService.warn(`[AgiStudioService] Requested agent depth ${depth} exceeds MAX_DEPTH (${MAX_DEPTH}); clamping`);
+			depth = MAX_DEPTH;
+		}
+
 		const agentId = `agi-agent-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
 		const agent: StudioAgent = {
 			id: agentId,
@@ -629,7 +633,6 @@ export class AgiStudioService extends Disposable implements IAgiStudioService {
 		this.membraneService.recordActivity('cerebral');
 
 		// Record task-decomposition tool call
-		const toolCallId = `tc-decompose-${Date.now()}`;
 		const toolCallStart = Date.now();
 
 		try {
