@@ -187,6 +187,31 @@ const iteration = await cognitiveLoopService.runOnce();
 console.log('Phases:', iteration.phases.map(p => p.name).join(' → '));
 ```
 
+## Interaction Pattern Recognition
+
+`EmbodiedCognitionService.detectInteractionPatterns()` mines the recorded
+`'interaction'`-modality percepts for recurring usage patterns, persisting
+each as an `InteractionPattern` hypergraph node:
+
+- **Frequency** — a specific interaction recurs at least `minOccurrences` times
+- **Sequence** — a pair of interactions consistently follows one another (a habitual bigram)
+- **Temporal** — inter-arrival gaps between interactions form a regular cadence (low coefficient of variation)
+
+```typescript
+embodiedService.perceive('interaction', 'open-query-editor', '');
+// ... more interaction percepts ...
+
+const patterns = embodiedService.detectInteractionPatterns(3);
+for (const p of patterns) {
+  console.log(`[${p.kind}] ${p.description} (confidence: ${p.confidence.toFixed(2)})`);
+}
+
+// React to newly recognized patterns
+embodiedService.onDidDetectInteractionPattern(pattern => {
+  console.log('New pattern:', pattern.description);
+});
+```
+
 ## LLM Provider System
 
 The `ILLMProviderService` supports pluggable LLM backends:
@@ -249,6 +274,7 @@ Available through Command Palette (`Ctrl+Shift+P`):
 - `Zone-Cog: Run ECAN Spreading Activation` — Manual spreading activation trigger
 - `Zone-Cog: Toggle Cognitive Loop` — Start/stop the autonomous cognitive cycle
 - `Zone-Cog: Show Cognitive Loop Status` — Loop iterations and performance
+- `Zone-Cog: Detect Interaction Patterns` — Mine recorded interactions for frequency, sequence, and cadence patterns
 
 ### Phase 4 - DTESN, AAR, Persistence
 - `Zone-Cog: Run DTESN Forward Pass` — Test the Deep Tree Echo State Network

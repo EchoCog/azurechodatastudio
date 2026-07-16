@@ -693,6 +693,52 @@ class ZoneCogCognitiveLoopStatusAction extends Action2 {
 	}
 }
 
+/**
+ * Action to mine recorded interactions for recurring patterns
+ */
+class ZoneCogDetectInteractionPatternsAction extends Action2 {
+
+	static ID = 'zonecog.detectInteractionPatterns';
+	constructor() {
+		super({
+			id: ZoneCogDetectInteractionPatternsAction.ID,
+			title: { value: localize('zonecog.detectInteractionPatterns', 'Detect Interaction Patterns'), original: 'Detect Interaction Patterns' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.repo,
+			f1: true,
+			menu: {
+				id: MenuId.CommandPalette,
+			}
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const embodiedService = accessor.get(IEmbodiedCognitionService);
+		const notificationService = accessor.get(INotificationService);
+
+		const patterns = embodiedService.detectInteractionPatterns();
+		const history = embodiedService.getInteractionPatterns(10);
+
+		if (patterns.length === 0 && history.length === 0) {
+			notificationService.info(localize('zonecog.noInteractionPatterns',
+				'No interaction patterns detected yet. Interact with the workbench first (or none met the repetition threshold).'));
+			return;
+		}
+
+		const toShow = patterns.length > 0 ? patterns : history;
+		const lines = toShow.slice(0, 10).map(p =>
+			`  [${p.kind}] ${p.description} (confidence: ${p.confidence.toFixed(2)})`
+		).join('\n');
+
+		notificationService.info(localize('zonecog.interactionPatternsResult',
+			'{0} interaction pattern(s) {1}:\n{2}',
+			toShow.length,
+			patterns.length > 0 ? 'newly detected' : 'previously detected',
+			lines
+		));
+	}
+}
+
 // =============================================================================
 // Phase 4 actions - DTESN, AAR Orchestration, Hypergraph Persistence
 // =============================================================================
@@ -1027,6 +1073,7 @@ registerAction2(ZoneCogECANSnapshotAction);
 registerAction2(ZoneCogSpreadActivationAction);
 registerAction2(ZoneCogCognitiveLoopToggleAction);
 registerAction2(ZoneCogCognitiveLoopStatusAction);
+registerAction2(ZoneCogDetectInteractionPatternsAction);
 
 // Phase 4 actions
 registerAction2(ZoneCogDTESNForwardAction);

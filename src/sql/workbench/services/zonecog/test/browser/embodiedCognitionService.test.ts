@@ -199,4 +199,113 @@ suite('EmbodiedCognitionService Tests', () => {
 		assert.strictEqual(embodiedService.getRecentActions().length, 0);
 		assert.strictEqual(embodiedService.getProprioceptiveState().attentionalFocus, null);
 	});
+
+	// -- Interaction pattern recognition --------------------------------------
+
+	test('should detect no patterns with no interaction percepts', () => {
+		embodiedService.perceive('schema', 's', '');
+		assert.strictEqual(embodiedService.detectInteractionPatterns().length, 0);
+	});
+
+	test('should detect no patterns below the occurrence threshold', () => {
+		embodiedService.perceive('interaction', 'open-editor', '');
+		embodiedService.perceive('interaction', 'run-query', '');
+
+		assert.strictEqual(embodiedService.detectInteractionPatterns(3).length, 0);
+	});
+
+	test('should detect a frequency pattern for a recurring interaction', () => {
+		for (let i = 0; i < 4; i++) {
+			embodiedService.perceive('interaction', 'open-editor', '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const freq = patterns.filter(p => p.kind === 'frequency');
+
+		assert.strictEqual(freq.length, 1);
+		assert.strictEqual(freq[0].occurrences, 4);
+		assert.ok(freq[0].confidence > 0 && freq[0].confidence <= 1);
+		assert.ok(freq[0].description.includes('open-editor'));
+	});
+
+	test('should detect a sequence pattern for a habitual bigram', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'select-table', '');
+			embodiedService.perceive('interaction', 'run-query', '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const seq = patterns.filter(p => p.kind === 'sequence');
+
+		assert.strictEqual(seq.length, 1);
+		assert.strictEqual(seq[0].occurrences, 3);
+		assert.ok(seq[0].description.includes('select-table'));
+		assert.ok(seq[0].description.includes('run-query'));
+	});
+
+	test('should not report a sequence pattern for identical consecutive summaries', () => {
+		for (let i = 0; i < 4; i++) {
+			embodiedService.perceive('interaction', 'click', '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(patterns.filter(p => p.kind === 'sequence').length, 0);
+	});
+
+	test('should detect a temporal cadence pattern for tightly-spaced interactions', () => {
+		for (let i = 0; i < 5; i++) {
+			embodiedService.perceive('interaction', `step-${i}`, '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const temporal = patterns.filter(p => p.kind === 'temporal');
+
+		assert.strictEqual(temporal.length, 1);
+		assert.ok(temporal[0].confidence > 0);
+		assert.strictEqual(temporal[0].occurrences, 4);
+	});
+
+	test('should persist detected patterns in the hypergraph', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+
+		embodiedService.detectInteractionPatterns(3);
+
+		const nodes = hypergraphStore.getNodesByType('InteractionPattern');
+		assert.ok(nodes.length > 0);
+	});
+
+	test('should fire onDidDetectInteractionPattern for each new pattern', () => {
+		let eventCount = 0;
+		embodiedService.onDidDetectInteractionPattern(() => eventCount++);
+
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		embodiedService.detectInteractionPatterns(3);
+
+		assert.ok(eventCount > 0);
+	});
+
+	test('should accumulate pattern history across detection runs', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		embodiedService.detectInteractionPatterns(3);
+
+		const history = embodiedService.getInteractionPatterns();
+		assert.ok(history.length > 0);
+	});
+
+	test('should clear interaction patterns on reset', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		embodiedService.detectInteractionPatterns(3);
+		assert.ok(embodiedService.getInteractionPatterns().length > 0);
+
+		embodiedService.reset();
+		assert.strictEqual(embodiedService.getInteractionPatterns().length, 0);
+	});
 });

@@ -120,6 +120,39 @@ export interface EnvironmentSnapshot {
 }
 
 // ---------------------------------------------------------------------------
+// Interaction pattern types
+// ---------------------------------------------------------------------------
+
+/**
+ * Category of a recognized interaction pattern.
+ */
+export type InteractionPatternKind =
+	| 'frequency' // a specific interaction recurs often
+	| 'sequence'  // a recurring order of consecutive interactions
+	| 'temporal'; // a recurring cadence in interaction timing
+
+/**
+ * A pattern recognized by mining the history of recorded interaction
+ * percepts (sensory percepts with modality `'interaction'`).
+ */
+export interface InteractionPattern {
+	/** Unique ID for this pattern. */
+	id: string;
+	/** The category of pattern recognized. */
+	kind: InteractionPatternKind;
+	/** Human-readable description of the pattern. */
+	description: string;
+	/** Number of times the underlying pattern was observed. */
+	occurrences: number;
+	/** Confidence that this is a genuine pattern in [0, 1]. */
+	confidence: number;
+	/** Representative examples backing the pattern. */
+	examples: string[];
+	/** Epoch-ms when the pattern was detected. */
+	detectedAt: number;
+}
+
+// ---------------------------------------------------------------------------
 // Service interface
 // ---------------------------------------------------------------------------
 
@@ -159,6 +192,23 @@ export interface IEmbodiedCognitionService {
 	 * Get recent percepts, optionally filtered by modality.
 	 */
 	getRecentPercepts(modality?: SensoryModality, limit?: number): SensoryPercept[];
+
+	/** Fired when a new interaction pattern is recognized. */
+	readonly onDidDetectInteractionPattern: Event<InteractionPattern>;
+
+	/**
+	 * Mine recorded `'interaction'`-modality percepts for recurring
+	 * frequency, sequence, and temporal-cadence patterns. Newly detected
+	 * patterns are persisted in the hypergraph and appended to the
+	 * pattern history.
+	 * @param minOccurrences Minimum repetitions required to report a pattern (defaults to 3).
+	 */
+	detectInteractionPatterns(minOccurrences?: number): InteractionPattern[];
+
+	/**
+	 * Get previously detected interaction patterns, most recent first.
+	 */
+	getInteractionPatterns(limit?: number): InteractionPattern[];
 
 	// -- Motor output --------------------------------------------------------
 
