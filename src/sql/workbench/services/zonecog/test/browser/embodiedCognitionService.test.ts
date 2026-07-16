@@ -21,7 +21,10 @@ suite('EmbodiedCognitionService Tests', () => {
 	let clock: sinon.SinonFakeTimers;
 
 	setup(() => {
-		clock = sinon.useFakeTimers();
+		// A non-zero start time keeps `timestamp > 0` / `lastUpdate > 0`
+		// assertions meaningful -- the real Unix epoch (0) would make them
+		// trivially fail even though production timestamps are unaffected.
+		clock = sinon.useFakeTimers(1_700_000_000_000);
 
 		instantiationService = new TestInstantiationService();
 		instantiationService.stub(ILogService, new NullLogService());
@@ -290,10 +293,14 @@ suite('EmbodiedCognitionService Tests', () => {
 	});
 
 	test('should not report a cadence pattern for irregular gaps', () => {
+		// One perceive() up front, then a tick before each subsequent one, so
+		// all 4 gap values below are actually used as inter-arrival intervals
+		// (5 percepts -> 4 gaps), rather than ticking away the last entry.
 		const gaps = [5, 40, 8, 45];
+		embodiedService.perceive('interaction', 'jitter-start', '');
 		for (const gap of gaps) {
-			embodiedService.perceive('interaction', `jitter-${gap}`, '');
 			clock.tick(gap);
+			embodiedService.perceive('interaction', `jitter-${gap}`, '');
 		}
 
 		const patterns = embodiedService.detectInteractionPatterns(3);
