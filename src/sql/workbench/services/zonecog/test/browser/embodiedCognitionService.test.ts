@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
+import * as sinon from 'sinon';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
 import { EmbodiedCognitionService } from 'sql/workbench/services/zonecog/browser/embodiedCognitionService';
 import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
@@ -17,8 +18,11 @@ suite('EmbodiedCognitionService Tests', () => {
 	let instantiationService: TestInstantiationService;
 	let embodiedService: IEmbodiedCognitionService;
 	let hypergraphStore: IHypergraphStore;
+	let clock: sinon.SinonFakeTimers;
 
 	setup(() => {
+		clock = sinon.useFakeTimers();
+
 		instantiationService = new TestInstantiationService();
 		instantiationService.stub(ILogService, new NullLogService());
 
@@ -29,6 +33,10 @@ suite('EmbodiedCognitionService Tests', () => {
 		instantiationService.stub(ICognitiveMembraneService, membraneService);
 
 		embodiedService = instantiationService.createInstance(EmbodiedCognitionService);
+	});
+
+	teardown(() => {
+		clock.restore();
 	});
 
 	// -- Sensory percepts ----------------------------------------------------
@@ -252,26 +260,26 @@ suite('EmbodiedCognitionService Tests', () => {
 		assert.strictEqual(patterns.filter(p => p.kind === 'sequence').length, 0);
 	});
 
-	test('should detect a temporal cadence pattern for regularly-spaced interactions', async () => {
-		const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
-
+	test('should detect a temporal cadence pattern for regularly-spaced interactions', () => {
+		// A fake clock ticked by a fixed amount between percepts gives exactly
+		// regular gaps deterministically -- no reliance on real wall-clock time.
 		for (let i = 0; i < 5; i++) {
 			embodiedService.perceive('interaction', `step-${i}`, '');
-			await sleep(10);
+			clock.tick(10);
 		}
 
 		const patterns = embodiedService.detectInteractionPatterns(3);
 		const temporal = patterns.filter(p => p.kind === 'temporal');
 
 		assert.strictEqual(temporal.length, 1);
-		assert.ok(temporal[0].confidence > 0);
+		assert.strictEqual(temporal[0].confidence, 1);
 		assert.strictEqual(temporal[0].occurrences, 4);
 	});
 
 	test('should not report a cadence pattern for simultaneous (zero-gap) percepts', () => {
-		// Four rapid, synchronous perceive() calls typically land on the same
-		// Date.now() millisecond -- a burst, not a rhythm -- so no temporal
-		// pattern should be reported even though 3+ occurrences are recorded.
+		// The fake clock never advances, so these percepts share an identical
+		// timestamp deterministically -- a burst, not a rhythm -- and must not
+		// be scored as a perfect cadence.
 		for (let i = 0; i < 4; i++) {
 			embodiedService.perceive('interaction', `burst-${i}`, '');
 		}
@@ -279,6 +287,17 @@ suite('EmbodiedCognitionService Tests', () => {
 		const patterns = embodiedService.detectInteractionPatterns(3);
 		const temporal = patterns.filter(p => p.kind === 'temporal');
 		assert.strictEqual(temporal.length, 0);
+	});
+
+	test('should not report a cadence pattern for irregular gaps', () => {
+		const gaps = [5, 40, 8, 45];
+		for (const gap of gaps) {
+			embodiedService.perceive('interaction', `jitter-${gap}`, '');
+			clock.tick(gap);
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(patterns.filter(p => p.kind === 'temporal').length, 0);
 	});
 
 	test('should not report a cadence pattern below the occurrence threshold', () => {
