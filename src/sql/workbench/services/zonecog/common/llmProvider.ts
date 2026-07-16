@@ -120,7 +120,7 @@ export interface ILLMProviderService {
 	 * Generate a completion using the active provider, invoking `onToken` for
 	 * each incremental chunk of content as it arrives (real-time thinking
 	 * tokens). Falls back to the built-in provider on errors, same as
-	 * `complete()` — but only while no content has streamed out yet; once at
+	 * `complete()` - but only while no content has streamed out yet; once at
 	 * least one token has reached `onToken`, a subsequent failure rejects
 	 * instead of silently replaying an unrelated fallback answer through the
 	 * same callback. Resolves with the final assembled response once the

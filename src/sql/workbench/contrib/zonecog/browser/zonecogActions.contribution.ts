@@ -1652,7 +1652,7 @@ class ZoneCogAgiStudioShowStatusAction extends Action2 {
 
 		const agentTree = agents.map(a => {
 			const indent = '  '.repeat(a.depth);
-			return `${indent}[${a.role}] ${a.name} — ${a.status}`;
+			return `${indent}[${a.role}] ${a.name} - ${a.status}`;
 		}).join('\n');
 
 		const recentMessages = messages.slice(-5).map(m =>

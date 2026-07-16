@@ -119,7 +119,7 @@ suite('AphroditeService', () => {
 	test('should have onDidReceiveStreamToken event', () => {
 		assert.ok(aphroditeService.onDidReceiveStreamToken);
 
-		const disposable = aphroditeService.onDidReceiveStreamToken(() => {});
+		const disposable = aphroditeService.onDidReceiveStreamToken(() => { });
 
 		disposable.dispose();
 	});
@@ -127,7 +127,7 @@ suite('AphroditeService', () => {
 	test('should have onDidUpdateStats event', () => {
 		assert.ok(aphroditeService.onDidUpdateStats);
 
-		const disposable = aphroditeService.onDidUpdateStats(() => {});
+		const disposable = aphroditeService.onDidUpdateStats(() => { });
 
 		disposable.dispose();
 	});
