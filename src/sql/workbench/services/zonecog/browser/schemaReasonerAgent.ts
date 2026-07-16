@@ -199,18 +199,27 @@ export class SchemaReasonerAgent extends Disposable implements ISchemaReasonerAg
 		// table's (singularized) name likely holds a foreign key to it
 		// (e.g. "order_items" -> "orders", "student_courses" -> "students").
 		for (const source of catalog) {
+			// Entities this source already references, keyed by singular form, so
+			// singular/plural variants of one table ("order"/"orders") can never
+			// count as two distinct parents.
+			const referencedEntities = new Set<string>();
 			for (const target of catalog) {
 				if (source.name === target.name) {
+					continue;
+				}
+				// Singular/plural variants of the same name are the same entity,
+				// not a foreign-key relationship (e.g. "order" vs "orders").
+				if (source.singular === target.singular) {
 					continue;
 				}
 				const referencesTarget = source.tokens.includes(target.singular) || source.tokens.includes(target.name.toLowerCase());
 				if (!referencesTarget) {
 					continue;
 				}
-				const alreadyFound = relationships.some(r => r.sourceTable === source.name && r.targetTable === target.name);
-				if (alreadyFound) {
+				if (referencedEntities.has(target.singular)) {
 					continue;
 				}
+				referencedEntities.add(target.singular);
 				relationships.push({
 					sourceTable: source.name,
 					targetTable: target.name,

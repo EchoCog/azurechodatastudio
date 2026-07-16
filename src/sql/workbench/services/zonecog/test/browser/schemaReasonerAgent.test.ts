@@ -415,6 +415,20 @@ suite('SchemaReasonerAgent', () => {
 		assert.strictEqual(relationships.length, 0);
 	});
 
+	test('discoverRelationships should not relate singular/plural variants of the same table', async () => {
+		const relationships = await agent.discoverRelationships(['order', 'orders']);
+
+		assert.strictEqual(relationships.length, 0);
+	});
+
+	test('discoverRelationships should not emit many-to-many when both parents are the same entity', async () => {
+		const relationships = await agent.discoverRelationships(['order', 'orders', 'order_items']);
+
+		const parentEdges = relationships.filter(r => r.sourceTable === 'order_items');
+		assert.strictEqual(parentEdges.length, 1);
+		assert.ok(relationships.every(r => r.relationshipType !== 'many_to_many'));
+	});
+
 	test('suggestImprovements should return quality issues', async () => {
 		const problematicSchema = `
 			CREATE TABLE no_pk (
