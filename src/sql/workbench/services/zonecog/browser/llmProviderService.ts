@@ -213,12 +213,19 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 
 		const circuitState = this._getCircuitState(provider.id);
 
-		if (this._isCircuitOpen(circuitState) && !this._shouldTryHalfOpen(circuitState)) {
+		if (this._isCircuitOpen(circuitState)) {
+			if (this._shouldTryHalfOpen(circuitState)) {
+				this.logService.info(`LLMProviderService: circuit for '${provider.id}' entering half-open state (stream)`);
+				return this._tryHalfOpenStreamRequest(provider, request, onToken, circuitState);
+			}
+
+			// Circuit is open and not yet eligible for a half-open probe.
 			this.logService.warn(`LLMProviderService: circuit open for '${provider.id}', streaming fallback`);
 			this.membraneService.recordActivity('autonomic');
 			return this._builtinCompleteStream(request, onToken);
 		}
 
+		// Circuit is closed - try the normal request with retry.
 		// Track whether any external token was already delivered to the caller.
 		// Once real content has streamed out, retrying or replaying a built-in
 		// fallback through the same callback would mix incoherent partial
@@ -232,11 +239,6 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 		try {
 			const response = await this._externalCompleteStreamWithRetry(provider, request, trackedOnToken);
 			this._recordSuccess(provider.id);
-			if (circuitState.isOpen) {
-				circuitState.isOpen = false;
-				this.logService.info(`LLMProviderService: circuit for '${provider.id}' closed after successful stream`);
-				this._onDidChangeAvailability.fire({ providerId: provider.id, available: true });
-			}
 			return response;
 		} catch (err) {
 			this._recordFailure(provider.id);
@@ -246,6 +248,45 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 				// Partial content has already reached the caller via onToken;
 				// surface the error instead of silently mixing in an unrelated
 				// built-in reply for the remainder.
+				throw err;
+			}
+			return this._builtinCompleteStream(request, onToken);
+		}
+	}
+
+	/**
+	 * Single-attempt streaming probe for a half-open circuit, mirroring
+	 * `_tryHalfOpenRequest`. Deliberately does not use the retry wrapper: a
+	 * half-open probe is meant to be one cautious check, not several retries
+	 * against a provider that may still be unhealthy.
+	 */
+	private async _tryHalfOpenStreamRequest(
+		provider: LLMProviderConfig,
+		request: LLMCompletionRequest,
+		onToken: LLMStreamTokenCallback,
+		state: CircuitBreakerState
+	): Promise<LLMCompletionResponse> {
+		let emittedAny = false;
+		const trackedOnToken: LLMStreamTokenCallback = token => {
+			emittedAny = true;
+			onToken(token);
+		};
+
+		try {
+			const response = await this._externalCompleteStream(provider, request, trackedOnToken);
+			// Success! Close the circuit
+			state.isOpen = false;
+			state.failureCount = 0;
+			this.logService.info(`LLMProviderService: circuit for '${provider.id}' closed after successful half-open stream`);
+			this._onDidChangeAvailability.fire({ providerId: provider.id, available: true });
+			return response;
+		} catch (err) {
+			// Still failing - reopen the circuit
+			state.isOpen = true;
+			state.openedAt = Date.now();
+			state.lastFailureTime = Date.now();
+			this.logService.warn(`LLMProviderService: circuit for '${provider.id}' remains open after failed half-open stream`);
+			if (emittedAny) {
 				throw err;
 			}
 			return this._builtinCompleteStream(request, onToken);
