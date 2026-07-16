@@ -303,7 +303,7 @@ suite('ZoneCog Service Tests', () => {
 	});
 
 	// -----------------------------------------------------------------------
-	// Criterion 2: Adaptive depth scaling — simple queries run reduced set
+	// Criterion 2: Adaptive depth scaling - simple queries run reduced set
 	// -----------------------------------------------------------------------
 
 	test('simple queries should run reduced phase set; Response Preparation always runs', async () => {

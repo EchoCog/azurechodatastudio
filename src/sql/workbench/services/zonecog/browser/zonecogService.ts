@@ -316,10 +316,10 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		}
 
 		if (depth === 'deep') {
-			// Phase 5: Testing and Verification — inspects prior phase output
+			// Phase 5: Testing and Verification - inspects prior phase output
 			phases.push(this._phaseTestingVerification(query, phases));
 
-			// Phase 6: Error Recognition and Correction — inspects prior phase output
+			// Phase 6: Error Recognition and Correction - inspects prior phase output
 			phases.push(this._phaseErrorRecognition(query, phases));
 
 			// Phase 7: Knowledge Synthesis
@@ -330,7 +330,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		}
 
 		if (depth === 'moderate' || depth === 'deep') {
-			// Phase 9: Progress Tracking — comes after phases 3-8 per spec
+			// Phase 9: Progress Tracking - comes after phases 3-8 per spec
 			phases.push(this._phaseProgressTracking(query, phases));
 		}
 
@@ -404,7 +404,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	private _phaseTestingVerification(query: string, priorPhases: ThinkingPhase[]): ThinkingPhase {
 		const start = Date.now();
 
-		// Reference the actual output of prior phases — not static text
+		// Reference the actual output of prior phases - not static text
 		const hypothesisPhase = priorPhases.find(p => p.name === 'Multiple Hypothesis Generation');
 		const discoveryPhase = priorPhases.find(p => p.name === 'Natural Discovery Process');
 		const priorPhaseNames = priorPhases.map(p => p.name).join(', ');
@@ -418,7 +418,7 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 
 		const content =
 			`Now let me systematically question the conclusions from prior phases: ${priorPhaseNames}. ` +
-			`Looking back at the hypothesis phase — ${hypothesisQuote} — ` +
+			`Looking back at the hypothesis phase - ${hypothesisQuote} - ` +
 			`am I being too narrow or prematurely committed to one interpretation? ` +
 			`The discovery phase noted: ${discoveryQuote}. Let's see if this holds under scrutiny. ` +
 			`Testing preliminary conclusions: are there logical inconsistencies I've overlooked? ` +

@@ -435,7 +435,7 @@ export class CognitiveWorkflowAutomationService extends Disposable implements IC
 			const message = String(err);
 			// An unregistered agent degrades gracefully to an empty result so
 			// exploratory workflows aren't blocked by an agent that hasn't been
-			// wired up yet — unless the step explicitly asked to stop on error,
+			// wired up yet - unless the step explicitly asked to stop on error,
 			// in which case the failure must propagate to the step's own
 			// onError handling instead of being masked here.
 			if (message.includes('unknown agent') && onError !== 'stop') {

@@ -176,7 +176,7 @@ export interface AgentTool {
 // ---------------------------------------------------------------------------
 
 /**
- * AGI Studio Service — Agent-Zero-style hierarchical autonomous agents.
+ * AGI Studio Service - Agent-Zero-style hierarchical autonomous agents.
  *
  * Provides an Agent-Zero-inspired orchestration layer on top of the ZoneCog
  * cognitive services.  A root studio agent receives a high-level goal,
