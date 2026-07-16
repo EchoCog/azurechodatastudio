@@ -219,8 +219,18 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 			return this._builtinCompleteStream(request, onToken);
 		}
 
+		// Track whether any external token was already delivered to the caller.
+		// Once real content has streamed out, retrying or replaying a built-in
+		// fallback through the same callback would mix incoherent partial
+		// answers together, so those recovery paths are only safe pre-emission.
+		let emittedAny = false;
+		const trackedOnToken: LLMStreamTokenCallback = token => {
+			emittedAny = true;
+			onToken(token);
+		};
+
 		try {
-			const response = await this._externalCompleteStream(provider, request, onToken);
+			const response = await this._externalCompleteStreamWithRetry(provider, request, trackedOnToken);
 			this._recordSuccess(provider.id);
 			if (circuitState.isOpen) {
 				circuitState.isOpen = false;
@@ -232,8 +242,55 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 			this._recordFailure(provider.id);
 			this.logService.warn(`LLMProviderService: external streaming provider '${provider.id}' failed, falling back`, err);
 			this.membraneService.recordActivity('autonomic');
+			if (emittedAny) {
+				// Partial content has already reached the caller via onToken;
+				// surface the error instead of silently mixing in an unrelated
+				// built-in reply for the remainder.
+				throw err;
+			}
 			return this._builtinCompleteStream(request, onToken);
 		}
+	}
+
+	/**
+	 * External streaming completion with exponential backoff retry, mirroring
+	 * `_externalCompleteWithRetry`. A retry only happens if the failed attempt
+	 * emitted no tokens yet — once partial content has streamed to the caller,
+	 * restarting the stream would duplicate/interleave incoherent output.
+	 */
+	private async _externalCompleteStreamWithRetry(
+		provider: LLMProviderConfig,
+		request: LLMCompletionRequest,
+		onToken: LLMStreamTokenCallback,
+		maxRetries: number = 2
+	): Promise<LLMCompletionResponse> {
+		let lastError: Error | undefined;
+
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			let attemptEmitted = false;
+			const attemptOnToken: LLMStreamTokenCallback = token => {
+				attemptEmitted = true;
+				onToken(token);
+			};
+
+			try {
+				return await this._externalCompleteStream(provider, request, attemptOnToken);
+			} catch (err) {
+				lastError = err as Error;
+
+				if (attemptEmitted || this._isNonTransientError(err)) {
+					throw err;
+				}
+
+				if (attempt < maxRetries) {
+					const delay = 100 * Math.pow(2, attempt);
+					this.logService.info(`LLMProviderService: retrying stream in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+					await this._sleep(delay);
+				}
+			}
+		}
+
+		throw lastError;
 	}
 
 	// -- Circuit Breaker Logic -----------------------------------------------
@@ -553,6 +610,36 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 		let content = '';
 		let usage: LLMCompletionResponse['usage'];
 
+		const processEvent = (rawEvent: string): void => {
+			for (const line of rawEvent.split('\n')) {
+				if (!line.startsWith('data:')) {
+					continue;
+				}
+				const data = line.slice(5).trim();
+				if (!data || data === '[DONE]') {
+					continue;
+				}
+
+				try {
+					const chunk = JSON.parse(data);
+					const delta: string | undefined = chunk.choices?.[0]?.delta?.content;
+					if (delta) {
+						content += delta;
+						onToken(delta);
+					}
+					if (chunk.usage) {
+						usage = {
+							promptTokens: chunk.usage.prompt_tokens ?? 0,
+							completionTokens: chunk.usage.completion_tokens ?? 0,
+							totalTokens: chunk.usage.total_tokens ?? 0,
+						};
+					}
+				} catch (err) {
+					this.logService.warn('LLMProviderService: failed to parse streaming SSE frame', err);
+				}
+			}
+		};
+
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) {
@@ -564,35 +651,16 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 			while ((separatorIndex = buffer.indexOf('\n\n')) !== -1) {
 				const rawEvent = buffer.slice(0, separatorIndex);
 				buffer = buffer.slice(separatorIndex + 2);
-
-				for (const line of rawEvent.split('\n')) {
-					if (!line.startsWith('data:')) {
-						continue;
-					}
-					const data = line.slice(5).trim();
-					if (!data || data === '[DONE]') {
-						continue;
-					}
-
-					try {
-						const chunk = JSON.parse(data);
-						const delta: string | undefined = chunk.choices?.[0]?.delta?.content;
-						if (delta) {
-							content += delta;
-							onToken(delta);
-						}
-						if (chunk.usage) {
-							usage = {
-								promptTokens: chunk.usage.prompt_tokens ?? 0,
-								completionTokens: chunk.usage.completion_tokens ?? 0,
-								totalTokens: chunk.usage.total_tokens ?? 0,
-							};
-						}
-					} catch (err) {
-						this.logService.warn('LLMProviderService: failed to parse streaming SSE frame', err);
-					}
-				}
+				processEvent(rawEvent);
 			}
+		}
+
+		// Flush any bytes the decoder held back for a multi-byte sequence and
+		// process a final event that wasn't terminated by a trailing blank
+		// line (some servers close the connection right after the last frame).
+		buffer += decoder.decode();
+		if (buffer.trim().length > 0) {
+			processEvent(buffer);
 		}
 
 		if (!content) {

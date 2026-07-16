@@ -16,6 +16,7 @@ suite('LLM Provider Service Tests', () => {
 	let instantiationService: TestInstantiationService;
 	let llmService: ILLMProviderService & { getCircuitBreakerStatus(id: string): any; resetCircuitBreaker(id: string): void };
 	let membraneService: CognitiveMembraneService;
+	const originalFetch = globalThis.fetch;
 
 	setup(() => {
 		instantiationService = new TestInstantiationService();
@@ -29,7 +30,53 @@ suite('LLM Provider Service Tests', () => {
 
 	teardown(() => {
 		membraneService.dispose();
+		globalThis.fetch = originalFetch;
 	});
+
+	/** Register and activate an external SSE-streaming provider for a test. */
+	function activateExternalProvider(id: string = 'sse-provider'): void {
+		llmService.registerProvider({
+			id,
+			displayName: 'SSE Provider',
+			baseUrl: 'http://localhost:9999',
+			model: 'test-model',
+			maxContextLength: 2048,
+		});
+		llmService.setActiveProvider(id);
+	}
+
+	/** Build a fetch stub that streams the given raw SSE payload chunks. */
+	function stubStreamingFetch(chunks: string[]): void {
+		const encoder = new TextEncoder();
+		let index = 0;
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				if (index < chunks.length) {
+					controller.enqueue(encoder.encode(chunks[index++]));
+				} else {
+					controller.close();
+				}
+			},
+		});
+		globalThis.fetch = (async () => ({ ok: true, status: 200, body }) as unknown as Response) as typeof fetch;
+	}
+
+	/** Build a fetch stub whose stream emits one chunk, then errors on the next read. */
+	function stubFailingMidStreamFetch(firstChunk: string, failure: Error): void {
+		const encoder = new TextEncoder();
+		let pullCount = 0;
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pullCount++;
+				if (pullCount === 1) {
+					controller.enqueue(encoder.encode(firstChunk));
+				} else {
+					controller.error(failure);
+				}
+			},
+		});
+		globalThis.fetch = (async () => ({ ok: true, status: 200, body }) as unknown as Response) as typeof fetch;
+	}
 
 	// --- Initial State Tests ---
 
@@ -494,5 +541,57 @@ suite('LLM Provider Service Tests', () => {
 
 		assert.strictEqual(streamedContent, nonStreamed.content);
 		assert.strictEqual(streamed.content, nonStreamed.content);
+	});
+
+	// --- Streaming Completion Tests (External SSE Provider) ---
+
+	test('should process a trailing SSE frame with no terminating blank line', async () => {
+		activateExternalProvider();
+		stubStreamingFetch([
+			'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+			'data: {"choices":[{"delta":{"content":" world"}}]}',
+		]);
+
+		const tokens: string[] = [];
+		const response = await llmService.completeStream(
+			{ systemPrompt: 'sys', userMessage: 'test' },
+			token => { tokens.push(token); }
+		);
+
+		assert.strictEqual(tokens.join(''), 'Hello world');
+		assert.strictEqual(response.content, 'Hello world');
+		assert.strictEqual(response.isFallback, false);
+	});
+
+	test('should reject rather than replay a fallback after tokens have already streamed', async () => {
+		activateExternalProvider();
+		stubFailingMidStreamFetch(
+			'data: {"choices":[{"delta":{"content":"Partial"}}]}\n\n',
+			new Error('connection reset mid-stream')
+		);
+
+		const tokens: string[] = [];
+		await assert.rejects(
+			llmService.completeStream(
+				{ systemPrompt: 'sys', userMessage: 'test' },
+				token => { tokens.push(token); }
+			)
+		);
+
+		assert.deepStrictEqual(tokens, ['Partial']);
+	});
+
+	test('should retry a streaming failure that emitted no tokens, then fall back to built-in', async () => {
+		activateExternalProvider();
+		globalThis.fetch = (async () => { throw new Error('network unreachable'); }) as unknown as typeof fetch;
+
+		const tokens: string[] = [];
+		const response = await llmService.completeStream(
+			{ systemPrompt: 'sys', userMessage: 'test' },
+			token => { tokens.push(token); }
+		);
+
+		assert.ok(response.isFallback);
+		assert.strictEqual(tokens.join(''), response.content);
 	});
 });
