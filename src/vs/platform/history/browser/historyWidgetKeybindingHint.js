@@ -6,5 +6,5 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.showHistoryKeybindingHint = showHistoryKeybindingHint;
 function showHistoryKeybindingHint(keybindingService) {
-    return keybindingService.lookupKeybinding('history.showPrevious')?.getElectronAccelerator() === 'Up' && keybindingService.lookupKeybinding('history.showNext')?.getElectronAccelerator() === 'Down';
+	return keybindingService.lookupKeybinding('history.showPrevious')?.getElectronAccelerator() === 'Up' && keybindingService.lookupKeybinding('history.showNext')?.getElectronAccelerator() === 'Down';
 }

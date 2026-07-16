@@ -9,6 +9,6 @@ exports.isResolvedTextEditorModel = isResolvedTextEditorModel;
 const instantiation_1 = require("vs/platform/instantiation/common/instantiation");
 exports.ITextModelService = (0, instantiation_1.createDecorator)('textModelService');
 function isResolvedTextEditorModel(model) {
-    const candidate = model;
-    return !!candidate.textEditorModel;
+	const candidate = model;
+	return !!candidate.textEditorModel;
 }

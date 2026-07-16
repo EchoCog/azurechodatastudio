@@ -1,40 +1,40 @@
 "use strict";
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
+	*  Copyright (c) Microsoft Corporation. All rights reserved.
+	*  Licensed under the MIT License. See License.txt in the project root for license information.
+	*--------------------------------------------------------------------------------------------*/
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
+	if (k2 === undefined) k2 = k;
+	var desc = Object.getOwnPropertyDescriptor(m, k);
+	if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+		desc = { enumerable: true, get: function() { return m[k]; } };
+	}
+	Object.defineProperty(o, k2, desc);
 }) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
+	if (k2 === undefined) k2 = k;
+	o[k2] = m[k];
 }));
 var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
+	Object.defineProperty(o, "default", { enumerable: true, value: v });
 }) : function(o, v) {
-    o["default"] = v;
+	o["default"] = v;
 });
 var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
+	var ownKeys = function(o) {
+		ownKeys = Object.getOwnPropertyNames || function (o) {
+			var ar = [];
+			for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+			return ar;
+		};
+		return ownKeys(o);
+	};
+	return function (mod) {
+		if (mod && mod.__esModule) return mod;
+		var result = {};
+		if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+		__setModuleDefault(result, mod);
+		return result;
+	};
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buttonDisabledBorder = exports.buttonSecondaryBorder = exports.buttonSecondaryHoverBackground = exports.buttonSecondaryBackground = exports.buttonSecondaryForeground = exports.buttonBorder = exports.buttonHoverBackground = exports.buttonBackground = exports.buttonSeparator = exports.buttonForeground = exports.selectBorder = exports.selectForeground = exports.selectListBackground = exports.selectBackground = exports.inputValidationErrorBorder = exports.inputValidationErrorForeground = exports.inputValidationErrorBackground = exports.inputValidationWarningBorder = exports.inputValidationWarningForeground = exports.inputValidationWarningBackground = exports.inputValidationInfoBorder = exports.inputValidationInfoForeground = exports.inputValidationInfoBackground = exports.inputPlaceholderForeground = exports.inputActiveOptionForeground = exports.inputActiveOptionBackground = exports.inputActiveOptionHoverBackground = exports.inputActiveOptionBorder = exports.inputBorder = exports.inputForeground = exports.inputBackground = exports.widgetBorder = exports.widgetShadow = exports.textCodeBlockBackground = exports.textBlockQuoteBorder = exports.textBlockQuoteBackground = exports.textPreformatForeground = exports.textLinkActiveForeground = exports.textLinkForeground = exports.textSeparatorForeground = exports.selectionBackground = exports.activeContrastBorder = exports.contrastBorder = exports.focusBorder = exports.iconForeground = exports.descriptionForeground = exports.errorForeground = exports.disabledForeground = exports.foreground = exports.Extensions = void 0;
@@ -63,92 +63,92 @@ const nls = __importStar(require("vs/nls"));
 const jsonContributionRegistry_1 = require("vs/platform/jsonschemas/common/jsonContributionRegistry");
 const platform = __importStar(require("vs/platform/registry/common/platform"));
 /**
- * Returns the css variable name for the given color identifier. Dots (`.`) are replaced with hyphens (`-`) and
- * everything is prefixed with `--vscode-`.
- *
- * @sample `editorSuggestWidget.background` is `--vscode-editorSuggestWidget-background`.
- */
+	* Returns the css variable name for the given color identifier. Dots (`.`) are replaced with hyphens (`-`) and
+	* everything is prefixed with `--vscode-`.
+	*
+	* @sample `editorSuggestWidget.background` is `--vscode-editorSuggestWidget-background`.
+	*/
 function asCssVariableName(colorIdent) {
-    return `--vscode-${colorIdent.replace(/\./g, '-')}`;
+	return `--vscode-${colorIdent.replace(/\./g, '-')}`;
 }
 function asCssVariable(color) {
-    return `var(${asCssVariableName(color)})`;
+	return `var(${asCssVariableName(color)})`;
 }
 function asCssVariableWithDefault(color, defaultCssValue) {
-    return `var(${asCssVariableName(color)}, ${defaultCssValue})`;
+	return `var(${asCssVariableName(color)}, ${defaultCssValue})`;
 }
 // color registry
 exports.Extensions = {
-    ColorContribution: 'base.contributions.colors'
+	ColorContribution: 'base.contributions.colors'
 };
 class ColorRegistry {
-    _onDidChangeSchema = new event_1.Emitter();
-    onDidChangeSchema = this._onDidChangeSchema.event;
-    colorsById;
-    colorSchema = { type: 'object', properties: {} };
-    colorReferenceSchema = { type: 'string', enum: [], enumDescriptions: [] };
-    constructor() {
-        this.colorsById = {};
-    }
-    registerColor(id, defaults, description, needsTransparency = false, deprecationMessage) {
-        const colorContribution = { id, description, defaults, needsTransparency, deprecationMessage };
-        this.colorsById[id] = colorContribution;
-        const propertySchema = { type: 'string', description, format: 'color-hex', defaultSnippets: [{ body: '${1:#ff0000}' }] };
-        if (deprecationMessage) {
-            propertySchema.deprecationMessage = deprecationMessage;
-        }
-        this.colorSchema.properties[id] = propertySchema;
-        this.colorReferenceSchema.enum.push(id);
-        this.colorReferenceSchema.enumDescriptions.push(description);
-        this._onDidChangeSchema.fire();
-        return id;
-    }
-    deregisterColor(id) {
-        delete this.colorsById[id];
-        delete this.colorSchema.properties[id];
-        const index = this.colorReferenceSchema.enum.indexOf(id);
-        if (index !== -1) {
-            this.colorReferenceSchema.enum.splice(index, 1);
-            this.colorReferenceSchema.enumDescriptions.splice(index, 1);
-        }
-        this._onDidChangeSchema.fire();
-    }
-    getColors() {
-        return Object.keys(this.colorsById).map(id => this.colorsById[id]);
-    }
-    resolveDefaultColor(id, theme) {
-        const colorDesc = this.colorsById[id];
-        if (colorDesc && colorDesc.defaults) {
-            const colorValue = colorDesc.defaults[theme.type];
-            return resolveColorValue(colorValue, theme);
-        }
-        return undefined;
-    }
-    getColorSchema() {
-        return this.colorSchema;
-    }
-    getColorReferenceSchema() {
-        return this.colorReferenceSchema;
-    }
-    toString() {
-        const sorter = (a, b) => {
-            const cat1 = a.indexOf('.') === -1 ? 0 : 1;
-            const cat2 = b.indexOf('.') === -1 ? 0 : 1;
-            if (cat1 !== cat2) {
-                return cat1 - cat2;
-            }
-            return a.localeCompare(b);
-        };
-        return Object.keys(this.colorsById).sort(sorter).map(k => `- \`${k}\`: ${this.colorsById[k].description}`).join('\n');
-    }
+	_onDidChangeSchema = new event_1.Emitter();
+	onDidChangeSchema = this._onDidChangeSchema.event;
+	colorsById;
+	colorSchema = { type: 'object', properties: {} };
+	colorReferenceSchema = { type: 'string', enum: [], enumDescriptions: [] };
+	constructor() {
+		this.colorsById = {};
+	}
+	registerColor(id, defaults, description, needsTransparency = false, deprecationMessage) {
+		const colorContribution = { id, description, defaults, needsTransparency, deprecationMessage };
+		this.colorsById[id] = colorContribution;
+		const propertySchema = { type: 'string', description, format: 'color-hex', defaultSnippets: [{ body: '${1:#ff0000}' }] };
+		if (deprecationMessage) {
+			propertySchema.deprecationMessage = deprecationMessage;
+		}
+		this.colorSchema.properties[id] = propertySchema;
+		this.colorReferenceSchema.enum.push(id);
+		this.colorReferenceSchema.enumDescriptions.push(description);
+		this._onDidChangeSchema.fire();
+		return id;
+	}
+	deregisterColor(id) {
+		delete this.colorsById[id];
+		delete this.colorSchema.properties[id];
+		const index = this.colorReferenceSchema.enum.indexOf(id);
+		if (index !== -1) {
+			this.colorReferenceSchema.enum.splice(index, 1);
+			this.colorReferenceSchema.enumDescriptions.splice(index, 1);
+		}
+		this._onDidChangeSchema.fire();
+	}
+	getColors() {
+		return Object.keys(this.colorsById).map(id => this.colorsById[id]);
+	}
+	resolveDefaultColor(id, theme) {
+		const colorDesc = this.colorsById[id];
+		if (colorDesc && colorDesc.defaults) {
+			const colorValue = colorDesc.defaults[theme.type];
+			return resolveColorValue(colorValue, theme);
+		}
+		return undefined;
+	}
+	getColorSchema() {
+		return this.colorSchema;
+	}
+	getColorReferenceSchema() {
+		return this.colorReferenceSchema;
+	}
+	toString() {
+		const sorter = (a, b) => {
+			const cat1 = a.indexOf('.') === -1 ? 0 : 1;
+			const cat2 = b.indexOf('.') === -1 ? 0 : 1;
+			if (cat1 !== cat2) {
+				return cat1 - cat2;
+			}
+			return a.localeCompare(b);
+		};
+		return Object.keys(this.colorsById).sort(sorter).map(k => `- \`${k}\`: ${this.colorsById[k].description}`).join('\n');
+	}
 }
 const colorRegistry = new ColorRegistry();
 platform.Registry.add(exports.Extensions.ColorContribution, colorRegistry);
 function registerColor(id, defaults, description, needsTransparency, deprecationMessage) {
-    return colorRegistry.registerColor(id, defaults, description, needsTransparency, deprecationMessage);
+	return colorRegistry.registerColor(id, defaults, description, needsTransparency, deprecationMessage);
 }
 function getColorRegistry() {
-    return colorRegistry;
+	return colorRegistry;
 }
 // ----- base colors
 exports.foreground = registerColor('foreground', { dark: '#CCCCCC', light: '#616161', hcDark: '#FFFFFF', hcLight: '#292929' }, nls.localize('foreground', "Overall foreground color. This color is only used if not overridden by a component."));
@@ -229,51 +229,51 @@ exports.editorHintForeground = registerColor('editorHint.foreground', { dark: co
 exports.editorHintBorder = registerColor('editorHint.border', { dark: null, light: null, hcDark: color_1.Color.fromHex('#eeeeee').transparent(0.8), hcLight: '#292929' }, nls.localize('hintBorder', 'If set, color of double underlines for hints in the editor.'));
 exports.sashHoverBorder = registerColor('sash.hoverBorder', { dark: exports.focusBorder, light: exports.focusBorder, hcDark: exports.focusBorder, hcLight: exports.focusBorder }, nls.localize('sashActiveBorder', "Border color of active sashes."));
 /**
- * Editor background color.
- */
+	* Editor background color.
+	*/
 exports.editorBackground = registerColor('editor.background', { light: '#ffffff', dark: '#1E1E1E', hcDark: color_1.Color.black, hcLight: color_1.Color.white }, nls.localize('editorBackground', "Editor background color."));
 /**
- * Editor foreground color.
- */
+	* Editor foreground color.
+	*/
 exports.editorForeground = registerColor('editor.foreground', { light: '#333333', dark: '#BBBBBB', hcDark: color_1.Color.white, hcLight: exports.foreground }, nls.localize('editorForeground', "Editor default foreground color."));
 /**
- * Sticky scroll
- */
+	* Sticky scroll
+	*/
 exports.editorStickyScrollBackground = registerColor('editorStickyScroll.background', { light: exports.editorBackground, dark: exports.editorBackground, hcDark: exports.editorBackground, hcLight: exports.editorBackground }, nls.localize('editorStickyScrollBackground', "Sticky scroll background color for the editor"));
 exports.editorStickyScrollHoverBackground = registerColor('editorStickyScrollHover.background', { dark: '#2A2D2E', light: '#F0F0F0', hcDark: null, hcLight: color_1.Color.fromHex('#0F4A85').transparent(0.1) }, nls.localize('editorStickyScrollHoverBackground', "Sticky scroll on hover background color for the editor"));
 /**
- * Editor widgets
- */
+	* Editor widgets
+	*/
 exports.editorWidgetBackground = registerColor('editorWidget.background', { dark: '#252526', light: '#F3F3F3', hcDark: '#0C141F', hcLight: color_1.Color.white }, nls.localize('editorWidgetBackground', 'Background color of editor widgets, such as find/replace.'));
 exports.editorWidgetForeground = registerColor('editorWidget.foreground', { dark: exports.foreground, light: exports.foreground, hcDark: exports.foreground, hcLight: exports.foreground }, nls.localize('editorWidgetForeground', 'Foreground color of editor widgets, such as find/replace.'));
 exports.editorWidgetBorder = registerColor('editorWidget.border', { dark: '#454545', light: '#C8C8C8', hcDark: exports.contrastBorder, hcLight: exports.contrastBorder }, nls.localize('editorWidgetBorder', 'Border color of editor widgets. The color is only used if the widget chooses to have a border and if the color is not overridden by a widget.'));
 exports.editorWidgetResizeBorder = registerColor('editorWidget.resizeBorder', { light: null, dark: null, hcDark: null, hcLight: null }, nls.localize('editorWidgetResizeBorder', "Border color of the resize bar of editor widgets. The color is only used if the widget chooses to have a resize border and if the color is not overridden by a widget."));
 /**
- * Quick pick widget
- */
+	* Quick pick widget
+	*/
 exports.quickInputBackground = registerColor('quickInput.background', { dark: exports.editorWidgetBackground, light: exports.editorWidgetBackground, hcDark: exports.editorWidgetBackground, hcLight: exports.editorWidgetBackground }, nls.localize('pickerBackground', "Quick picker background color. The quick picker widget is the container for pickers like the command palette."));
 exports.quickInputForeground = registerColor('quickInput.foreground', { dark: exports.editorWidgetForeground, light: exports.editorWidgetForeground, hcDark: exports.editorWidgetForeground, hcLight: exports.editorWidgetForeground }, nls.localize('pickerForeground', "Quick picker foreground color. The quick picker widget is the container for pickers like the command palette."));
 exports.quickInputTitleBackground = registerColor('quickInputTitle.background', { dark: new color_1.Color(new color_1.RGBA(255, 255, 255, 0.105)), light: new color_1.Color(new color_1.RGBA(0, 0, 0, 0.06)), hcDark: '#000000', hcLight: color_1.Color.white }, nls.localize('pickerTitleBackground', "Quick picker title background color. The quick picker widget is the container for pickers like the command palette."));
 exports.pickerGroupForeground = registerColor('pickerGroup.foreground', { dark: '#3794FF', light: '#0066BF', hcDark: color_1.Color.white, hcLight: '#0F4A85' }, nls.localize('pickerGroupForeground', "Quick picker color for grouping labels."));
 exports.pickerGroupBorder = registerColor('pickerGroup.border', { dark: '#3F3F46', light: '#CCCEDB', hcDark: color_1.Color.white, hcLight: '#0F4A85' }, nls.localize('pickerGroupBorder', "Quick picker color for grouping borders."));
 /**
- * Keybinding label
- */
+	* Keybinding label
+	*/
 exports.keybindingLabelBackground = registerColor('keybindingLabel.background', { dark: new color_1.Color(new color_1.RGBA(128, 128, 128, 0.17)), light: new color_1.Color(new color_1.RGBA(221, 221, 221, 0.4)), hcDark: color_1.Color.transparent, hcLight: color_1.Color.transparent }, nls.localize('keybindingLabelBackground', "Keybinding label background color. The keybinding label is used to represent a keyboard shortcut."));
 exports.keybindingLabelForeground = registerColor('keybindingLabel.foreground', { dark: color_1.Color.fromHex('#CCCCCC'), light: color_1.Color.fromHex('#555555'), hcDark: color_1.Color.white, hcLight: exports.foreground }, nls.localize('keybindingLabelForeground', "Keybinding label foreground color. The keybinding label is used to represent a keyboard shortcut."));
 exports.keybindingLabelBorder = registerColor('keybindingLabel.border', { dark: new color_1.Color(new color_1.RGBA(51, 51, 51, 0.6)), light: new color_1.Color(new color_1.RGBA(204, 204, 204, 0.4)), hcDark: new color_1.Color(new color_1.RGBA(111, 195, 223)), hcLight: exports.contrastBorder }, nls.localize('keybindingLabelBorder', "Keybinding label border color. The keybinding label is used to represent a keyboard shortcut."));
 exports.keybindingLabelBottomBorder = registerColor('keybindingLabel.bottomBorder', { dark: new color_1.Color(new color_1.RGBA(68, 68, 68, 0.6)), light: new color_1.Color(new color_1.RGBA(187, 187, 187, 0.4)), hcDark: new color_1.Color(new color_1.RGBA(111, 195, 223)), hcLight: exports.foreground }, nls.localize('keybindingLabelBottomBorder', "Keybinding label border bottom color. The keybinding label is used to represent a keyboard shortcut."));
 /**
- * Editor selection colors.
- */
+	* Editor selection colors.
+	*/
 exports.editorSelectionBackground = registerColor('editor.selectionBackground', { light: '#ADD6FF', dark: '#264F78', hcDark: '#f3f518', hcLight: '#0F4A85' }, nls.localize('editorSelectionBackground', "Color of the editor selection."));
 exports.editorSelectionForeground = registerColor('editor.selectionForeground', { light: null, dark: null, hcDark: '#000000', hcLight: color_1.Color.white }, nls.localize('editorSelectionForeground', "Color of the selected text for high contrast."));
 exports.editorInactiveSelection = registerColor('editor.inactiveSelectionBackground', { light: transparent(exports.editorSelectionBackground, 0.5), dark: transparent(exports.editorSelectionBackground, 0.5), hcDark: transparent(exports.editorSelectionBackground, 0.7), hcLight: transparent(exports.editorSelectionBackground, 0.5) }, nls.localize('editorInactiveSelection', "Color of the selection in an inactive editor. The color must not be opaque so as not to hide underlying decorations."), true);
 exports.editorSelectionHighlight = registerColor('editor.selectionHighlightBackground', { light: lessProminent(exports.editorSelectionBackground, exports.editorBackground, 0.3, 0.6), dark: lessProminent(exports.editorSelectionBackground, exports.editorBackground, 0.3, 0.6), hcDark: null, hcLight: null }, nls.localize('editorSelectionHighlight', 'Color for regions with the same content as the selection. The color must not be opaque so as not to hide underlying decorations.'), true);
 exports.editorSelectionHighlightBorder = registerColor('editor.selectionHighlightBorder', { light: null, dark: null, hcDark: exports.activeContrastBorder, hcLight: exports.activeContrastBorder }, nls.localize('editorSelectionHighlightBorder', "Border color for regions with the same content as the selection."));
 /**
- * Editor find match colors.
- */
+	* Editor find match colors.
+	*/
 exports.editorFindMatch = registerColor('editor.findMatchBackground', { light: '#A8AC94', dark: '#515C6A', hcDark: null, hcLight: null }, nls.localize('editorFindMatch', "Color of the current search match."));
 exports.editorFindMatchHighlight = registerColor('editor.findMatchHighlightBackground', { light: '#EA5C0055', dark: '#EA5C0055', hcDark: null, hcLight: null }, nls.localize('findMatchHighlight', "Color of the other search matches. The color must not be opaque so as not to hide underlying decorations."), true);
 exports.editorFindRangeHighlight = registerColor('editor.findRangeHighlightBackground', { dark: '#3a3d4166', light: '#b4b4b44d', hcDark: null, hcLight: null }, nls.localize('findRangeHighlight', "Color of the range limiting the search. The color must not be opaque so as not to hide underlying decorations."), true);
@@ -281,31 +281,31 @@ exports.editorFindMatchBorder = registerColor('editor.findMatchBorder', { light:
 exports.editorFindMatchHighlightBorder = registerColor('editor.findMatchHighlightBorder', { light: null, dark: null, hcDark: exports.activeContrastBorder, hcLight: exports.activeContrastBorder }, nls.localize('findMatchHighlightBorder', "Border color of the other search matches."));
 exports.editorFindRangeHighlightBorder = registerColor('editor.findRangeHighlightBorder', { dark: null, light: null, hcDark: transparent(exports.activeContrastBorder, 0.4), hcLight: transparent(exports.activeContrastBorder, 0.4) }, nls.localize('findRangeHighlightBorder', "Border color of the range limiting the search. The color must not be opaque so as not to hide underlying decorations."), true);
 /**
- * Search Editor query match colors.
- *
- * Distinct from normal editor find match to allow for better differentiation
- */
+	* Search Editor query match colors.
+	*
+	* Distinct from normal editor find match to allow for better differentiation
+	*/
 exports.searchEditorFindMatch = registerColor('searchEditor.findMatchBackground', { light: transparent(exports.editorFindMatchHighlight, 0.66), dark: transparent(exports.editorFindMatchHighlight, 0.66), hcDark: exports.editorFindMatchHighlight, hcLight: exports.editorFindMatchHighlight }, nls.localize('searchEditor.queryMatch', "Color of the Search Editor query matches."));
 exports.searchEditorFindMatchBorder = registerColor('searchEditor.findMatchBorder', { light: transparent(exports.editorFindMatchHighlightBorder, 0.66), dark: transparent(exports.editorFindMatchHighlightBorder, 0.66), hcDark: exports.editorFindMatchHighlightBorder, hcLight: exports.editorFindMatchHighlightBorder }, nls.localize('searchEditor.editorFindMatchBorder', "Border color of the Search Editor query matches."));
 /**
- * Search Viewlet colors.
- */
+	* Search Viewlet colors.
+	*/
 exports.searchResultsInfoForeground = registerColor('search.resultsInfoForeground', { light: exports.foreground, dark: transparent(exports.foreground, 0.65), hcDark: exports.foreground, hcLight: exports.foreground }, nls.localize('search.resultsInfoForeground', "Color of the text in the search viewlet's completion message."));
 /**
- * Editor hover
- */
+	* Editor hover
+	*/
 exports.editorHoverHighlight = registerColor('editor.hoverHighlightBackground', { light: '#ADD6FF26', dark: '#264f7840', hcDark: '#ADD6FF26', hcLight: null }, nls.localize('hoverHighlight', 'Highlight below the word for which a hover is shown. The color must not be opaque so as not to hide underlying decorations.'), true);
 exports.editorHoverBackground = registerColor('editorHoverWidget.background', { light: exports.editorWidgetBackground, dark: exports.editorWidgetBackground, hcDark: exports.editorWidgetBackground, hcLight: exports.editorWidgetBackground }, nls.localize('hoverBackground', 'Background color of the editor hover.'));
 exports.editorHoverForeground = registerColor('editorHoverWidget.foreground', { light: exports.editorWidgetForeground, dark: exports.editorWidgetForeground, hcDark: exports.editorWidgetForeground, hcLight: exports.editorWidgetForeground }, nls.localize('hoverForeground', 'Foreground color of the editor hover.'));
 exports.editorHoverBorder = registerColor('editorHoverWidget.border', { light: exports.editorWidgetBorder, dark: exports.editorWidgetBorder, hcDark: exports.editorWidgetBorder, hcLight: exports.editorWidgetBorder }, nls.localize('hoverBorder', 'Border color of the editor hover.'));
 exports.editorHoverStatusBarBackground = registerColor('editorHoverWidget.statusBarBackground', { dark: lighten(exports.editorHoverBackground, 0.2), light: darken(exports.editorHoverBackground, 0.05), hcDark: exports.editorWidgetBackground, hcLight: exports.editorWidgetBackground }, nls.localize('statusBarBackground', "Background color of the editor hover status bar."));
 /**
- * Editor link colors
- */
+	* Editor link colors
+	*/
 exports.editorActiveLinkForeground = registerColor('editorLink.activeForeground', { dark: '#4E94CE', light: color_1.Color.blue, hcDark: color_1.Color.cyan, hcLight: '#292929' }, nls.localize('activeLinkForeground', 'Color of active links.'));
 /**
- * Inline hints
- */
+	* Inline hints
+	*/
 exports.editorInlayHintForeground = registerColor('editorInlayHint.foreground', { dark: '#969696', light: '#969696', hcDark: color_1.Color.white, hcLight: color_1.Color.black }, nls.localize('editorInlayHintForeground', 'Foreground color of inline hints'));
 exports.editorInlayHintBackground = registerColor('editorInlayHint.background', { dark: transparent(exports.badgeBackground, .10), light: transparent(exports.badgeBackground, .10), hcDark: transparent(color_1.Color.white, .10), hcLight: transparent(exports.badgeBackground, .10) }, nls.localize('editorInlayHintBackground', 'Background color of inline hints'));
 exports.editorInlayHintTypeForeground = registerColor('editorInlayHint.typeForeground', { dark: exports.editorInlayHintForeground, light: exports.editorInlayHintForeground, hcDark: exports.editorInlayHintForeground, hcLight: exports.editorInlayHintForeground }, nls.localize('editorInlayHintForegroundTypes', 'Foreground color of inline hints for types'));
@@ -313,13 +313,13 @@ exports.editorInlayHintTypeBackground = registerColor('editorInlayHint.typeBackg
 exports.editorInlayHintParameterForeground = registerColor('editorInlayHint.parameterForeground', { dark: exports.editorInlayHintForeground, light: exports.editorInlayHintForeground, hcDark: exports.editorInlayHintForeground, hcLight: exports.editorInlayHintForeground }, nls.localize('editorInlayHintForegroundParameter', 'Foreground color of inline hints for parameters'));
 exports.editorInlayHintParameterBackground = registerColor('editorInlayHint.parameterBackground', { dark: exports.editorInlayHintBackground, light: exports.editorInlayHintBackground, hcDark: exports.editorInlayHintBackground, hcLight: exports.editorInlayHintBackground }, nls.localize('editorInlayHintBackgroundParameter', 'Background color of inline hints for parameters'));
 /**
- * Editor lighbulb icon colors
- */
+	* Editor lighbulb icon colors
+	*/
 exports.editorLightBulbForeground = registerColor('editorLightBulb.foreground', { dark: '#FFCC00', light: '#DDB100', hcDark: '#FFCC00', hcLight: '#007ACC' }, nls.localize('editorLightBulbForeground', "The color used for the lightbulb actions icon."));
 exports.editorLightBulbAutoFixForeground = registerColor('editorLightBulbAutoFix.foreground', { dark: '#75BEFF', light: '#007ACC', hcDark: '#75BEFF', hcLight: '#007ACC' }, nls.localize('editorLightBulbAutoFixForeground', "The color used for the lightbulb auto fix actions icon."));
 /**
- * Diff Editor Colors
- */
+	* Diff Editor Colors
+	*/
 exports.defaultInsertColor = new color_1.Color(new color_1.RGBA(155, 185, 85, .2));
 exports.defaultRemoveColor = new color_1.Color(new color_1.RGBA(255, 0, 0, .2));
 exports.diffInserted = registerColor('diffEditor.insertedTextBackground', { dark: '#9ccc2c33', light: '#9ccc2c40', hcDark: null, hcLight: null }, nls.localize('diffEditorInserted', 'Background color for text that got inserted. The color must not be opaque so as not to hide underlying decorations.'), true);
@@ -338,8 +338,8 @@ exports.diffUnchangedRegionBackground = registerColor('diffEditor.unchangedRegio
 exports.diffUnchangedRegionForeground = registerColor('diffEditor.unchangedRegionForeground', { dark: '#a3a2a2', light: '#4d4c4c', hcDark: null, hcLight: null }, nls.localize('diffEditor.unchangedRegionForeground', "The foreground color of unchanged blocks in the diff editor."));
 exports.diffUnchangedTextBackground = registerColor('diffEditor.unchangedCodeBackground', { dark: '#74747429', light: '#b8b8b829', hcDark: null, hcLight: null }, nls.localize('diffEditor.unchangedCodeBackground', "The background color of unchanged code in the diff editor."));
 /**
- * List and tree colors
- */
+	* List and tree colors
+	*/
 exports.listFocusBackground = registerColor('list.focusBackground', { dark: null, light: null, hcDark: null, hcLight: null }, nls.localize('listFocusBackground', "List/Tree background color for the focused item when the list/tree is active. An active list/tree has keyboard focus, an inactive does not."));
 exports.listFocusForeground = registerColor('list.focusForeground', { dark: null, light: null, hcDark: null, hcLight: null }, nls.localize('listFocusForeground', "List/Tree foreground color for the focused item when the list/tree is active. An active list/tree has keyboard focus, an inactive does not."));
 exports.listFocusOutline = registerColor('list.focusOutline', { dark: exports.focusBorder, light: exports.focusBorder, hcDark: exports.activeContrastBorder, hcLight: exports.activeContrastBorder }, nls.localize('listFocusOutline', "List/Tree outline color for the focused item when the list/tree is active. An active list/tree has keyboard focus, an inactive does not."));
@@ -372,23 +372,23 @@ exports.tableColumnsBorder = registerColor('tree.tableColumnsBorder', { dark: '#
 exports.tableOddRowsBackgroundColor = registerColor('tree.tableOddRowsBackground', { dark: transparent(exports.foreground, 0.04), light: transparent(exports.foreground, 0.04), hcDark: null, hcLight: null }, nls.localize('tableOddRowsBackgroundColor', "Background color for odd table rows."));
 exports.listDeemphasizedForeground = registerColor('list.deemphasizedForeground', { dark: '#8C8C8C', light: '#8E8E90', hcDark: '#A7A8A9', hcLight: '#666666' }, nls.localize('listDeemphasizedForeground', "List/Tree foreground color for items that are deemphasized. "));
 /**
- * Checkboxes
- */
+	* Checkboxes
+	*/
 exports.checkboxBackground = registerColor('checkbox.background', { dark: exports.selectBackground, light: exports.selectBackground, hcDark: exports.selectBackground, hcLight: exports.selectBackground }, nls.localize('checkbox.background', "Background color of checkbox widget."));
 exports.checkboxSelectBackground = registerColor('checkbox.selectBackground', { dark: exports.editorWidgetBackground, light: exports.editorWidgetBackground, hcDark: exports.editorWidgetBackground, hcLight: exports.editorWidgetBackground }, nls.localize('checkbox.select.background', "Background color of checkbox widget when the element it's in is selected."));
 exports.checkboxForeground = registerColor('checkbox.foreground', { dark: exports.selectForeground, light: exports.selectForeground, hcDark: exports.selectForeground, hcLight: exports.selectForeground }, nls.localize('checkbox.foreground', "Foreground color of checkbox widget."));
 exports.checkboxBorder = registerColor('checkbox.border', { dark: exports.selectBorder, light: exports.selectBorder, hcDark: exports.selectBorder, hcLight: exports.selectBorder }, nls.localize('checkbox.border', "Border color of checkbox widget."));
 exports.checkboxSelectBorder = registerColor('checkbox.selectBorder', { dark: exports.iconForeground, light: exports.iconForeground, hcDark: exports.iconForeground, hcLight: exports.iconForeground }, nls.localize('checkbox.select.border', "Border color of checkbox widget when the element it's in is selected."));
 /**
- * Quick pick widget (dependent on List and tree colors)
- */
+	* Quick pick widget (dependent on List and tree colors)
+	*/
 exports._deprecatedQuickInputListFocusBackground = registerColor('quickInput.list.focusBackground', { dark: null, light: null, hcDark: null, hcLight: null }, '', undefined, nls.localize('quickInput.list.focusBackground deprecation', "Please use quickInputList.focusBackground instead"));
 exports.quickInputListFocusForeground = registerColor('quickInputList.focusForeground', { dark: exports.listActiveSelectionForeground, light: exports.listActiveSelectionForeground, hcDark: exports.listActiveSelectionForeground, hcLight: exports.listActiveSelectionForeground }, nls.localize('quickInput.listFocusForeground', "Quick picker foreground color for the focused item."));
 exports.quickInputListFocusIconForeground = registerColor('quickInputList.focusIconForeground', { dark: exports.listActiveSelectionIconForeground, light: exports.listActiveSelectionIconForeground, hcDark: exports.listActiveSelectionIconForeground, hcLight: exports.listActiveSelectionIconForeground }, nls.localize('quickInput.listFocusIconForeground', "Quick picker icon foreground color for the focused item."));
 exports.quickInputListFocusBackground = registerColor('quickInputList.focusBackground', { dark: oneOf(exports._deprecatedQuickInputListFocusBackground, exports.listActiveSelectionBackground), light: oneOf(exports._deprecatedQuickInputListFocusBackground, exports.listActiveSelectionBackground), hcDark: null, hcLight: null }, nls.localize('quickInput.listFocusBackground', "Quick picker background color for the focused item."));
 /**
- * Menu colors
- */
+	* Menu colors
+	*/
 exports.menuBorder = registerColor('menu.border', { dark: null, light: null, hcDark: exports.contrastBorder, hcLight: exports.contrastBorder }, nls.localize('menuBorder', "Border color of menus."));
 exports.menuForeground = registerColor('menu.foreground', { dark: exports.selectForeground, light: exports.selectForeground, hcDark: exports.selectForeground, hcLight: exports.selectForeground }, nls.localize('menuForeground', "Foreground color of menu items."));
 exports.menuBackground = registerColor('menu.background', { dark: exports.selectBackground, light: exports.selectBackground, hcDark: exports.selectBackground, hcLight: exports.selectBackground }, nls.localize('menuBackground', "Background color of menu items."));
@@ -397,29 +397,29 @@ exports.menuSelectionBackground = registerColor('menu.selectionBackground', { da
 exports.menuSelectionBorder = registerColor('menu.selectionBorder', { dark: null, light: null, hcDark: exports.activeContrastBorder, hcLight: exports.activeContrastBorder }, nls.localize('menuSelectionBorder', "Border color of the selected menu item in menus."));
 exports.menuSeparatorBackground = registerColor('menu.separatorBackground', { dark: '#606060', light: '#D4D4D4', hcDark: exports.contrastBorder, hcLight: exports.contrastBorder }, nls.localize('menuSeparatorBackground', "Color of a separator menu item in menus."));
 /**
- * Toolbar colors
- */
+	* Toolbar colors
+	*/
 exports.toolbarHoverBackground = registerColor('toolbar.hoverBackground', { dark: '#5a5d5e50', light: '#b8b8b850', hcDark: null, hcLight: null }, nls.localize('toolbarHoverBackground', "Toolbar background when hovering over actions using the mouse"));
 exports.toolbarHoverOutline = registerColor('toolbar.hoverOutline', { dark: null, light: null, hcDark: exports.activeContrastBorder, hcLight: exports.activeContrastBorder }, nls.localize('toolbarHoverOutline', "Toolbar outline when hovering over actions using the mouse"));
 exports.toolbarActiveBackground = registerColor('toolbar.activeBackground', { dark: lighten(exports.toolbarHoverBackground, 0.1), light: darken(exports.toolbarHoverBackground, 0.1), hcDark: null, hcLight: null }, nls.localize('toolbarActiveBackground', "Toolbar background when holding the mouse over actions"));
 /**
- * Snippet placeholder colors
- */
+	* Snippet placeholder colors
+	*/
 exports.snippetTabstopHighlightBackground = registerColor('editor.snippetTabstopHighlightBackground', { dark: new color_1.Color(new color_1.RGBA(124, 124, 124, 0.3)), light: new color_1.Color(new color_1.RGBA(10, 50, 100, 0.2)), hcDark: new color_1.Color(new color_1.RGBA(124, 124, 124, 0.3)), hcLight: new color_1.Color(new color_1.RGBA(10, 50, 100, 0.2)) }, nls.localize('snippetTabstopHighlightBackground', "Highlight background color of a snippet tabstop."));
 exports.snippetTabstopHighlightBorder = registerColor('editor.snippetTabstopHighlightBorder', { dark: null, light: null, hcDark: null, hcLight: null }, nls.localize('snippetTabstopHighlightBorder', "Highlight border color of a snippet tabstop."));
 exports.snippetFinalTabstopHighlightBackground = registerColor('editor.snippetFinalTabstopHighlightBackground', { dark: null, light: null, hcDark: null, hcLight: null }, nls.localize('snippetFinalTabstopHighlightBackground', "Highlight background color of the final tabstop of a snippet."));
 exports.snippetFinalTabstopHighlightBorder = registerColor('editor.snippetFinalTabstopHighlightBorder', { dark: '#525252', light: new color_1.Color(new color_1.RGBA(10, 50, 100, 0.5)), hcDark: '#525252', hcLight: '#292929' }, nls.localize('snippetFinalTabstopHighlightBorder', "Highlight border color of the final tabstop of a snippet."));
 /**
- * Breadcrumb colors
- */
+	* Breadcrumb colors
+	*/
 exports.breadcrumbsForeground = registerColor('breadcrumb.foreground', { light: transparent(exports.foreground, 0.8), dark: transparent(exports.foreground, 0.8), hcDark: transparent(exports.foreground, 0.8), hcLight: transparent(exports.foreground, 0.8) }, nls.localize('breadcrumbsFocusForeground', "Color of focused breadcrumb items."));
 exports.breadcrumbsBackground = registerColor('breadcrumb.background', { light: exports.editorBackground, dark: exports.editorBackground, hcDark: exports.editorBackground, hcLight: exports.editorBackground }, nls.localize('breadcrumbsBackground', "Background color of breadcrumb items."));
 exports.breadcrumbsFocusForeground = registerColor('breadcrumb.focusForeground', { light: darken(exports.foreground, 0.2), dark: lighten(exports.foreground, 0.1), hcDark: lighten(exports.foreground, 0.1), hcLight: lighten(exports.foreground, 0.1) }, nls.localize('breadcrumbsFocusForeground', "Color of focused breadcrumb items."));
 exports.breadcrumbsActiveSelectionForeground = registerColor('breadcrumb.activeSelectionForeground', { light: darken(exports.foreground, 0.2), dark: lighten(exports.foreground, 0.1), hcDark: lighten(exports.foreground, 0.1), hcLight: lighten(exports.foreground, 0.1) }, nls.localize('breadcrumbsSelectedForeground', "Color of selected breadcrumb items."));
 exports.breadcrumbsPickerBackground = registerColor('breadcrumbPicker.background', { light: exports.editorWidgetBackground, dark: exports.editorWidgetBackground, hcDark: exports.editorWidgetBackground, hcLight: exports.editorWidgetBackground }, nls.localize('breadcrumbsSelectedBackground', "Background color of breadcrumb item picker."));
 /**
- * Merge-conflict colors
- */
+	* Merge-conflict colors
+	*/
 const headerTransparency = 0.5;
 const currentBaseColor = color_1.Color.fromHex('#40C8AE').transparent(headerTransparency);
 const incomingBaseColor = color_1.Color.fromHex('#40A6FF').transparent(headerTransparency);
@@ -452,8 +452,8 @@ exports.problemsErrorIconForeground = registerColor('problemsErrorIcon.foregroun
 exports.problemsWarningIconForeground = registerColor('problemsWarningIcon.foreground', { dark: exports.editorWarningForeground, light: exports.editorWarningForeground, hcDark: exports.editorWarningForeground, hcLight: exports.editorWarningForeground }, nls.localize('problemsWarningIconForeground', "The color used for the problems warning icon."));
 exports.problemsInfoIconForeground = registerColor('problemsInfoIcon.foreground', { dark: exports.editorInfoForeground, light: exports.editorInfoForeground, hcDark: exports.editorInfoForeground, hcLight: exports.editorInfoForeground }, nls.localize('problemsInfoIconForeground', "The color used for the problems info icon."));
 /**
- * Chart colors
- */
+	* Chart colors
+	*/
 exports.chartsForeground = registerColor('charts.foreground', { dark: exports.foreground, light: exports.foreground, hcDark: exports.foreground, hcLight: exports.foreground }, nls.localize('chartsForeground', "The foreground color used in charts."));
 exports.chartsLines = registerColor('charts.lines', { dark: transparent(exports.foreground, .5), light: transparent(exports.foreground, .5), hcDark: transparent(exports.foreground, .5), hcLight: transparent(exports.foreground, .5) }, nls.localize('chartsLines', "The color used for horizontal lines in charts."));
 exports.chartsRed = registerColor('charts.red', { dark: exports.editorErrorForeground, light: exports.editorErrorForeground, hcDark: exports.editorErrorForeground, hcLight: exports.editorErrorForeground }, nls.localize('chartsRed', "The red color used in chart visualizations."));
@@ -464,97 +464,97 @@ exports.chartsGreen = registerColor('charts.green', { dark: '#89D185', light: '#
 exports.chartsPurple = registerColor('charts.purple', { dark: '#B180D7', light: '#652D90', hcDark: '#B180D7', hcLight: '#652D90' }, nls.localize('chartsPurple', "The purple color used in chart visualizations."));
 // ----- color functions
 function executeTransform(transform, theme) {
-    switch (transform.op) {
-        case 0 /* ColorTransformType.Darken */:
-            return resolveColorValue(transform.value, theme)?.darken(transform.factor);
-        case 1 /* ColorTransformType.Lighten */:
-            return resolveColorValue(transform.value, theme)?.lighten(transform.factor);
-        case 2 /* ColorTransformType.Transparent */:
-            return resolveColorValue(transform.value, theme)?.transparent(transform.factor);
-        case 3 /* ColorTransformType.Opaque */: {
-            const backgroundColor = resolveColorValue(transform.background, theme);
-            if (!backgroundColor) {
-                return resolveColorValue(transform.value, theme);
-            }
-            return resolveColorValue(transform.value, theme)?.makeOpaque(backgroundColor);
-        }
-        case 4 /* ColorTransformType.OneOf */:
-            for (const candidate of transform.values) {
-                const color = resolveColorValue(candidate, theme);
-                if (color) {
-                    return color;
-                }
-            }
-            return undefined;
-        case 6 /* ColorTransformType.IfDefinedThenElse */:
-            return resolveColorValue(theme.defines(transform.if) ? transform.then : transform.else, theme);
-        case 5 /* ColorTransformType.LessProminent */: {
-            const from = resolveColorValue(transform.value, theme);
-            if (!from) {
-                return undefined;
-            }
-            const backgroundColor = resolveColorValue(transform.background, theme);
-            if (!backgroundColor) {
-                return from.transparent(transform.factor * transform.transparency);
-            }
-            return from.isDarkerThan(backgroundColor)
-                ? color_1.Color.getLighterColor(from, backgroundColor, transform.factor).transparent(transform.transparency)
-                : color_1.Color.getDarkerColor(from, backgroundColor, transform.factor).transparent(transform.transparency);
-        }
-        default:
-            throw (0, assert_1.assertNever)(transform);
-    }
+	switch (transform.op) {
+		case 0 /* ColorTransformType.Darken */:
+			return resolveColorValue(transform.value, theme)?.darken(transform.factor);
+		case 1 /* ColorTransformType.Lighten */:
+			return resolveColorValue(transform.value, theme)?.lighten(transform.factor);
+		case 2 /* ColorTransformType.Transparent */:
+			return resolveColorValue(transform.value, theme)?.transparent(transform.factor);
+		case 3 /* ColorTransformType.Opaque */: {
+			const backgroundColor = resolveColorValue(transform.background, theme);
+			if (!backgroundColor) {
+				return resolveColorValue(transform.value, theme);
+			}
+			return resolveColorValue(transform.value, theme)?.makeOpaque(backgroundColor);
+		}
+		case 4 /* ColorTransformType.OneOf */:
+			for (const candidate of transform.values) {
+				const color = resolveColorValue(candidate, theme);
+				if (color) {
+					return color;
+				}
+			}
+			return undefined;
+		case 6 /* ColorTransformType.IfDefinedThenElse */:
+			return resolveColorValue(theme.defines(transform.if) ? transform.then : transform.else, theme);
+		case 5 /* ColorTransformType.LessProminent */: {
+			const from = resolveColorValue(transform.value, theme);
+			if (!from) {
+				return undefined;
+			}
+			const backgroundColor = resolveColorValue(transform.background, theme);
+			if (!backgroundColor) {
+				return from.transparent(transform.factor * transform.transparency);
+			}
+			return from.isDarkerThan(backgroundColor)
+				? color_1.Color.getLighterColor(from, backgroundColor, transform.factor).transparent(transform.transparency)
+				: color_1.Color.getDarkerColor(from, backgroundColor, transform.factor).transparent(transform.transparency);
+		}
+		default:
+			throw (0, assert_1.assertNever)(transform);
+	}
 }
 function darken(colorValue, factor) {
-    return { op: 0 /* ColorTransformType.Darken */, value: colorValue, factor };
+	return { op: 0 /* ColorTransformType.Darken */, value: colorValue, factor };
 }
 function lighten(colorValue, factor) {
-    return { op: 1 /* ColorTransformType.Lighten */, value: colorValue, factor };
+	return { op: 1 /* ColorTransformType.Lighten */, value: colorValue, factor };
 }
 function transparent(colorValue, factor) {
-    return { op: 2 /* ColorTransformType.Transparent */, value: colorValue, factor };
+	return { op: 2 /* ColorTransformType.Transparent */, value: colorValue, factor };
 }
 function opaque(colorValue, background) {
-    return { op: 3 /* ColorTransformType.Opaque */, value: colorValue, background };
+	return { op: 3 /* ColorTransformType.Opaque */, value: colorValue, background };
 }
 function oneOf(...colorValues) {
-    return { op: 4 /* ColorTransformType.OneOf */, values: colorValues };
+	return { op: 4 /* ColorTransformType.OneOf */, values: colorValues };
 }
 function ifDefinedThenElse(ifArg, thenArg, elseArg) {
-    return { op: 6 /* ColorTransformType.IfDefinedThenElse */, if: ifArg, then: thenArg, else: elseArg };
+	return { op: 6 /* ColorTransformType.IfDefinedThenElse */, if: ifArg, then: thenArg, else: elseArg };
 }
 function lessProminent(colorValue, backgroundColorValue, factor, transparency) {
-    return { op: 5 /* ColorTransformType.LessProminent */, value: colorValue, background: backgroundColorValue, factor, transparency };
+	return { op: 5 /* ColorTransformType.LessProminent */, value: colorValue, background: backgroundColorValue, factor, transparency };
 }
 // ----- implementation
 /**
- * @param colorValue Resolve a color value in the context of a theme
- */
+	* @param colorValue Resolve a color value in the context of a theme
+	*/
 function resolveColorValue(colorValue, theme) {
-    if (colorValue === null) {
-        return undefined;
-    }
-    else if (typeof colorValue === 'string') {
-        if (colorValue[0] === '#') {
-            return color_1.Color.fromHex(colorValue);
-        }
-        return theme.getColor(colorValue);
-    }
-    else if (colorValue instanceof color_1.Color) {
-        return colorValue;
-    }
-    else if (typeof colorValue === 'object') {
-        return executeTransform(colorValue, theme);
-    }
-    return undefined;
+	if (colorValue === null) {
+		return undefined;
+	}
+	else if (typeof colorValue === 'string') {
+		if (colorValue[0] === '#') {
+			return color_1.Color.fromHex(colorValue);
+		}
+		return theme.getColor(colorValue);
+	}
+	else if (colorValue instanceof color_1.Color) {
+		return colorValue;
+	}
+	else if (typeof colorValue === 'object') {
+		return executeTransform(colorValue, theme);
+	}
+	return undefined;
 }
 exports.workbenchColorsSchemaId = 'vscode://schemas/workbench-colors';
 const schemaRegistry = platform.Registry.as(jsonContributionRegistry_1.Extensions.JSONContribution);
 schemaRegistry.registerSchema(exports.workbenchColorsSchemaId, colorRegistry.getColorSchema());
 const delayer = new async_1.RunOnceScheduler(() => schemaRegistry.notifySchemaChanged(exports.workbenchColorsSchemaId), 200);
 colorRegistry.onDidChangeSchema(() => {
-    if (!delayer.isScheduled()) {
-        delayer.schedule();
-    }
+	if (!delayer.isScheduled()) {
+		delayer.schedule();
+	}
 });
 // setTimeout(_ => console.log(colorRegistry.toString()), 5000);

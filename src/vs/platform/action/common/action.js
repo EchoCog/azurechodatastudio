@@ -6,5 +6,5 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isICommandActionToggleInfo = isICommandActionToggleInfo;
 function isICommandActionToggleInfo(thing) {
-    return thing ? thing.condition !== undefined : false;
+	return thing ? thing.condition !== undefined : false;
 }

@@ -14,15 +14,15 @@ const uri_1 = require("vs/base/common/uri");
 const instantiation_1 = require("vs/platform/instantiation/common/instantiation");
 exports.IOpenerService = (0, instantiation_1.createDecorator)('openerService');
 function matchesScheme(target, scheme) {
-    if (uri_1.URI.isUri(target)) {
-        return (0, strings_1.equalsIgnoreCase)(target.scheme, scheme);
-    }
-    else {
-        return (0, strings_1.startsWithIgnoreCase)(target, scheme + ':');
-    }
+	if (uri_1.URI.isUri(target)) {
+		return (0, strings_1.equalsIgnoreCase)(target.scheme, scheme);
+	}
+	else {
+		return (0, strings_1.startsWithIgnoreCase)(target, scheme + ':');
+	}
 }
 function matchesSomeScheme(target, ...schemes) {
-    return schemes.some(scheme => matchesScheme(target, scheme));
+	return schemes.some(scheme => matchesScheme(target, scheme));
 }
 /**
  * Encodes selection into the `URI`.
@@ -32,7 +32,7 @@ function matchesSomeScheme(target, ...schemes) {
  * component that is not aware of selections.
  */
 function withSelection(uri, selection) {
-    return uri.with({ fragment: `${selection.startLineNumber},${selection.startColumn}${selection.endLineNumber ? `-${selection.endLineNumber}${selection.endColumn ? `,${selection.endColumn}` : ''}` : ''}` });
+	return uri.with({ fragment: `${selection.startLineNumber},${selection.startColumn}${selection.endLineNumber ? `-${selection.endLineNumber}${selection.endColumn ? `,${selection.endColumn}` : ''}` : ''}` });
 }
 /**
  * file:///some/file.js#73
@@ -45,16 +45,16 @@ function withSelection(uri, selection) {
  * file:///some/file.js#L73,84-L83,52
  */
 function extractSelection(uri) {
-    let selection = undefined;
-    const match = /^L?(\d+)(?:,(\d+))?(-L?(\d+)(?:,(\d+))?)?/.exec(uri.fragment);
-    if (match) {
-        selection = {
-            startLineNumber: parseInt(match[1]),
-            startColumn: match[2] ? parseInt(match[2]) : 1,
-            endLineNumber: match[4] ? parseInt(match[4]) : undefined,
-            endColumn: match[4] ? (match[5] ? parseInt(match[5]) : 1) : undefined
-        };
-        uri = uri.with({ fragment: '' });
-    }
-    return { selection, uri };
+	let selection = undefined;
+	const match = /^L?(\d+)(?:,(\d+))?(-L?(\d+)(?:,(\d+))?)?/.exec(uri.fragment);
+	if (match) {
+		selection = {
+			startLineNumber: parseInt(match[1]),
+			startColumn: match[2] ? parseInt(match[2]) : 1,
+			endLineNumber: match[4] ? parseInt(match[4]) : undefined,
+			endColumn: match[4] ? (match[5] ? parseInt(match[5]) : 1) : undefined
+		};
+		uri = uri.with({ fragment: '' });
+	}
+	return { selection, uri };
 }

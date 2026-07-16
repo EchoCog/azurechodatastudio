@@ -10,51 +10,51 @@ exports.revive = revive;
 const buffer_1 = require("vs/base/common/buffer");
 const uri_1 = require("vs/base/common/uri");
 function stringify(obj) {
-    return JSON.stringify(obj, replacer);
+	return JSON.stringify(obj, replacer);
 }
 function parse(text) {
-    let data = JSON.parse(text);
-    data = revive(data);
-    return data;
+	let data = JSON.parse(text);
+	data = revive(data);
+	return data;
 }
 function replacer(key, value) {
-    // URI is done via toJSON-member
-    if (value instanceof RegExp) {
-        return {
-            $mid: 2 /* MarshalledId.Regexp */,
-            source: value.source,
-            flags: value.flags,
-        };
-    }
-    return value;
+	// URI is done via toJSON-member
+	if (value instanceof RegExp) {
+		return {
+			$mid: 2 /* MarshalledId.Regexp */,
+			source: value.source,
+			flags: value.flags,
+		};
+	}
+	return value;
 }
 function revive(obj, depth = 0) {
-    if (!obj || depth > 200) {
-        return obj;
-    }
-    if (typeof obj === 'object') {
-        switch (obj.$mid) {
-            case 1 /* MarshalledId.Uri */: return uri_1.URI.revive(obj);
-            case 2 /* MarshalledId.Regexp */: return new RegExp(obj.source, obj.flags);
-            case 16 /* MarshalledId.Date */: return new Date(obj.source);
-        }
-        if (obj instanceof buffer_1.VSBuffer
-            || obj instanceof Uint8Array) {
-            return obj;
-        }
-        if (Array.isArray(obj)) {
-            for (let i = 0; i < obj.length; ++i) {
-                obj[i] = revive(obj[i], depth + 1);
-            }
-        }
-        else {
-            // walk object
-            for (const key in obj) {
-                if (Object.hasOwnProperty.call(obj, key)) {
-                    obj[key] = revive(obj[key], depth + 1);
-                }
-            }
-        }
-    }
-    return obj;
+	if (!obj || depth > 200) {
+		return obj;
+	}
+	if (typeof obj === 'object') {
+		switch (obj.$mid) {
+			case 1 /* MarshalledId.Uri */: return uri_1.URI.revive(obj);
+			case 2 /* MarshalledId.Regexp */: return new RegExp(obj.source, obj.flags);
+			case 16 /* MarshalledId.Date */: return new Date(obj.source);
+		}
+		if (obj instanceof buffer_1.VSBuffer
+			|| obj instanceof Uint8Array) {
+			return obj;
+		}
+		if (Array.isArray(obj)) {
+			for (let i = 0; i < obj.length; ++i) {
+				obj[i] = revive(obj[i], depth + 1);
+			}
+		}
+		else {
+			// walk object
+			for (const key in obj) {
+				if (Object.hasOwnProperty.call(obj, key)) {
+					obj[key] = revive(obj[key], depth + 1);
+				}
+			}
+		}
+	}
+	return obj;
 }
