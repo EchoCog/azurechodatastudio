@@ -29,7 +29,7 @@ The system implements the P-System Membrane Architecture:
 | **Somatic** | Extension & UI interaction | Command Palette, bridge extension, LLM calls |
 | **Autonomic** | Health monitoring & validation | `CognitiveMembraneService`, ECAN rent, error tracking |
 
-### Services (8 total)
+### Services (10 total)
 
 | Service | Interface | Implementation |
 |---|---|---|
@@ -42,6 +42,7 @@ The system implements the P-System Membrane Architecture:
 | ECAN Attention | `IECANAttentionService` | `ECANAttentionService` |
 | Cognitive Loop | `ICognitiveLoopService` | `CognitiveLoopService` |
 | AGI Studio | `IAgiStudioService` | `AgiStudioService` |
+| Interaction Learning | `IUserInteractionLearningService` | `UserInteractionLearningService` |
 
 ### AGI Studio (Phase 7)
 
