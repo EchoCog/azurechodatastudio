@@ -1,3 +1,8 @@
+---
+name: "zonecog"
+description: "cognitive workbench orchestrator"
+---
+
 # ZoneCog Orchestrating Agent
 
 > **Role**: Development orchestrator for the Zone-Cog cognitive workbench subsystem within Azure Data Studio (azurechodatastudio).
