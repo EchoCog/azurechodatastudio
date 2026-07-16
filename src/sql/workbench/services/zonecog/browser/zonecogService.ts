@@ -83,6 +83,9 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 	private readonly _onDidCompleteThinkingPhase = this._register(new Emitter<ThinkingPhase>());
 	readonly onDidCompleteThinkingPhase: Event<ThinkingPhase> = this._onDidCompleteThinkingPhase.event;
 
+	private readonly _onDidStreamResponseToken = this._register(new Emitter<{ query: string; token: string }>());
+	readonly onDidStreamResponseToken: Event<{ query: string; token: string }> = this._onDidStreamResponseToken.event;
+
 	constructor(
 		@ILogService private readonly logService: ILogService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
@@ -553,7 +556,9 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		};
 
 		try {
-			const completion = await this.llmProviderService.complete(request);
+			const completion = await this.llmProviderService.completeStream(request, token => {
+				this._onDidStreamResponseToken.fire({ query, token });
+			});
 			return completion.content;
 		} catch (err) {
 			this.membraneService.recordError('somatic', `LLM completion failed: ${err}`);

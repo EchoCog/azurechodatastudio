@@ -7,7 +7,8 @@ import {
 	ILLMProviderService,
 	LLMProviderConfig,
 	LLMCompletionRequest,
-	LLMCompletionResponse
+	LLMCompletionResponse,
+	LLMStreamTokenCallback
 } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { Disposable } from 'vs/base/common/lifecycle';
@@ -202,6 +203,39 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 		}
 	}
 
+	async completeStream(request: LLMCompletionRequest, onToken: LLMStreamTokenCallback): Promise<LLMCompletionResponse> {
+		const provider = this.getActiveProvider();
+		this.membraneService.recordActivity('cerebral');
+
+		if (provider.id === BUILTIN_PROVIDER_ID) {
+			return this._builtinCompleteStream(request, onToken);
+		}
+
+		const circuitState = this._getCircuitState(provider.id);
+
+		if (this._isCircuitOpen(circuitState) && !this._shouldTryHalfOpen(circuitState)) {
+			this.logService.warn(`LLMProviderService: circuit open for '${provider.id}', streaming fallback`);
+			this.membraneService.recordActivity('autonomic');
+			return this._builtinCompleteStream(request, onToken);
+		}
+
+		try {
+			const response = await this._externalCompleteStream(provider, request, onToken);
+			this._recordSuccess(provider.id);
+			if (circuitState.isOpen) {
+				circuitState.isOpen = false;
+				this.logService.info(`LLMProviderService: circuit for '${provider.id}' closed after successful stream`);
+				this._onDidChangeAvailability.fire({ providerId: provider.id, available: true });
+			}
+			return response;
+		} catch (err) {
+			this._recordFailure(provider.id);
+			this.logService.warn(`LLMProviderService: external streaming provider '${provider.id}' failed, falling back`, err);
+			this.membraneService.recordActivity('autonomic');
+			return this._builtinCompleteStream(request, onToken);
+		}
+	}
+
 	// -- Circuit Breaker Logic -----------------------------------------------
 
 	private _getCircuitState(providerId: string): CircuitBreakerState {
@@ -350,6 +384,24 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 		};
 	}
 
+	/**
+	 * Stream the built-in rule-based response word-by-word, yielding to the
+	 * event loop between tokens so subscribers observe genuine incremental
+	 * delivery rather than a single synchronous burst.
+	 */
+	private async _builtinCompleteStream(
+		request: LLMCompletionRequest,
+		onToken: LLMStreamTokenCallback
+	): Promise<LLMCompletionResponse> {
+		const response = this._builtinComplete(request);
+		const tokens = response.content.split(/(\s+)/).filter(token => token.length > 0);
+		for (const token of tokens) {
+			onToken(token);
+			await Promise.resolve();
+		}
+		return response;
+	}
+
 	// -- External provider (OpenAI-compatible) with retry --------------------
 
 	/**
@@ -450,6 +502,107 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 				completionTokens: json.usage.completion_tokens ?? 0,
 				totalTokens: json.usage.total_tokens ?? 0,
 			} : undefined,
+			isFallback: false,
+		};
+	}
+
+	// -- External provider (OpenAI-compatible) streaming ----------------------
+
+	/**
+	 * Stream a completion from an OpenAI-compatible `/v1/chat/completions`
+	 * endpoint using `stream: true` and incremental SSE (`data: {...}`) frames.
+	 */
+	private async _externalCompleteStream(
+		provider: LLMProviderConfig,
+		request: LLMCompletionRequest,
+		onToken: LLMStreamTokenCallback
+	): Promise<LLMCompletionResponse> {
+		const url = `${provider.baseUrl}/v1/chat/completions`;
+
+		const messages: Array<{ role: string; content: string }> = [
+			{ role: 'system', content: request.systemPrompt },
+		];
+		if (request.thinkingContext) {
+			messages.push({ role: 'assistant', content: request.thinkingContext });
+		}
+		messages.push({ role: 'user', content: request.userMessage });
+
+		const headers: Record<string, string> = {
+			'Content-Type': 'application/json',
+		};
+		if (provider.apiKey) {
+			headers['Authorization'] = `Bearer ${provider.apiKey}`;
+		}
+
+		const body = JSON.stringify({
+			model: provider.model,
+			messages,
+			max_tokens: request.maxTokens ?? 1024,
+			temperature: request.temperature ?? 0.7,
+			stream: true,
+		});
+
+		const response = await fetch(url, { method: 'POST', headers, body });
+		if (!response.ok || !response.body) {
+			throw new Error(`LLM streaming API returned ${response.status}: ${response.body ? await response.text() : 'no response body'}`);
+		}
+
+		const reader = response.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = '';
+		let content = '';
+		let usage: LLMCompletionResponse['usage'];
+
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) {
+				break;
+			}
+			buffer += decoder.decode(value, { stream: true });
+
+			let separatorIndex: number;
+			while ((separatorIndex = buffer.indexOf('\n\n')) !== -1) {
+				const rawEvent = buffer.slice(0, separatorIndex);
+				buffer = buffer.slice(separatorIndex + 2);
+
+				for (const line of rawEvent.split('\n')) {
+					if (!line.startsWith('data:')) {
+						continue;
+					}
+					const data = line.slice(5).trim();
+					if (!data || data === '[DONE]') {
+						continue;
+					}
+
+					try {
+						const chunk = JSON.parse(data);
+						const delta: string | undefined = chunk.choices?.[0]?.delta?.content;
+						if (delta) {
+							content += delta;
+							onToken(delta);
+						}
+						if (chunk.usage) {
+							usage = {
+								promptTokens: chunk.usage.prompt_tokens ?? 0,
+								completionTokens: chunk.usage.completion_tokens ?? 0,
+								totalTokens: chunk.usage.total_tokens ?? 0,
+							};
+						}
+					} catch (err) {
+						this.logService.warn('LLMProviderService: failed to parse streaming SSE frame', err);
+					}
+				}
+			}
+		}
+
+		if (!content) {
+			throw new Error('LLM streaming API returned empty response');
+		}
+
+		return {
+			content,
+			providerId: provider.id,
+			usage,
 			isFallback: false,
 		};
 	}

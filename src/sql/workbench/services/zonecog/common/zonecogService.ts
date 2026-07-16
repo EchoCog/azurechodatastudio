@@ -36,6 +36,13 @@ export interface IZoneCogService {
 	readonly onDidCompleteThinkingPhase: Event<ThinkingPhase>;
 
 	/**
+	 * Fired for each incremental chunk of the final response as it streams
+	 * in from the active LLM provider, enabling real-time display of
+	 * response tokens rather than waiting for the full completion.
+	 */
+	readonly onDidStreamResponseToken: Event<{ query: string; token: string }>;
+
+	/**
 	 * Initialize the Zone-Cog cognitive framework.
 	 */
 	initialize(): Promise<void>;

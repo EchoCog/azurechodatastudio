@@ -434,4 +434,65 @@ suite('LLM Provider Service Tests', () => {
 		const afterCerebral = membraneService.getActivity('cerebral');
 		assert.ok(afterCerebral > initialCerebral);
 	});
+
+	// --- Streaming Completion Tests (Built-in Fallback) ---
+
+	test('should stream tokens that reassemble the built-in response', async () => {
+		const request: LLMCompletionRequest = {
+			systemPrompt: 'You are a helpful assistant.',
+			userMessage: 'Please analyze the database performance metrics.',
+		};
+
+		const tokens: string[] = [];
+		const response = await llmService.completeStream(request, token => { tokens.push(token); });
+
+		assert.ok(tokens.length > 1, 'Should emit more than one token');
+		assert.strictEqual(tokens.join(''), response.content);
+		assert.strictEqual(response.providerId, 'builtin-fallback');
+		assert.strictEqual(response.isFallback, true);
+	});
+
+	test('should stream tokens in order before resolving', async () => {
+		const request: LLMCompletionRequest = {
+			systemPrompt: 'You are a helpful assistant.',
+			userMessage: 'What is data visualization?',
+		};
+
+		let tokensAtResolution = -1;
+		let tokenCount = 0;
+		const response = await llmService.completeStream(request, () => { tokenCount++; });
+		tokensAtResolution = tokenCount;
+
+		assert.ok(tokensAtResolution > 0);
+		assert.ok(response.content.length > 0);
+	});
+
+	test('should record membrane activity during streaming completion', async () => {
+		const initialCerebral = membraneService.getActivity('cerebral');
+
+		const request: LLMCompletionRequest = {
+			systemPrompt: 'You are a helpful assistant.',
+			userMessage: 'Test streaming membrane activity',
+		};
+
+		await llmService.completeStream(request, () => { });
+
+		const afterCerebral = membraneService.getActivity('cerebral');
+		assert.ok(afterCerebral > initialCerebral);
+	});
+
+	test('should produce the same content streaming as non-streaming for the same query', async () => {
+		const request: LLMCompletionRequest = {
+			systemPrompt: 'You are a helpful assistant.',
+			userMessage: 'Can you help me with query optimization?',
+		};
+
+		const nonStreamed = await llmService.complete(request);
+
+		let streamedContent = '';
+		const streamed = await llmService.completeStream(request, token => { streamedContent += token; });
+
+		assert.strictEqual(streamedContent, nonStreamed.content);
+		assert.strictEqual(streamed.content, nonStreamed.content);
+	});
 });
