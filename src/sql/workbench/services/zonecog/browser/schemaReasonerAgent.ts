@@ -186,16 +186,75 @@ export class SchemaReasonerAgent extends Disposable implements ISchemaReasonerAg
 	async discoverRelationships(tables: string[]): Promise<SchemaRelationship[]> {
 		this.membraneService.recordActivity('cerebral');
 
+		const uniqueTables = Array.from(new Set(tables));
+		const catalog = uniqueTables.map(name => ({
+			name,
+			singular: this._singularize(name.toLowerCase()),
+			tokens: this._tokenizeTableName(name),
+		}));
+
 		const relationships: SchemaRelationship[] = [];
 
-		// Look for naming conventions that suggest relationships
-		for (let i = 0; i < tables.length; i++) {
-			for (let j = i + 1; j < tables.length; j++) {
-				const relationship = this._inferRelationship(tables[i], tables[j]);
-				if (relationship) {
-					relationships.push(relationship);
+		// Cross-table FK inference: a table whose name tokenizes into another
+		// table's (singularized) name likely holds a foreign key to it
+		// (e.g. "order_items" -> "orders", "student_courses" -> "students").
+		for (const source of catalog) {
+			// Entities this source already references, keyed by singular form, so
+			// singular/plural variants of one table ("order"/"orders") can never
+			// count as two distinct parents.
+			const referencedEntities = new Set<string>();
+			for (const target of catalog) {
+				if (source.name === target.name) {
+					continue;
 				}
+				// Singular/plural variants of the same name are the same entity,
+				// not a foreign-key relationship (e.g. "order" vs "orders").
+				if (source.singular === target.singular) {
+					continue;
+				}
+				const referencesTarget = source.tokens.includes(target.singular) || source.tokens.includes(target.name.toLowerCase());
+				if (!referencesTarget) {
+					continue;
+				}
+				if (referencedEntities.has(target.singular)) {
+					continue;
+				}
+				referencedEntities.add(target.singular);
+				relationships.push({
+					sourceTable: source.name,
+					targetTable: target.name,
+					relationshipType: 'one_to_many',
+					cardinality: 'N:1',
+					foreignKeyColumns: [`${target.singular}_id`],
+					isExplicit: false,
+				});
 			}
+		}
+
+		// Junction table (many-to-many) detection: a table that resolves to
+		// exactly two distinct FK-style references is likely a join table
+		// linking those two tables in a many-to-many relationship.
+		for (const junction of catalog) {
+			const refs = relationships.filter(r => r.sourceTable === junction.name);
+			const distinctTargets = Array.from(new Set(refs.map(r => r.targetTable)));
+			if (distinctTargets.length !== 2) {
+				continue;
+			}
+			const [left, right] = distinctTargets;
+			const alreadyFound = relationships.some(r =>
+				r.relationshipType === 'many_to_many' &&
+				((r.sourceTable === left && r.targetTable === right) || (r.sourceTable === right && r.targetTable === left)));
+			if (alreadyFound) {
+				continue;
+			}
+			relationships.push({
+				sourceTable: left,
+				targetTable: right,
+				relationshipType: 'many_to_many',
+				cardinality: 'M:N',
+				foreignKeyColumns: refs.flatMap(r => r.foreignKeyColumns),
+				isExplicit: false,
+			});
 		}
 
 		return relationships;
@@ -511,16 +570,33 @@ Return a structured analysis.`;
 		return relationships;
 	}
 
-	private _inferRelationship(table1: string, table2: string): SchemaRelationship | null {
-		const t1 = table1.toLowerCase();
-		const t2 = table2.toLowerCase();
+	/**
+	 * Splits a table name into lowercase naming-convention tokens, e.g.
+	 * "order_items" -> ["order", "items"], "OrderItems" -> ["order", "items"].
+	 */
+	private _tokenizeTableName(tableName: string): string[] {
+		return tableName
+			.replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+			.toLowerCase()
+			.split(/[_\s]+/)
+			.filter(token => token.length > 0);
+	}
 
-		// Check for junction table pattern
-		if (t1.includes(t2) || t2.includes(t1)) {
-			return null; // Likely same entity
+	/**
+	 * Naive English singularization used for naming-convention matching
+	 * (e.g. "orders" -> "order", "categories" -> "category").
+	 */
+	private _singularize(word: string): string {
+		if (/ies$/.test(word)) {
+			return word.replace(/ies$/, 'y');
 		}
-
-		return null;
+		if (/(ss|us)$/.test(word)) {
+			return word;
+		}
+		if (/s$/.test(word)) {
+			return word.replace(/s$/, '');
+		}
+		return word;
 	}
 
 	private _identifyQualityIssues(schema: string, elements: SchemaElementAnalysis[]): SchemaQualityIssue[] {

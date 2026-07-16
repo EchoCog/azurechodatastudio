@@ -69,7 +69,7 @@ jobs:
         run: yarn --frozen-lockfile --network-timeout 180000
 
       - name: Install Python bridge dependencies
-        run: pip install -r azure_integration/requirements.txt
+        run: pip install -r azure_integration/requirements.txt pytest
 
       - name: Run Python Bridge Tests
         run: python -m pytest azure_integration/tests/ -v --tb=short

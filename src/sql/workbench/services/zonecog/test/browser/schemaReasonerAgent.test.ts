@@ -379,8 +379,54 @@ suite('SchemaReasonerAgent', () => {
 	test('discoverRelationships should find implicit relationships', async () => {
 		const relationships = await agent.discoverRelationships(['users', 'orders', 'order_items']);
 
-		// At minimum should attempt to find relationships
 		assert.ok(Array.isArray(relationships));
+		assert.ok(relationships.some(r => r.sourceTable === 'order_items' && r.targetTable === 'orders'));
+	});
+
+	test('discoverRelationships should infer foreign key columns and cardinality', async () => {
+		const relationships = await agent.discoverRelationships(['orders', 'order_items']);
+		const relationship = relationships.find(r => r.sourceTable === 'order_items' && r.targetTable === 'orders');
+
+		assert.ok(relationship);
+		assert.strictEqual(relationship!.relationshipType, 'one_to_many');
+		assert.strictEqual(relationship!.cardinality, 'N:1');
+		assert.deepStrictEqual(relationship!.foreignKeyColumns, ['order_id']);
+		assert.strictEqual(relationship!.isExplicit, false);
+	});
+
+	test('discoverRelationships should detect many-to-many junction tables', async () => {
+		const relationships = await agent.discoverRelationships(['students', 'courses', 'student_courses']);
+
+		const junctionEdges = relationships.filter(r => r.sourceTable === 'student_courses');
+		assert.strictEqual(junctionEdges.length, 2);
+
+		const manyToMany = relationships.find(r => r.relationshipType === 'many_to_many');
+		assert.ok(manyToMany);
+		assert.ok(
+			(manyToMany!.sourceTable === 'students' && manyToMany!.targetTable === 'courses') ||
+			(manyToMany!.sourceTable === 'courses' && manyToMany!.targetTable === 'students')
+		);
+		assert.strictEqual(manyToMany!.cardinality, 'M:N');
+	});
+
+	test('discoverRelationships should not invent relationships between unrelated tables', async () => {
+		const relationships = await agent.discoverRelationships(['users', 'products']);
+
+		assert.strictEqual(relationships.length, 0);
+	});
+
+	test('discoverRelationships should not relate singular/plural variants of the same table', async () => {
+		const relationships = await agent.discoverRelationships(['order', 'orders']);
+
+		assert.strictEqual(relationships.length, 0);
+	});
+
+	test('discoverRelationships should not emit many-to-many when both parents are the same entity', async () => {
+		const relationships = await agent.discoverRelationships(['order', 'orders', 'order_items']);
+
+		const parentEdges = relationships.filter(r => r.sourceTable === 'order_items');
+		assert.strictEqual(parentEdges.length, 1);
+		assert.ok(relationships.every(r => r.relationshipType !== 'many_to_many'));
 	});
 
 	test('suggestImprovements should return quality issues', async () => {
