@@ -121,8 +121,9 @@ Depth-adaptive: shallow (phases 1,2,11), moderate (1-5,11), deep (all 11).
   - Cycle: perceive environment → ECAN attention allocation → cognitive processing → motor output → proprioceptive reflection
   - Integration with all existing services
   - Start/stop/pause controls
-- [ ] Extended tests for ECAN and cognitive loop services
-- [ ] Workbench integration for loop status in status bar
+- [x] Extended tests for ECAN and cognitive loop services — `test/browser/ecanAttentionService.test.ts`, `test/browser/cognitiveLoopService.test.ts`
+- [x] Workbench integration for loop status in status bar — `contrib/zonecog/browser/cognitiveLoopStatusBar.ts`
+- [x] Streaming response generation with real-time thinking tokens — `ILLMProviderService.completeStream()`, `IZoneCogService.onDidStreamResponseToken`
 
 ### Phase 4: Deep Tree Echo Integration
 
@@ -286,6 +287,7 @@ Key events for inter-service communication:
 - `onDidChangeCognitiveState` — ZoneCog state changes
 - `onDidProcessQuery` — Query processing completed
 - `onDidCompleteThinkingPhase` — Real-time phase streaming
+- `onDidStreamResponseToken` — Real-time response token streaming (final answer, post-thinking)
 - `onDidChangeNode` / `onDidChangeLink` — Hypergraph mutations
 - `onDidChangeMembraneStatus` — Membrane health changes
 - `onDidPerceive` / `onDidAct` — Embodied cognition events

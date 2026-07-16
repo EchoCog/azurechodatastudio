@@ -43,6 +43,12 @@ export interface LLMCompletionRequest {
 }
 
 /**
+ * Callback invoked with each incremental content chunk as a streaming
+ * completion arrives.
+ */
+export type LLMStreamTokenCallback = (token: string) => void;
+
+/**
  * Response from an LLM completion.
  */
 export interface LLMCompletionResponse {
@@ -109,6 +115,18 @@ export interface ILLMProviderService {
 	 */
 	complete(request: LLMCompletionRequest): Promise<LLMCompletionResponse>;
 	complete(prompt: string): Promise<string>;
+
+	/**
+	 * Generate a completion using the active provider, invoking `onToken` for
+	 * each incremental chunk of content as it arrives (real-time thinking
+	 * tokens). Falls back to the built-in provider on errors, same as
+	 * `complete()` — but only while no content has streamed out yet; once at
+	 * least one token has reached `onToken`, a subsequent failure rejects
+	 * instead of silently replaying an unrelated fallback answer through the
+	 * same callback. Resolves with the final assembled response once the
+	 * stream completes successfully.
+	 */
+	completeStream(request: LLMCompletionRequest, onToken: LLMStreamTokenCallback): Promise<LLMCompletionResponse>;
 
 	/**
 	 * Check if an external LLM provider is available (non-fallback).

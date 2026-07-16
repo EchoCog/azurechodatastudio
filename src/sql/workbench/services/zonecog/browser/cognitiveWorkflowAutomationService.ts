@@ -355,7 +355,7 @@ export class CognitiveWorkflowAutomationService extends Disposable implements IC
 				this.logService.info(`[CognitiveWorkflowAutomationService] Executing step ${step.id} (agent: ${step.agent}, action: ${step.action})`);
 
 				// Route to appropriate agent
-				output = await this._executeAgentAction(step.agent, step.action, resolvedInput);
+				output = await this._executeAgentAction(step.agent, step.action, resolvedInput, step.onError);
 
 				// Store output
 				context.steps[step.id] = { output };
@@ -420,8 +420,8 @@ export class CognitiveWorkflowAutomationService extends Disposable implements IC
 		);
 	}
 
-	private async _executeAgentAction(agent: string, action: string, input: any): Promise<any> {
-		// Route to the appropriate agent via AAR orchestration
+	private async _executeAgentAction(agent: string, action: string, input: any, onError?: WorkflowStep['onError']): Promise<any> {
+		// Route to the appropriate agent via AAR orchestration.
 		const agentAction = {
 			action,
 			target: JSON.stringify(input),
@@ -433,7 +433,12 @@ export class CognitiveWorkflowAutomationService extends Disposable implements IC
 			return await this.aarService.dispatchAction(agent, agentAction);
 		} catch (err) {
 			const message = String(err);
-			if (message.includes('unknown agent')) {
+			// An unregistered agent degrades gracefully to an empty result so
+			// exploratory workflows aren't blocked by an agent that hasn't been
+			// wired up yet — unless the step explicitly asked to stop on error,
+			// in which case the failure must propagate to the step's own
+			// onError handling instead of being masked here.
+			if (message.includes('unknown agent') && onError !== 'stop') {
 				this.logService.warn(
 					`[CognitiveWorkflowAutomationService] Agent '${agent}' not registered in AAR, returning empty result`
 				);

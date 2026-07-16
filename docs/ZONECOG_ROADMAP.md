@@ -2,7 +2,7 @@
 
 **Ticket**: ECH-4  
 **Status**: Active  
-**Last Updated**: 2026-04-10
+**Last Updated**: 2026-07-16
 
 ## Phase Overview
 
@@ -156,22 +156,22 @@
 - [x] Context window management with hypergraph-based working memory
 - [x] Circuit breaker pattern for resilient LLM calls (auto-recovery, half-open state)
 - [x] Exponential backoff retry for transient failures
-- [ ] Streaming response generation with thinking tokens (real-time LLM output)
+- [x] Streaming response generation with thinking tokens (real-time LLM output) — `ILLMProviderService.completeStream()` + `IZoneCogService.onDidStreamResponseToken`
 
 ### 3.2 AtomSpace Reasoning
-- [ ] Real AtomSpace transport (replace mock adapter)
+- [ ] Real AtomSpace transport (there is no mock adapter to replace — `HypergraphStore` is a from-scratch in-memory store; a real transport is new work)
 - [ ] PLN (Probabilistic Logic Networks) integration for rule-based reasoning
 - [ ] URE (Unified Rule Engine) for inference chains
-- [ ] ECAN (Economic Attention Networks) for salience-based focus
+- [x] ECAN (Economic Attention Networks) for salience-based focus — `IECANAttentionService`/`ECANAttentionService` (spreading activation, rent collection, attentional focus)
 
 ### 3.3 Pattern Mining
-- [ ] SQL pattern detection (query optimization, schema anomalies)
+- [x] SQL pattern detection (query optimization, schema anomalies) — `SQLAnalyzerAgent`, `PerformanceAdvisorAgent`, `SchemaReasonerAgent`
 - [ ] Cross-table relationship discovery
-- [ ] Temporal pattern analysis on data changes
+- [x] Temporal pattern analysis on data changes — `DataPatternAgent.detectPatterns()` (numeric/categorical/temporal patterns, correlation detection)
 - [ ] Cognitive pattern recognition in user interaction history
 
 ### 3.4 Knowledge Graph Enhancement
-- [ ] Persistent hypergraph storage (AtomSpace-Rocks backend)
+- [x] Persistent hypergraph storage — `HypergraphPersistenceService` (IndexedDB, versioned schema, snapshots); a real AtomSpace-Rocks backend remains future work
 - [ ] Federated hypergraph queries (FlareCog integration)
 - [ ] Schema evolution tracking
 - [ ] Provenance and audit trails for cognitive decisions

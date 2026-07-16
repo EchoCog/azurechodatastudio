@@ -209,6 +209,27 @@ llmProviderService.registerProvider({
 llmProviderService.setActiveProvider('my-llm');
 ```
 
+### Streaming Responses
+
+`completeStream()` delivers the response incrementally, one chunk at a time,
+instead of waiting for the full completion. The built-in fallback streams
+word-by-word; external OpenAI-compatible providers stream via `stream: true`
+and incremental SSE frames. Both paths share the same circuit-breaker fallback
+behavior as `complete()`.
+
+```typescript
+const response = await llmProviderService.completeStream(
+  { systemPrompt: '...', userMessage: 'Explain this query plan' },
+  token => process.stdout.write(token),
+);
+console.log('\nFinal:', response.content);
+```
+
+`ZoneCogService` streams the response phase of query processing through
+`onDidStreamResponseToken`, so the workbench can render the final answer live
+as it arrives from the active LLM provider (thinking phases stream separately
+via `onDidCompleteThinkingPhase`).
+
 ## Commands
 
 Available through Command Palette (`Ctrl+Shift+P`):
@@ -342,6 +363,11 @@ zoneCogService.onDidProcessQuery(response => {
 // React to LLM provider changes
 llmProviderService.onDidChangeProvider(config => {
   console.log('Now using:', config.displayName);
+});
+
+// React to streaming response tokens as they arrive
+zoneCogService.onDidStreamResponseToken(({ query, token }) => {
+  process.stdout.write(token);
 });
 ```
 

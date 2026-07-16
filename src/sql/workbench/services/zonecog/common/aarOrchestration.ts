@@ -140,6 +140,8 @@ export interface AgentAction {
  * Shared cognitive agent contract used by the specialized Zone-Cog agents.
  */
 export interface CognitiveAgent {
+	/** DI service brand, so specialized agents can be constructor-injected as services. */
+	readonly _serviceBrand: undefined;
 	readonly id: string;
 	readonly name: string;
 	readonly description: string;

@@ -209,6 +209,20 @@ suite('ZoneCog Service Tests', () => {
 		assert.ok(streamedPhases.includes('Response Preparation'));
 	});
 
+	test('should stream response tokens that reassemble the final response', async () => {
+		const streamedTokens: string[] = [];
+		zoneCogService.onDidStreamResponseToken(ev => {
+			assert.strictEqual(ev.query, 'Stream response test');
+			streamedTokens.push(ev.token);
+		});
+
+		await zoneCogService.initialize();
+		const result = await zoneCogService.processQuery('Stream response test');
+
+		assert.ok(streamedTokens.length > 1, 'Should emit more than one response token');
+		assert.strictEqual(streamedTokens.join(''), result.response);
+	});
+
 	test('should expose query history', async () => {
 		await zoneCogService.initialize();
 		assert.strictEqual(zoneCogService.getQueryHistory().length, 0);
