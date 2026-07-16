@@ -37,6 +37,8 @@ import { ICognitiveWorkflowAutomationService } from 'sql/workbench/services/zone
 import { CognitiveWorkflowAutomationService } from 'sql/workbench/services/zonecog/browser/cognitiveWorkflowAutomationService';
 import { IAgiStudioService } from 'sql/workbench/services/zonecog/common/agiStudio';
 import { AgiStudioService } from 'sql/workbench/services/zonecog/browser/agiStudioService';
+import { IUserInteractionLearningService } from 'sql/workbench/services/zonecog/common/userInteractionLearning';
+import { UserInteractionLearningService } from 'sql/workbench/services/zonecog/browser/userInteractionLearningService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -104,3 +106,9 @@ registerSingleton(IAgiStudioService, AgiStudioService, InstantiationType.Eager);
 
 // Register the ZoneCog service as a singleton
 registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
+
+// Register Phase 8 services
+
+// Register the User Interaction Learning service (behavioral analytics, pattern
+// mining into the hypergraph, and Q-learning strategy selection)
+registerSingleton(IUserInteractionLearningService, UserInteractionLearningService, InstantiationType.Eager);

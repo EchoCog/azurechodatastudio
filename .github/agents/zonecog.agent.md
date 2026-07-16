@@ -30,6 +30,7 @@ Continue the implementation, testing, and hardening of the Zone-Cog cognitive wo
 | **Cognitive Workspace** | `ICognitiveWorkspaceService` | `CognitiveWorkspaceService` | Working memory (capacity-limited), episodic memory, task contexts |
 | **ECAN Attention** | `IECANAttentionService` | `ECANAttentionService` | Economic Attention Network: attention value spreading, rent collection, importance diffusion |
 | **Cognitive Loop** | `ICognitiveLoopService` | `CognitiveLoopService` | Autonomous cognitive cycle orchestrator: perceive → attend → think → act → reflect |
+| **Interaction Learning** | `IUserInteractionLearningService` | `UserInteractionLearningService` | User-interaction behavioral analytics, hypergraph pattern mining, Q-learning strategy selection |
 
 ### Key File Locations
 
@@ -152,7 +153,7 @@ Depth-adaptive: shallow (phases 1,2,11), moderate (1-5,11), deep (all 11).
 - [ ] Dynamic LoRA adapter loading via Aphrodite Engine
 - [ ] A/B testing framework for cognitive strategies
 - [ ] Feedback loop: user corrections → fine-tuning signal
-- [ ] Cognitive strategy evolution via reinforcement learning
+- [x] Cognitive strategy evolution via reinforcement learning — `UserInteractionLearningService` tabular Q-learning over (query complexity → thinking depth) with confidence/latency-derived rewards; epsilon-greedy `recommendAction()`
 
 ---
 
