@@ -25,39 +25,39 @@ const errors_1 = require("vs/base/common/errors");
  * Thus, the `assert(...)` function should be used instead.
  */
 function ok(value, message) {
-    if (!value) {
-        throw new Error(message ? `Assertion failed (${message})` : 'Assertion Failed');
-    }
+	if (!value) {
+		throw new Error(message ? `Assertion failed (${message})` : 'Assertion Failed');
+	}
 }
 function assertNever(value, message = 'Unreachable') {
-    throw new Error(message);
+	throw new Error(message);
 }
 function assert(condition) {
-    if (!condition) {
-        throw new errors_1.BugIndicatingError('Assertion Failed');
-    }
+	if (!condition) {
+		throw new errors_1.BugIndicatingError('Assertion Failed');
+	}
 }
 /**
  * condition must be side-effect free!
  */
 function assertFn(condition) {
-    if (!condition()) {
-        // eslint-disable-next-line no-debugger
-        debugger;
-        // Reevaluate `condition` again to make debugging easier
-        condition();
-        (0, errors_1.onUnexpectedError)(new errors_1.BugIndicatingError('Assertion Failed'));
-    }
+	if (!condition()) {
+		// eslint-disable-next-line no-debugger
+		debugger;
+		// Reevaluate `condition` again to make debugging easier
+		condition();
+		(0, errors_1.onUnexpectedError)(new errors_1.BugIndicatingError('Assertion Failed'));
+	}
 }
 function checkAdjacentItems(items, predicate) {
-    let i = 0;
-    while (i < items.length - 1) {
-        const a = items[i];
-        const b = items[i + 1];
-        if (!predicate(a, b)) {
-            return false;
-        }
-        i++;
-    }
-    return true;
+	let i = 0;
+	while (i < items.length - 1) {
+		const a = items[i];
+		const b = items[i + 1];
+		if (!predicate(a, b)) {
+			return false;
+		}
+		i++;
+	}
+	return true;
 }

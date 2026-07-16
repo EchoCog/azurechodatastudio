@@ -37,5 +37,5 @@ Object.defineProperty(exports, "wasEventTriggeredRecently", { enumerable: true, 
 const logging_1 = require("vs/base/common/observableInternal/logging");
 const enableLogging = false;
 if (enableLogging) {
-    (0, logging_1.setLogger)(new logging_1.ConsoleObservableLogger());
+	(0, logging_1.setLogger)(new logging_1.ConsoleObservableLogger());
 }

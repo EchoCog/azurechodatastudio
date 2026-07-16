@@ -10,7 +10,7 @@ exports.InternalModelContentChangeEvent = exports.ModelInjectedTextChangedEvent 
  * @internal
  */
 class ModelRawFlush {
-    changeType = 1 /* RawContentChangedType.Flush */;
+	changeType = 1 /* RawContentChangedType.Flush */;
 }
 exports.ModelRawFlush = ModelRawFlush;
 /**
@@ -18,56 +18,56 @@ exports.ModelRawFlush = ModelRawFlush;
  * @internal
  */
 class LineInjectedText {
-    ownerId;
-    lineNumber;
-    column;
-    options;
-    order;
-    static applyInjectedText(lineText, injectedTexts) {
-        if (!injectedTexts || injectedTexts.length === 0) {
-            return lineText;
-        }
-        let result = '';
-        let lastOriginalOffset = 0;
-        for (const injectedText of injectedTexts) {
-            result += lineText.substring(lastOriginalOffset, injectedText.column - 1);
-            lastOriginalOffset = injectedText.column - 1;
-            result += injectedText.options.content;
-        }
-        result += lineText.substring(lastOriginalOffset);
-        return result;
-    }
-    static fromDecorations(decorations) {
-        const result = [];
-        for (const decoration of decorations) {
-            if (decoration.options.before && decoration.options.before.content.length > 0) {
-                result.push(new LineInjectedText(decoration.ownerId, decoration.range.startLineNumber, decoration.range.startColumn, decoration.options.before, 0));
-            }
-            if (decoration.options.after && decoration.options.after.content.length > 0) {
-                result.push(new LineInjectedText(decoration.ownerId, decoration.range.endLineNumber, decoration.range.endColumn, decoration.options.after, 1));
-            }
-        }
-        result.sort((a, b) => {
-            if (a.lineNumber === b.lineNumber) {
-                if (a.column === b.column) {
-                    return a.order - b.order;
-                }
-                return a.column - b.column;
-            }
-            return a.lineNumber - b.lineNumber;
-        });
-        return result;
-    }
-    constructor(ownerId, lineNumber, column, options, order) {
-        this.ownerId = ownerId;
-        this.lineNumber = lineNumber;
-        this.column = column;
-        this.options = options;
-        this.order = order;
-    }
-    withText(text) {
-        return new LineInjectedText(this.ownerId, this.lineNumber, this.column, { ...this.options, content: text }, this.order);
-    }
+	ownerId;
+	lineNumber;
+	column;
+	options;
+	order;
+	static applyInjectedText(lineText, injectedTexts) {
+		if (!injectedTexts || injectedTexts.length === 0) {
+			return lineText;
+		}
+		let result = '';
+		let lastOriginalOffset = 0;
+		for (const injectedText of injectedTexts) {
+			result += lineText.substring(lastOriginalOffset, injectedText.column - 1);
+			lastOriginalOffset = injectedText.column - 1;
+			result += injectedText.options.content;
+		}
+		result += lineText.substring(lastOriginalOffset);
+		return result;
+	}
+	static fromDecorations(decorations) {
+		const result = [];
+		for (const decoration of decorations) {
+			if (decoration.options.before && decoration.options.before.content.length > 0) {
+				result.push(new LineInjectedText(decoration.ownerId, decoration.range.startLineNumber, decoration.range.startColumn, decoration.options.before, 0));
+			}
+			if (decoration.options.after && decoration.options.after.content.length > 0) {
+				result.push(new LineInjectedText(decoration.ownerId, decoration.range.endLineNumber, decoration.range.endColumn, decoration.options.after, 1));
+			}
+		}
+		result.sort((a, b) => {
+			if (a.lineNumber === b.lineNumber) {
+				if (a.column === b.column) {
+					return a.order - b.order;
+				}
+				return a.column - b.column;
+			}
+			return a.lineNumber - b.lineNumber;
+		});
+		return result;
+	}
+	constructor(ownerId, lineNumber, column, options, order) {
+		this.ownerId = ownerId;
+		this.lineNumber = lineNumber;
+		this.column = column;
+		this.options = options;
+		this.order = order;
+	}
+	withText(text) {
+		return new LineInjectedText(this.ownerId, this.lineNumber, this.column, { ...this.options, content: text }, this.order);
+	}
 }
 exports.LineInjectedText = LineInjectedText;
 /**
@@ -75,24 +75,24 @@ exports.LineInjectedText = LineInjectedText;
  * @internal
  */
 class ModelRawLineChanged {
-    changeType = 2 /* RawContentChangedType.LineChanged */;
-    /**
-     * The line that has changed.
-     */
-    lineNumber;
-    /**
-     * The new value of the line.
-     */
-    detail;
-    /**
-     * The injected text on the line.
-     */
-    injectedText;
-    constructor(lineNumber, detail, injectedText) {
-        this.lineNumber = lineNumber;
-        this.detail = detail;
-        this.injectedText = injectedText;
-    }
+	changeType = 2 /* RawContentChangedType.LineChanged */;
+	/**
+	 * The line that has changed.
+	 */
+	lineNumber;
+	/**
+	 * The new value of the line.
+	 */
+	detail;
+	/**
+	 * The injected text on the line.
+	 */
+	injectedText;
+	constructor(lineNumber, detail, injectedText) {
+		this.lineNumber = lineNumber;
+		this.detail = detail;
+		this.injectedText = injectedText;
+	}
 }
 exports.ModelRawLineChanged = ModelRawLineChanged;
 /**
@@ -100,19 +100,19 @@ exports.ModelRawLineChanged = ModelRawLineChanged;
  * @internal
  */
 class ModelRawLinesDeleted {
-    changeType = 3 /* RawContentChangedType.LinesDeleted */;
-    /**
-     * At what line the deletion began (inclusive).
-     */
-    fromLineNumber;
-    /**
-     * At what line the deletion stopped (inclusive).
-     */
-    toLineNumber;
-    constructor(fromLineNumber, toLineNumber) {
-        this.fromLineNumber = fromLineNumber;
-        this.toLineNumber = toLineNumber;
-    }
+	changeType = 3 /* RawContentChangedType.LinesDeleted */;
+	/**
+	 * At what line the deletion began (inclusive).
+	 */
+	fromLineNumber;
+	/**
+	 * At what line the deletion stopped (inclusive).
+	 */
+	toLineNumber;
+	constructor(fromLineNumber, toLineNumber) {
+		this.fromLineNumber = fromLineNumber;
+		this.toLineNumber = toLineNumber;
+	}
 }
 exports.ModelRawLinesDeleted = ModelRawLinesDeleted;
 /**
@@ -120,29 +120,29 @@ exports.ModelRawLinesDeleted = ModelRawLinesDeleted;
  * @internal
  */
 class ModelRawLinesInserted {
-    changeType = 4 /* RawContentChangedType.LinesInserted */;
-    /**
-     * Before what line did the insertion begin
-     */
-    fromLineNumber;
-    /**
-     * `toLineNumber` - `fromLineNumber` + 1 denotes the number of lines that were inserted
-     */
-    toLineNumber;
-    /**
-     * The text that was inserted
-     */
-    detail;
-    /**
-     * The injected texts for every inserted line.
-     */
-    injectedTexts;
-    constructor(fromLineNumber, toLineNumber, detail, injectedTexts) {
-        this.injectedTexts = injectedTexts;
-        this.fromLineNumber = fromLineNumber;
-        this.toLineNumber = toLineNumber;
-        this.detail = detail;
-    }
+	changeType = 4 /* RawContentChangedType.LinesInserted */;
+	/**
+	 * Before what line did the insertion begin
+	 */
+	fromLineNumber;
+	/**
+	 * `toLineNumber` - `fromLineNumber` + 1 denotes the number of lines that were inserted
+	 */
+	toLineNumber;
+	/**
+	 * The text that was inserted
+	 */
+	detail;
+	/**
+	 * The injected texts for every inserted line.
+	 */
+	injectedTexts;
+	constructor(fromLineNumber, toLineNumber, detail, injectedTexts) {
+		this.injectedTexts = injectedTexts;
+		this.fromLineNumber = fromLineNumber;
+		this.toLineNumber = toLineNumber;
+		this.detail = detail;
+	}
 }
 exports.ModelRawLinesInserted = ModelRawLinesInserted;
 /**
@@ -150,7 +150,7 @@ exports.ModelRawLinesInserted = ModelRawLinesInserted;
  * @internal
  */
 class ModelRawEOLChanged {
-    changeType = 5 /* RawContentChangedType.EOLChanged */;
+	changeType = 5 /* RawContentChangedType.EOLChanged */;
 }
 exports.ModelRawEOLChanged = ModelRawEOLChanged;
 /**
@@ -158,43 +158,43 @@ exports.ModelRawEOLChanged = ModelRawEOLChanged;
  * @internal
  */
 class ModelRawContentChangedEvent {
-    changes;
-    /**
-     * The new version id the model has transitioned to.
-     */
-    versionId;
-    /**
-     * Flag that indicates that this event was generated while undoing.
-     */
-    isUndoing;
-    /**
-     * Flag that indicates that this event was generated while redoing.
-     */
-    isRedoing;
-    resultingSelection;
-    constructor(changes, versionId, isUndoing, isRedoing) {
-        this.changes = changes;
-        this.versionId = versionId;
-        this.isUndoing = isUndoing;
-        this.isRedoing = isRedoing;
-        this.resultingSelection = null;
-    }
-    containsEvent(type) {
-        for (let i = 0, len = this.changes.length; i < len; i++) {
-            const change = this.changes[i];
-            if (change.changeType === type) {
-                return true;
-            }
-        }
-        return false;
-    }
-    static merge(a, b) {
-        const changes = [].concat(a.changes).concat(b.changes);
-        const versionId = b.versionId;
-        const isUndoing = (a.isUndoing || b.isUndoing);
-        const isRedoing = (a.isRedoing || b.isRedoing);
-        return new ModelRawContentChangedEvent(changes, versionId, isUndoing, isRedoing);
-    }
+	changes;
+	/**
+	 * The new version id the model has transitioned to.
+	 */
+	versionId;
+	/**
+	 * Flag that indicates that this event was generated while undoing.
+	 */
+	isUndoing;
+	/**
+	 * Flag that indicates that this event was generated while redoing.
+	 */
+	isRedoing;
+	resultingSelection;
+	constructor(changes, versionId, isUndoing, isRedoing) {
+		this.changes = changes;
+		this.versionId = versionId;
+		this.isUndoing = isUndoing;
+		this.isRedoing = isRedoing;
+		this.resultingSelection = null;
+	}
+	containsEvent(type) {
+		for (let i = 0, len = this.changes.length; i < len; i++) {
+			const change = this.changes[i];
+			if (change.changeType === type) {
+				return true;
+			}
+		}
+		return false;
+	}
+	static merge(a, b) {
+		const changes = [].concat(a.changes).concat(b.changes);
+		const versionId = b.versionId;
+		const isUndoing = (a.isUndoing || b.isUndoing);
+		const isRedoing = (a.isRedoing || b.isRedoing);
+		return new ModelRawContentChangedEvent(changes, versionId, isUndoing, isRedoing);
+	}
 }
 exports.ModelRawContentChangedEvent = ModelRawContentChangedEvent;
 /**
@@ -202,44 +202,44 @@ exports.ModelRawContentChangedEvent = ModelRawContentChangedEvent;
  * @internal
  */
 class ModelInjectedTextChangedEvent {
-    changes;
-    constructor(changes) {
-        this.changes = changes;
-    }
+	changes;
+	constructor(changes) {
+		this.changes = changes;
+	}
 }
 exports.ModelInjectedTextChangedEvent = ModelInjectedTextChangedEvent;
 /**
  * @internal
  */
 class InternalModelContentChangeEvent {
-    rawContentChangedEvent;
-    contentChangedEvent;
-    constructor(rawContentChangedEvent, contentChangedEvent) {
-        this.rawContentChangedEvent = rawContentChangedEvent;
-        this.contentChangedEvent = contentChangedEvent;
-    }
-    merge(other) {
-        const rawContentChangedEvent = ModelRawContentChangedEvent.merge(this.rawContentChangedEvent, other.rawContentChangedEvent);
-        const contentChangedEvent = InternalModelContentChangeEvent._mergeChangeEvents(this.contentChangedEvent, other.contentChangedEvent);
-        return new InternalModelContentChangeEvent(rawContentChangedEvent, contentChangedEvent);
-    }
-    static _mergeChangeEvents(a, b) {
-        const changes = [].concat(a.changes).concat(b.changes);
-        const eol = b.eol;
-        const versionId = b.versionId;
-        const isUndoing = (a.isUndoing || b.isUndoing);
-        const isRedoing = (a.isRedoing || b.isRedoing);
-        const isFlush = (a.isFlush || b.isFlush);
-        const isEolChange = a.isEolChange && b.isEolChange; // both must be true to not confuse listeners who skip such edits
-        return {
-            changes: changes,
-            eol: eol,
-            isEolChange: isEolChange,
-            versionId: versionId,
-            isUndoing: isUndoing,
-            isRedoing: isRedoing,
-            isFlush: isFlush,
-        };
-    }
+	rawContentChangedEvent;
+	contentChangedEvent;
+	constructor(rawContentChangedEvent, contentChangedEvent) {
+		this.rawContentChangedEvent = rawContentChangedEvent;
+		this.contentChangedEvent = contentChangedEvent;
+	}
+	merge(other) {
+		const rawContentChangedEvent = ModelRawContentChangedEvent.merge(this.rawContentChangedEvent, other.rawContentChangedEvent);
+		const contentChangedEvent = InternalModelContentChangeEvent._mergeChangeEvents(this.contentChangedEvent, other.contentChangedEvent);
+		return new InternalModelContentChangeEvent(rawContentChangedEvent, contentChangedEvent);
+	}
+	static _mergeChangeEvents(a, b) {
+		const changes = [].concat(a.changes).concat(b.changes);
+		const eol = b.eol;
+		const versionId = b.versionId;
+		const isUndoing = (a.isUndoing || b.isUndoing);
+		const isRedoing = (a.isRedoing || b.isRedoing);
+		const isFlush = (a.isFlush || b.isFlush);
+		const isEolChange = a.isEolChange && b.isEolChange; // both must be true to not confuse listeners who skip such edits
+		return {
+			changes: changes,
+			eol: eol,
+			isEolChange: isEolChange,
+			versionId: versionId,
+			isUndoing: isUndoing,
+			isRedoing: isRedoing,
+			isFlush: isFlush,
+		};
+	}
 }
 exports.InternalModelContentChangeEvent = InternalModelContentChangeEvent;

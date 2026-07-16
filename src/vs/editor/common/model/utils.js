@@ -11,24 +11,24 @@ exports.computeIndentLevel = computeIndentLevel;
  *  - otherwise => the indent level is returned value
  */
 function computeIndentLevel(line, tabSize) {
-    let indent = 0;
-    let i = 0;
-    const len = line.length;
-    while (i < len) {
-        const chCode = line.charCodeAt(i);
-        if (chCode === 32 /* CharCode.Space */) {
-            indent++;
-        }
-        else if (chCode === 9 /* CharCode.Tab */) {
-            indent = indent - indent % tabSize + tabSize;
-        }
-        else {
-            break;
-        }
-        i++;
-    }
-    if (i === len) {
-        return -1; // line only consists of whitespace
-    }
-    return indent;
+	let indent = 0;
+	let i = 0;
+	const len = line.length;
+	while (i < len) {
+		const chCode = line.charCodeAt(i);
+		if (chCode === 32 /* CharCode.Space */) {
+			indent++;
+		}
+		else if (chCode === 9 /* CharCode.Tab */) {
+			indent = indent - indent % tabSize + tabSize;
+		}
+		else {
+			break;
+		}
+		i++;
+	}
+	if (i === len) {
+		return -1; // line only consists of whitespace
+	}
+	return indent;
 }

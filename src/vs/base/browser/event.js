@@ -7,19 +7,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DomEmitter = void 0;
 const event_1 = require("vs/base/common/event");
 class DomEmitter {
-    emitter;
-    get event() {
-        return this.emitter.event;
-    }
-    constructor(element, type, useCapture) {
-        const fn = (e) => this.emitter.fire(e);
-        this.emitter = new event_1.Emitter({
-            onWillAddFirstListener: () => element.addEventListener(type, fn, useCapture),
-            onDidRemoveLastListener: () => element.removeEventListener(type, fn, useCapture)
-        });
-    }
-    dispose() {
-        this.emitter.dispose();
-    }
+	emitter;
+	get event() {
+		return this.emitter.event;
+	}
+	constructor(element, type, useCapture) {
+		const fn = (e) => this.emitter.fire(e);
+		this.emitter = new event_1.Emitter({
+			onWillAddFirstListener: () => element.addEventListener(type, fn, useCapture),
+			onDidRemoveLastListener: () => element.removeEventListener(type, fn, useCapture)
+		});
+	}
+	dispose() {
+		this.emitter.dispose();
+	}
 }
 exports.DomEmitter = DomEmitter;

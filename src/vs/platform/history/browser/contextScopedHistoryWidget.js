@@ -4,13 +4,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
-    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
-    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
-    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
-    return c > 3 && r && Object.defineProperty(target, key, r), r;
+	var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+	if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+	else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+	return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
+	return function (target, key) { decorator(target, key, paramIndex); }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ContextScopedReplaceInput = exports.ContextScopedFindInput = exports.ContextScopedHistoryInputBox = exports.historyNavigationVisible = void 0;
@@ -29,92 +29,92 @@ const HistoryNavigationBackwardsEnablementContext = 'historyNavigationBackwardsE
 let lastFocusedWidget = undefined;
 const widgets = [];
 function registerAndCreateHistoryNavigationContext(scopedContextKeyService, widget) {
-    if (widgets.includes(widget)) {
-        throw new Error('Cannot register the same widget multiple times');
-    }
-    widgets.push(widget);
-    const disposableStore = new lifecycle_1.DisposableStore();
-    const historyNavigationWidgetFocus = new contextkey_1.RawContextKey(HistoryNavigationWidgetFocusContext, false).bindTo(scopedContextKeyService);
-    const historyNavigationForwardsEnablement = new contextkey_1.RawContextKey(HistoryNavigationForwardsEnablementContext, true).bindTo(scopedContextKeyService);
-    const historyNavigationBackwardsEnablement = new contextkey_1.RawContextKey(HistoryNavigationBackwardsEnablementContext, true).bindTo(scopedContextKeyService);
-    const onDidFocus = () => {
-        historyNavigationWidgetFocus.set(true);
-        lastFocusedWidget = widget;
-    };
-    const onDidBlur = () => {
-        historyNavigationWidgetFocus.set(false);
-        if (lastFocusedWidget === widget) {
-            lastFocusedWidget = undefined;
-        }
-    };
-    // Check for currently being focused
-    if (widget.element === document.activeElement) {
-        onDidFocus();
-    }
-    disposableStore.add(widget.onDidFocus(() => onDidFocus()));
-    disposableStore.add(widget.onDidBlur(() => onDidBlur()));
-    disposableStore.add((0, lifecycle_1.toDisposable)(() => {
-        widgets.splice(widgets.indexOf(widget), 1);
-        onDidBlur();
-    }));
-    return {
-        historyNavigationForwardsEnablement,
-        historyNavigationBackwardsEnablement,
-        dispose() {
-            disposableStore.dispose();
-        }
-    };
+	if (widgets.includes(widget)) {
+		throw new Error('Cannot register the same widget multiple times');
+	}
+	widgets.push(widget);
+	const disposableStore = new lifecycle_1.DisposableStore();
+	const historyNavigationWidgetFocus = new contextkey_1.RawContextKey(HistoryNavigationWidgetFocusContext, false).bindTo(scopedContextKeyService);
+	const historyNavigationForwardsEnablement = new contextkey_1.RawContextKey(HistoryNavigationForwardsEnablementContext, true).bindTo(scopedContextKeyService);
+	const historyNavigationBackwardsEnablement = new contextkey_1.RawContextKey(HistoryNavigationBackwardsEnablementContext, true).bindTo(scopedContextKeyService);
+	const onDidFocus = () => {
+		historyNavigationWidgetFocus.set(true);
+		lastFocusedWidget = widget;
+	};
+	const onDidBlur = () => {
+		historyNavigationWidgetFocus.set(false);
+		if (lastFocusedWidget === widget) {
+			lastFocusedWidget = undefined;
+		}
+	};
+	// Check for currently being focused
+	if (widget.element === document.activeElement) {
+		onDidFocus();
+	}
+	disposableStore.add(widget.onDidFocus(() => onDidFocus()));
+	disposableStore.add(widget.onDidBlur(() => onDidBlur()));
+	disposableStore.add((0, lifecycle_1.toDisposable)(() => {
+		widgets.splice(widgets.indexOf(widget), 1);
+		onDidBlur();
+	}));
+	return {
+		historyNavigationForwardsEnablement,
+		historyNavigationBackwardsEnablement,
+		dispose() {
+			disposableStore.dispose();
+		}
+	};
 }
 let ContextScopedHistoryInputBox = class ContextScopedHistoryInputBox extends inputBox_1.HistoryInputBox {
-    constructor(container, contextViewProvider, options, contextKeyService) {
-        super(container, contextViewProvider, options);
-        const scopedContextKeyService = this._register(contextKeyService.createScoped(this.element));
-        this._register(registerAndCreateHistoryNavigationContext(scopedContextKeyService, this));
-    }
+	constructor(container, contextViewProvider, options, contextKeyService) {
+		super(container, contextViewProvider, options);
+		const scopedContextKeyService = this._register(contextKeyService.createScoped(this.element));
+		this._register(registerAndCreateHistoryNavigationContext(scopedContextKeyService, this));
+	}
 };
 exports.ContextScopedHistoryInputBox = ContextScopedHistoryInputBox;
 exports.ContextScopedHistoryInputBox = ContextScopedHistoryInputBox = __decorate([
-    __param(3, contextkey_1.IContextKeyService)
+	__param(3, contextkey_1.IContextKeyService)
 ], ContextScopedHistoryInputBox);
 let ContextScopedFindInput = class ContextScopedFindInput extends findInput_1.FindInput {
-    constructor(container, contextViewProvider, options, contextKeyService) {
-        super(container, contextViewProvider, options);
-        const scopedContextKeyService = this._register(contextKeyService.createScoped(this.inputBox.element));
-        this._register(registerAndCreateHistoryNavigationContext(scopedContextKeyService, this.inputBox));
-    }
+	constructor(container, contextViewProvider, options, contextKeyService) {
+		super(container, contextViewProvider, options);
+		const scopedContextKeyService = this._register(contextKeyService.createScoped(this.inputBox.element));
+		this._register(registerAndCreateHistoryNavigationContext(scopedContextKeyService, this.inputBox));
+	}
 };
 exports.ContextScopedFindInput = ContextScopedFindInput;
 exports.ContextScopedFindInput = ContextScopedFindInput = __decorate([
-    __param(3, contextkey_1.IContextKeyService)
+	__param(3, contextkey_1.IContextKeyService)
 ], ContextScopedFindInput);
 let ContextScopedReplaceInput = class ContextScopedReplaceInput extends replaceInput_1.ReplaceInput {
-    constructor(container, contextViewProvider, options, contextKeyService, showReplaceOptions = false) {
-        super(container, contextViewProvider, showReplaceOptions, options);
-        const scopedContextKeyService = this._register(contextKeyService.createScoped(this.inputBox.element));
-        this._register(registerAndCreateHistoryNavigationContext(scopedContextKeyService, this.inputBox));
-    }
+	constructor(container, contextViewProvider, options, contextKeyService, showReplaceOptions = false) {
+		super(container, contextViewProvider, showReplaceOptions, options);
+		const scopedContextKeyService = this._register(contextKeyService.createScoped(this.inputBox.element));
+		this._register(registerAndCreateHistoryNavigationContext(scopedContextKeyService, this.inputBox));
+	}
 };
 exports.ContextScopedReplaceInput = ContextScopedReplaceInput;
 exports.ContextScopedReplaceInput = ContextScopedReplaceInput = __decorate([
-    __param(3, contextkey_1.IContextKeyService)
+	__param(3, contextkey_1.IContextKeyService)
 ], ContextScopedReplaceInput);
 keybindingsRegistry_1.KeybindingsRegistry.registerCommandAndKeybindingRule({
-    id: 'history.showPrevious',
-    weight: 200 /* KeybindingWeight.WorkbenchContrib */,
-    when: contextkey_1.ContextKeyExpr.and(contextkey_1.ContextKeyExpr.has(HistoryNavigationWidgetFocusContext), contextkey_1.ContextKeyExpr.equals(HistoryNavigationBackwardsEnablementContext, true), contextkey_1.ContextKeyExpr.not('isComposing'), exports.historyNavigationVisible.isEqualTo(false)),
-    primary: 16 /* KeyCode.UpArrow */,
-    secondary: [512 /* KeyMod.Alt */ | 16 /* KeyCode.UpArrow */],
-    handler: (accessor) => {
-        lastFocusedWidget?.showPreviousValue();
-    }
+	id: 'history.showPrevious',
+	weight: 200 /* KeybindingWeight.WorkbenchContrib */,
+	when: contextkey_1.ContextKeyExpr.and(contextkey_1.ContextKeyExpr.has(HistoryNavigationWidgetFocusContext), contextkey_1.ContextKeyExpr.equals(HistoryNavigationBackwardsEnablementContext, true), contextkey_1.ContextKeyExpr.not('isComposing'), exports.historyNavigationVisible.isEqualTo(false)),
+	primary: 16 /* KeyCode.UpArrow */,
+	secondary: [512 /* KeyMod.Alt */ | 16 /* KeyCode.UpArrow */],
+	handler: (accessor) => {
+		lastFocusedWidget?.showPreviousValue();
+	}
 });
 keybindingsRegistry_1.KeybindingsRegistry.registerCommandAndKeybindingRule({
-    id: 'history.showNext',
-    weight: 200 /* KeybindingWeight.WorkbenchContrib */,
-    when: contextkey_1.ContextKeyExpr.and(contextkey_1.ContextKeyExpr.has(HistoryNavigationWidgetFocusContext), contextkey_1.ContextKeyExpr.equals(HistoryNavigationForwardsEnablementContext, true), contextkey_1.ContextKeyExpr.not('isComposing'), exports.historyNavigationVisible.isEqualTo(false)),
-    primary: 18 /* KeyCode.DownArrow */,
-    secondary: [512 /* KeyMod.Alt */ | 18 /* KeyCode.DownArrow */],
-    handler: (accessor) => {
-        lastFocusedWidget?.showNextValue();
-    }
+	id: 'history.showNext',
+	weight: 200 /* KeybindingWeight.WorkbenchContrib */,
+	when: contextkey_1.ContextKeyExpr.and(contextkey_1.ContextKeyExpr.has(HistoryNavigationWidgetFocusContext), contextkey_1.ContextKeyExpr.equals(HistoryNavigationForwardsEnablementContext, true), contextkey_1.ContextKeyExpr.not('isComposing'), exports.historyNavigationVisible.isEqualTo(false)),
+	primary: 18 /* KeyCode.DownArrow */,
+	secondary: [512 /* KeyMod.Alt */ | 18 /* KeyCode.DownArrow */],
+	handler: (accessor) => {
+		lastFocusedWidget?.showNextValue();
+	}
 });

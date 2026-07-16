@@ -11,7 +11,7 @@ const instantiation_1 = require("vs/platform/instantiation/common/instantiation"
 exports.IAccessibilityService = (0, instantiation_1.createDecorator)('accessibilityService');
 exports.CONTEXT_ACCESSIBILITY_MODE_ENABLED = new contextkey_1.RawContextKey('accessibilityModeEnabled', false);
 function isAccessibilityInformation(obj) {
-    return obj && typeof obj === 'object'
-        && typeof obj.label === 'string'
-        && (typeof obj.role === 'undefined' || typeof obj.role === 'string');
+	return obj && typeof obj === 'object'
+		&& typeof obj.label === 'string'
+		&& (typeof obj.role === 'undefined' || typeof obj.role === 'string');
 }

@@ -6,14 +6,14 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EDITOR_MODEL_DEFAULTS = void 0;
 exports.EDITOR_MODEL_DEFAULTS = {
-    tabSize: 4,
-    indentSize: 4,
-    insertSpaces: true,
-    detectIndentation: true,
-    trimAutoWhitespace: true,
-    largeFileOptimizations: true,
-    bracketPairColorizationOptions: {
-        enabled: true,
-        independentColorPoolPerBracketType: false,
-    },
+	tabSize: 4,
+	indentSize: 4,
+	insertSpaces: true,
+	detectIndentation: true,
+	trimAutoWhitespace: true,
+	largeFileOptimizations: true,
+	bracketPairColorizationOptions: {
+		enabled: true,
+		independentColorPoolPerBracketType: false,
+	},
 };

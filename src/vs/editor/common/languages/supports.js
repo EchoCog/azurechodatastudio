@@ -8,54 +8,54 @@ exports.ScopedLineTokens = void 0;
 exports.createScopedLineTokens = createScopedLineTokens;
 exports.ignoreBracketsInToken = ignoreBracketsInToken;
 function createScopedLineTokens(context, offset) {
-    const tokenCount = context.getCount();
-    const tokenIndex = context.findTokenIndexAtOffset(offset);
-    const desiredLanguageId = context.getLanguageId(tokenIndex);
-    let lastTokenIndex = tokenIndex;
-    while (lastTokenIndex + 1 < tokenCount && context.getLanguageId(lastTokenIndex + 1) === desiredLanguageId) {
-        lastTokenIndex++;
-    }
-    let firstTokenIndex = tokenIndex;
-    while (firstTokenIndex > 0 && context.getLanguageId(firstTokenIndex - 1) === desiredLanguageId) {
-        firstTokenIndex--;
-    }
-    return new ScopedLineTokens(context, desiredLanguageId, firstTokenIndex, lastTokenIndex + 1, context.getStartOffset(firstTokenIndex), context.getEndOffset(lastTokenIndex));
+	const tokenCount = context.getCount();
+	const tokenIndex = context.findTokenIndexAtOffset(offset);
+	const desiredLanguageId = context.getLanguageId(tokenIndex);
+	let lastTokenIndex = tokenIndex;
+	while (lastTokenIndex + 1 < tokenCount && context.getLanguageId(lastTokenIndex + 1) === desiredLanguageId) {
+		lastTokenIndex++;
+	}
+	let firstTokenIndex = tokenIndex;
+	while (firstTokenIndex > 0 && context.getLanguageId(firstTokenIndex - 1) === desiredLanguageId) {
+		firstTokenIndex--;
+	}
+	return new ScopedLineTokens(context, desiredLanguageId, firstTokenIndex, lastTokenIndex + 1, context.getStartOffset(firstTokenIndex), context.getEndOffset(lastTokenIndex));
 }
 class ScopedLineTokens {
-    _scopedLineTokensBrand = undefined;
-    languageId;
-    _actual;
-    _firstTokenIndex;
-    _lastTokenIndex;
-    firstCharOffset;
-    _lastCharOffset;
-    constructor(actual, languageId, firstTokenIndex, lastTokenIndex, firstCharOffset, lastCharOffset) {
-        this._actual = actual;
-        this.languageId = languageId;
-        this._firstTokenIndex = firstTokenIndex;
-        this._lastTokenIndex = lastTokenIndex;
-        this.firstCharOffset = firstCharOffset;
-        this._lastCharOffset = lastCharOffset;
-    }
-    getLineContent() {
-        const actualLineContent = this._actual.getLineContent();
-        return actualLineContent.substring(this.firstCharOffset, this._lastCharOffset);
-    }
-    getActualLineContentBefore(offset) {
-        const actualLineContent = this._actual.getLineContent();
-        return actualLineContent.substring(0, this.firstCharOffset + offset);
-    }
-    getTokenCount() {
-        return this._lastTokenIndex - this._firstTokenIndex;
-    }
-    findTokenIndexAtOffset(offset) {
-        return this._actual.findTokenIndexAtOffset(offset + this.firstCharOffset) - this._firstTokenIndex;
-    }
-    getStandardTokenType(tokenIndex) {
-        return this._actual.getStandardTokenType(tokenIndex + this._firstTokenIndex);
-    }
+	_scopedLineTokensBrand = undefined;
+	languageId;
+	_actual;
+	_firstTokenIndex;
+	_lastTokenIndex;
+	firstCharOffset;
+	_lastCharOffset;
+	constructor(actual, languageId, firstTokenIndex, lastTokenIndex, firstCharOffset, lastCharOffset) {
+		this._actual = actual;
+		this.languageId = languageId;
+		this._firstTokenIndex = firstTokenIndex;
+		this._lastTokenIndex = lastTokenIndex;
+		this.firstCharOffset = firstCharOffset;
+		this._lastCharOffset = lastCharOffset;
+	}
+	getLineContent() {
+		const actualLineContent = this._actual.getLineContent();
+		return actualLineContent.substring(this.firstCharOffset, this._lastCharOffset);
+	}
+	getActualLineContentBefore(offset) {
+		const actualLineContent = this._actual.getLineContent();
+		return actualLineContent.substring(0, this.firstCharOffset + offset);
+	}
+	getTokenCount() {
+		return this._lastTokenIndex - this._firstTokenIndex;
+	}
+	findTokenIndexAtOffset(offset) {
+		return this._actual.findTokenIndexAtOffset(offset + this.firstCharOffset) - this._firstTokenIndex;
+	}
+	getStandardTokenType(tokenIndex) {
+		return this._actual.getStandardTokenType(tokenIndex + this._firstTokenIndex);
+	}
 }
 exports.ScopedLineTokens = ScopedLineTokens;
 function ignoreBracketsInToken(standardTokenType) {
-    return (standardTokenType & 3 /* IgnoreBracketsInTokens.value */) !== 0;
+	return (standardTokenType & 3 /* IgnoreBracketsInTokens.value */) !== 0;
 }

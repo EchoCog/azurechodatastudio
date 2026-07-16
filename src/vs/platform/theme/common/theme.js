@@ -12,14 +12,14 @@ exports.isDark = isDark;
  */
 var ColorScheme;
 (function (ColorScheme) {
-    ColorScheme["DARK"] = "dark";
-    ColorScheme["LIGHT"] = "light";
-    ColorScheme["HIGH_CONTRAST_DARK"] = "hcDark";
-    ColorScheme["HIGH_CONTRAST_LIGHT"] = "hcLight";
+	ColorScheme["DARK"] = "dark";
+	ColorScheme["LIGHT"] = "light";
+	ColorScheme["HIGH_CONTRAST_DARK"] = "hcDark";
+	ColorScheme["HIGH_CONTRAST_LIGHT"] = "hcLight";
 })(ColorScheme || (exports.ColorScheme = ColorScheme = {}));
 function isHighContrast(scheme) {
-    return scheme === ColorScheme.HIGH_CONTRAST_DARK || scheme === ColorScheme.HIGH_CONTRAST_LIGHT;
+	return scheme === ColorScheme.HIGH_CONTRAST_DARK || scheme === ColorScheme.HIGH_CONTRAST_LIGHT;
 }
 function isDark(scheme) {
-    return scheme === ColorScheme.DARK || scheme === ColorScheme.HIGH_CONTRAST_DARK;
+	return scheme === ColorScheme.DARK || scheme === ColorScheme.HIGH_CONTRAST_DARK;
 }

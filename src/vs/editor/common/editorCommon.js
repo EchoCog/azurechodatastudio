@@ -10,12 +10,12 @@ exports.isThemeColor = isThemeColor;
  * @internal
  */
 function isThemeColor(o) {
-    return o && typeof o.id === 'string';
+	return o && typeof o.id === 'string';
 }
 /**
  * The type of the `IEditor`.
  */
 exports.EditorType = {
-    ICodeEditor: 'vs.editor.ICodeEditor',
-    IDiffEditor: 'vs.editor.IDiffEditor'
+	ICodeEditor: 'vs.editor.ICodeEditor',
+	IDiffEditor: 'vs.editor.IDiffEditor'
 };

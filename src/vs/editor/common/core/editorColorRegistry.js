@@ -1,40 +1,40 @@
 "use strict";
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
+	*  Copyright (c) Microsoft Corporation. All rights reserved.
+	*  Licensed under the MIT License. See License.txt in the project root for license information.
+	*--------------------------------------------------------------------------------------------*/
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
+	if (k2 === undefined) k2 = k;
+	var desc = Object.getOwnPropertyDescriptor(m, k);
+	if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+		desc = { enumerable: true, get: function() { return m[k]; } };
+	}
+	Object.defineProperty(o, k2, desc);
 }) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
+	if (k2 === undefined) k2 = k;
+	o[k2] = m[k];
 }));
 var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
+	Object.defineProperty(o, "default", { enumerable: true, value: v });
 }) : function(o, v) {
-    o["default"] = v;
+	o["default"] = v;
 });
 var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
+	var ownKeys = function(o) {
+		ownKeys = Object.getOwnPropertyNames || function (o) {
+			var ar = [];
+			for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+			return ar;
+		};
+		return ownKeys(o);
+	};
+	return function (mod) {
+		if (mod && mod.__esModule) return mod;
+		var result = {};
+		if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+		__setModuleDefault(result, mod);
+		return result;
+	};
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.editorBracketPairGuideBackground1 = exports.editorBracketHighlightingUnexpectedBracketForeground = exports.editorBracketHighlightingForeground6 = exports.editorBracketHighlightingForeground5 = exports.editorBracketHighlightingForeground4 = exports.editorBracketHighlightingForeground3 = exports.editorBracketHighlightingForeground2 = exports.editorBracketHighlightingForeground1 = exports.overviewRulerInfo = exports.overviewRulerWarning = exports.overviewRulerError = exports.overviewRulerRangeHighlight = exports.ghostTextBackground = exports.ghostTextForeground = exports.ghostTextBorder = exports.editorUnnecessaryCodeOpacity = exports.editorUnnecessaryCodeBorder = exports.editorGutter = exports.editorOverviewRulerBackground = exports.editorOverviewRulerBorder = exports.editorBracketMatchBorder = exports.editorBracketMatchBackground = exports.editorCodeLensForeground = exports.editorRuler = exports.editorDimmedLineNumber = exports.editorActiveLineNumber = exports.editorActiveIndentGuide6 = exports.editorActiveIndentGuide5 = exports.editorActiveIndentGuide4 = exports.editorActiveIndentGuide3 = exports.editorActiveIndentGuide2 = exports.editorActiveIndentGuide1 = exports.editorIndentGuide6 = exports.editorIndentGuide5 = exports.editorIndentGuide4 = exports.editorIndentGuide3 = exports.editorIndentGuide2 = exports.editorIndentGuide1 = exports.deprecatedEditorActiveIndentGuides = exports.deprecatedEditorIndentGuides = exports.editorLineNumbers = exports.editorWhitespaces = exports.editorCursorBackground = exports.editorCursorForeground = exports.editorSymbolHighlightBorder = exports.editorSymbolHighlight = exports.editorRangeHighlightBorder = exports.editorRangeHighlight = exports.editorLineHighlightBorder = exports.editorLineHighlight = void 0;
@@ -44,8 +44,8 @@ const color_1 = require("vs/base/common/color");
 const colorRegistry_1 = require("vs/platform/theme/common/colorRegistry");
 const themeService_1 = require("vs/platform/theme/common/themeService");
 /**
- * Definition of the editor colors
- */
+	* Definition of the editor colors
+	*/
 exports.editorLineHighlight = (0, colorRegistry_1.registerColor)('editor.lineHighlightBackground', { dark: null, light: null, hcDark: null, hcLight: null }, nls.localize('lineHighlight', 'Background color for the highlight of line at the cursor position.'));
 exports.editorLineHighlightBorder = (0, colorRegistry_1.registerColor)('editor.lineHighlightBorder', { dark: '#282828', light: '#eeeeee', hcDark: '#f38518', hcLight: colorRegistry_1.contrastBorder }, nls.localize('lineHighlightBorderBox', 'Background color for the border around the line at the cursor position.'));
 exports.editorRangeHighlight = (0, colorRegistry_1.registerColor)('editor.rangeHighlightBackground', { dark: '#ffffff0b', light: '#fdff0033', hcDark: null, hcLight: null }, nls.localize('rangeHighlight', 'Background color of highlighted ranges, like by quick open and find features. The color must not be opaque so as not to hide underlying decorations.'), true);
@@ -113,10 +113,10 @@ exports.editorUnicodeHighlightBorder = (0, colorRegistry_1.registerColor)('edito
 exports.editorUnicodeHighlightBackground = (0, colorRegistry_1.registerColor)('editorUnicodeHighlight.background', { dark: '#bd9b0326', light: '#cea33d14', hcDark: '#00000000', hcLight: '#cea33d14' }, nls.localize('editorUnicodeHighlight.background', 'Background color used to highlight unicode characters.'));
 // contains all color rules that used to defined in editor/browser/widget/editor.css
 (0, themeService_1.registerThemingParticipant)((theme, collector) => {
-    const background = theme.getColor(colorRegistry_1.editorBackground);
-    const lineHighlight = theme.getColor(exports.editorLineHighlight);
-    const imeBackground = (lineHighlight && !lineHighlight.isTransparent() ? lineHighlight : background);
-    if (imeBackground) {
-        collector.addRule(`.monaco-editor .inputarea.ime-input { background-color: ${imeBackground}; }`);
-    }
+	const background = theme.getColor(colorRegistry_1.editorBackground);
+	const lineHighlight = theme.getColor(exports.editorLineHighlight);
+	const imeBackground = (lineHighlight && !lineHighlight.isTransparent() ? lineHighlight : background);
+	if (imeBackground) {
+		collector.addRule(`.monaco-editor .inputarea.ime-input { background-color: ${imeBackground}; }`);
+	}
 });

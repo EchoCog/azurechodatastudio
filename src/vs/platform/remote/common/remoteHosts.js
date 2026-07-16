@@ -11,18 +11,18 @@ exports.parseAuthorityWithPort = parseAuthorityWithPort;
 exports.parseAuthorityWithOptionalPort = parseAuthorityWithOptionalPort;
 const network_1 = require("vs/base/common/network");
 function getRemoteAuthority(uri) {
-    return uri.scheme === network_1.Schemas.vscodeRemote ? uri.authority : undefined;
+	return uri.scheme === network_1.Schemas.vscodeRemote ? uri.authority : undefined;
 }
 function getRemoteName(authority) {
-    if (!authority) {
-        return undefined;
-    }
-    const pos = authority.indexOf('+');
-    if (pos < 0) {
-        // e.g. localhost:8000
-        return authority;
-    }
-    return authority.substr(0, pos);
+	if (!authority) {
+		return undefined;
+	}
+	const pos = authority.indexOf('+');
+	if (pos < 0) {
+		// e.g. localhost:8000
+		return authority;
+	}
+	return authority.substr(0, pos);
 }
 /**
  * The root path to use when accessing the remote server. The path contains the quality and commit of the current build.
@@ -30,38 +30,38 @@ function getRemoteName(authority) {
  * @returns
  */
 function getRemoteServerRootPath(product) {
-    return `/${product.quality ?? 'oss'}-${product.commit ?? 'dev'}`;
+	return `/${product.quality ?? 'oss'}-${product.commit ?? 'dev'}`;
 }
 function parseAuthorityWithPort(authority) {
-    const { host, port } = parseAuthority(authority);
-    if (typeof port === 'undefined') {
-        throw new Error(`Remote authority doesn't contain a port!`);
-    }
-    return { host, port };
+	const { host, port } = parseAuthority(authority);
+	if (typeof port === 'undefined') {
+		throw new Error(`Remote authority doesn't contain a port!`);
+	}
+	return { host, port };
 }
 function parseAuthorityWithOptionalPort(authority, defaultPort) {
-    let { host, port } = parseAuthority(authority);
-    if (typeof port === 'undefined') {
-        port = defaultPort;
-    }
-    return { host, port };
+	let { host, port } = parseAuthority(authority);
+	if (typeof port === 'undefined') {
+		port = defaultPort;
+	}
+	return { host, port };
 }
 function parseAuthority(authority) {
-    // check for ipv6 with port
-    const m1 = authority.match(/^(\[[0-9a-z:]+\]):(\d+)$/);
-    if (m1) {
-        return { host: m1[1], port: parseInt(m1[2], 10) };
-    }
-    // check for ipv6 without port
-    const m2 = authority.match(/^(\[[0-9a-z:]+\])$/);
-    if (m2) {
-        return { host: m2[1], port: undefined };
-    }
-    // anything with a trailing port
-    const m3 = authority.match(/(.*):(\d+)$/);
-    if (m3) {
-        return { host: m3[1], port: parseInt(m3[2], 10) };
-    }
-    // doesn't contain a port
-    return { host: authority, port: undefined };
+	// check for ipv6 with port
+	const m1 = authority.match(/^(\[[0-9a-z:]+\]):(\d+)$/);
+	if (m1) {
+		return { host: m1[1], port: parseInt(m1[2], 10) };
+	}
+	// check for ipv6 without port
+	const m2 = authority.match(/^(\[[0-9a-z:]+\])$/);
+	if (m2) {
+		return { host: m2[1], port: undefined };
+	}
+	// anything with a trailing port
+	const m3 = authority.match(/(.*):(\d+)$/);
+	if (m3) {
+		return { host: m3[1], port: parseInt(m3[2], 10) };
+	}
+	// doesn't contain a port
+	return { host: authority, port: undefined };
 }

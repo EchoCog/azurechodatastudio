@@ -9,11 +9,11 @@ exports.getSingletonServiceDescriptors = getSingletonServiceDescriptors;
 const descriptors_1 = require("./descriptors");
 const _registry = [];
 function registerSingleton(id, ctorOrDescriptor, supportsDelayedInstantiation) {
-    if (!(ctorOrDescriptor instanceof descriptors_1.SyncDescriptor)) {
-        ctorOrDescriptor = new descriptors_1.SyncDescriptor(ctorOrDescriptor, [], Boolean(supportsDelayedInstantiation));
-    }
-    _registry.push([id, ctorOrDescriptor]);
+	if (!(ctorOrDescriptor instanceof descriptors_1.SyncDescriptor)) {
+		ctorOrDescriptor = new descriptors_1.SyncDescriptor(ctorOrDescriptor, [], Boolean(supportsDelayedInstantiation));
+	}
+	_registry.push([id, ctorOrDescriptor]);
 }
 function getSingletonServiceDescriptors() {
-    return _registry;
+	return _registry;
 }

@@ -7,23 +7,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getMapForWordSeparators = exports.WordCharacterClassifier = void 0;
 const characterClassifier_1 = require("vs/editor/common/core/characterClassifier");
 class WordCharacterClassifier extends characterClassifier_1.CharacterClassifier {
-    constructor(wordSeparators) {
-        super(0 /* WordCharacterClass.Regular */);
-        for (let i = 0, len = wordSeparators.length; i < len; i++) {
-            this.set(wordSeparators.charCodeAt(i), 2 /* WordCharacterClass.WordSeparator */);
-        }
-        this.set(32 /* CharCode.Space */, 1 /* WordCharacterClass.Whitespace */);
-        this.set(9 /* CharCode.Tab */, 1 /* WordCharacterClass.Whitespace */);
-    }
+	constructor(wordSeparators) {
+		super(0 /* WordCharacterClass.Regular */);
+		for (let i = 0, len = wordSeparators.length; i < len; i++) {
+			this.set(wordSeparators.charCodeAt(i), 2 /* WordCharacterClass.WordSeparator */);
+		}
+		this.set(32 /* CharCode.Space */, 1 /* WordCharacterClass.Whitespace */);
+		this.set(9 /* CharCode.Tab */, 1 /* WordCharacterClass.Whitespace */);
+	}
 }
 exports.WordCharacterClassifier = WordCharacterClassifier;
 function once(computeFn) {
-    const cache = {}; // TODO@Alex unbounded cache
-    return (input) => {
-        if (!cache.hasOwnProperty(input)) {
-            cache[input] = computeFn(input);
-        }
-        return cache[input];
-    };
+	const cache = {}; // TODO@Alex unbounded cache
+	return (input) => {
+		if (!cache.hasOwnProperty(input)) {
+			cache[input] = computeFn(input);
+		}
+		return cache[input];
+	};
 }
 exports.getMapForWordSeparators = once((input) => new WordCharacterClassifier(input));

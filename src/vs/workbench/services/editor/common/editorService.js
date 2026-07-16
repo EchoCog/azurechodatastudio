@@ -18,6 +18,6 @@ exports.ACTIVE_GROUP = -1;
  */
 exports.SIDE_GROUP = -2;
 function isPreferredGroup(obj) {
-    const candidate = obj;
-    return typeof obj === 'number' || (0, editorGroupsService_1.isEditorGroup)(candidate);
+	const candidate = obj;
+	return typeof obj === 'number' || (0, editorGroupsService_1.isEditorGroup)(candidate);
 }

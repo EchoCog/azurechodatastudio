@@ -6,24 +6,24 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CachedListVirtualDelegate = exports.ListError = exports.ListDragOverReactions = void 0;
 exports.ListDragOverReactions = {
-    reject() { return { accept: false }; },
-    accept() { return { accept: true }; },
+	reject() { return { accept: false }; },
+	accept() { return { accept: true }; },
 };
 class ListError extends Error {
-    constructor(user, message) {
-        super(`ListError [${user}] ${message}`);
-    }
+	constructor(user, message) {
+		super(`ListError [${user}] ${message}`);
+	}
 }
 exports.ListError = ListError;
 class CachedListVirtualDelegate {
-    cache = new WeakMap();
-    getHeight(element) {
-        return this.cache.get(element) ?? this.estimateHeight(element);
-    }
-    setDynamicHeight(element, height) {
-        if (height > 0) {
-            this.cache.set(element, height);
-        }
-    }
+	cache = new WeakMap();
+	getHeight(element) {
+		return this.cache.get(element) ?? this.estimateHeight(element);
+	}
+	setDynamicHeight(element, height) {
+		if (height > 0) {
+			this.cache.set(element, height);
+		}
+	}
 }
 exports.CachedListVirtualDelegate = CachedListVirtualDelegate;
