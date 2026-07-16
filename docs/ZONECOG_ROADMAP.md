@@ -166,7 +166,7 @@
 
 ### 3.3 Pattern Mining
 - [x] SQL pattern detection (query optimization, schema anomalies) — `SQLAnalyzerAgent`, `PerformanceAdvisorAgent`, `SchemaReasonerAgent`
-- [ ] Cross-table relationship discovery
+- [x] Cross-table relationship discovery — `SchemaReasonerAgent.discoverRelationships()` (naming-convention FK inference + many-to-many junction table detection across a bare table list, independent of `analyzeSchema()`'s single-DDL-string FK parsing)
 - [x] Temporal pattern analysis on data changes — `DataPatternAgent.detectPatterns()` (numeric/categorical/temporal patterns, correlation detection)
 - [ ] Cognitive pattern recognition in user interaction history
 
