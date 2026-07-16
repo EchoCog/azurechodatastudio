@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
-import { IUserInteractionLearningService, BehaviorPattern, PolicyUpdate } from 'sql/workbench/services/zonecog/common/userInteractionLearning';
+import { IUserInteractionLearningService, PolicyUpdate } from 'sql/workbench/services/zonecog/common/userInteractionLearning';
 import { UserInteractionLearningService } from 'sql/workbench/services/zonecog/browser/userInteractionLearningService';
 import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { ZoneCogService } from 'sql/workbench/services/zonecog/browser/zonecogService';
