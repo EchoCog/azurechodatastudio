@@ -173,8 +173,8 @@
 ### 3.4 Knowledge Graph Enhancement
 - [x] Persistent hypergraph storage — `HypergraphPersistenceService` (IndexedDB, versioned schema, snapshots); a real AtomSpace-Rocks backend remains future work
 - [ ] Federated hypergraph queries (FlareCog integration)
-- [ ] Schema evolution tracking
-- [ ] Provenance and audit trails for cognitive decisions
+- [x] Schema evolution tracking — `ISchemaEvolutionService`/`SchemaEvolutionService` (per-connection snapshot diffing of perceived schemas into added/removed/modified `SchemaChange` hypergraph nodes, self-wired to `ISchemaPerceptionService.onDidPerceiveSchema`)
+- [x] Provenance and audit trails for cognitive decisions — `ICognitiveProvenanceService`/`CognitiveProvenanceService` (bounded audit trail, `CognitiveDecision` hypergraph nodes with `EvidencedBy` links, transitive provenance chain resolution)
 
 ---
 
