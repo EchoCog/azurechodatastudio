@@ -84,6 +84,7 @@ Depth-adaptive: shallow (phases 1,2,11), moderate (1-5,11), deep (all 11).
 - `CognitiveEpisode` — Temporal event records
 - `TaskContext` — Goal-oriented task groupings
 - `AttentionFocus` — ECAN attention allocation targets
+- `InteractionPattern` — Recognized frequency/sequence/temporal patterns in interaction history
 
 ### Membrane Triads (P-System Architecture)
 
@@ -286,6 +287,7 @@ This file is imported by:
 | `zonecog.membraneHealth` | Show membrane triad health |
 | `zonecog.reset` | Reset entire cognitive workbench |
 | `zonecog.queryHistory` | Show query processing history |
+| `zonecog.detectInteractionPatterns` | Mine interaction history for frequency/sequence/temporal patterns |
 
 ### Event Bus
 
@@ -297,6 +299,7 @@ Key events for inter-service communication:
 - `onDidChangeNode` / `onDidChangeLink` — Hypergraph mutations
 - `onDidChangeMembraneStatus` — Membrane health changes
 - `onDidPerceive` / `onDidAct` — Embodied cognition events
+- `onDidDetectInteractionPattern` — New interaction pattern recognized
 - `onDidChangeWorkingMemory` — Working memory mutations
 - `onDidRecordEpisode` — New episodic memory
 - `onDidChangeActiveTask` — Task context switches

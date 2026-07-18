@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
+import * as sinon from 'sinon';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
 import { EmbodiedCognitionService } from 'sql/workbench/services/zonecog/browser/embodiedCognitionService';
 import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
@@ -17,8 +18,14 @@ suite('EmbodiedCognitionService Tests', () => {
 	let instantiationService: TestInstantiationService;
 	let embodiedService: IEmbodiedCognitionService;
 	let hypergraphStore: IHypergraphStore;
+	let clock: sinon.SinonFakeTimers;
 
 	setup(() => {
+		// A non-zero start time keeps `timestamp > 0` / `lastUpdate > 0`
+		// assertions meaningful -- the real Unix epoch (0) would make them
+		// trivially fail even though production timestamps are unaffected.
+		clock = sinon.useFakeTimers(1_700_000_000_000);
+
 		instantiationService = new TestInstantiationService();
 		instantiationService.stub(ILogService, new NullLogService());
 
@@ -29,6 +36,10 @@ suite('EmbodiedCognitionService Tests', () => {
 		instantiationService.stub(ICognitiveMembraneService, membraneService);
 
 		embodiedService = instantiationService.createInstance(EmbodiedCognitionService);
+	});
+
+	teardown(() => {
+		clock.restore();
 	});
 
 	// -- Sensory percepts ----------------------------------------------------
@@ -198,5 +209,184 @@ suite('EmbodiedCognitionService Tests', () => {
 		assert.strictEqual(embodiedService.getRecentPercepts().length, 0);
 		assert.strictEqual(embodiedService.getRecentActions().length, 0);
 		assert.strictEqual(embodiedService.getProprioceptiveState().attentionalFocus, null);
+	});
+
+	// -- Interaction pattern recognition --------------------------------------
+
+	test('should detect no patterns with no interaction percepts', () => {
+		embodiedService.perceive('schema', 's', '');
+		assert.strictEqual(embodiedService.detectInteractionPatterns().length, 0);
+	});
+
+	test('should detect no patterns below the occurrence threshold', () => {
+		embodiedService.perceive('interaction', 'open-editor', '');
+		embodiedService.perceive('interaction', 'run-query', '');
+
+		assert.strictEqual(embodiedService.detectInteractionPatterns(3).length, 0);
+	});
+
+	test('should detect a frequency pattern for a recurring interaction', () => {
+		for (let i = 0; i < 4; i++) {
+			embodiedService.perceive('interaction', 'open-editor', '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const freq = patterns.filter(p => p.kind === 'frequency');
+
+		assert.strictEqual(freq.length, 1);
+		assert.strictEqual(freq[0].occurrences, 4);
+		assert.ok(freq[0].confidence > 0 && freq[0].confidence <= 1);
+		assert.ok(freq[0].description.includes('open-editor'));
+	});
+
+	test('should detect a sequence pattern for a habitual bigram', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'select-table', '');
+			embodiedService.perceive('interaction', 'run-query', '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const seq = patterns.filter(p => p.kind === 'sequence');
+
+		assert.strictEqual(seq.length, 1);
+		assert.strictEqual(seq[0].occurrences, 3);
+		assert.ok(seq[0].description.includes('select-table'));
+		assert.ok(seq[0].description.includes('run-query'));
+	});
+
+	test('should not report a sequence pattern for identical consecutive summaries', () => {
+		for (let i = 0; i < 4; i++) {
+			embodiedService.perceive('interaction', 'click', '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(patterns.filter(p => p.kind === 'sequence').length, 0);
+	});
+
+	test('should detect a temporal cadence pattern for regularly-spaced interactions', () => {
+		// A fake clock ticked by a fixed amount between percepts gives exactly
+		// regular gaps deterministically -- no reliance on real wall-clock time.
+		for (let i = 0; i < 5; i++) {
+			embodiedService.perceive('interaction', `step-${i}`, '');
+			clock.tick(10);
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const temporal = patterns.filter(p => p.kind === 'temporal');
+
+		assert.strictEqual(temporal.length, 1);
+		assert.strictEqual(temporal[0].confidence, 1);
+		assert.strictEqual(temporal[0].occurrences, 4);
+	});
+
+	test('should not report a cadence pattern for simultaneous (zero-gap) percepts', () => {
+		// The fake clock never advances, so these percepts share an identical
+		// timestamp deterministically -- a burst, not a rhythm -- and must not
+		// be scored as a perfect cadence.
+		for (let i = 0; i < 4; i++) {
+			embodiedService.perceive('interaction', `burst-${i}`, '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const temporal = patterns.filter(p => p.kind === 'temporal');
+		assert.strictEqual(temporal.length, 0);
+	});
+
+	test('should not report a cadence pattern for irregular gaps', () => {
+		// One perceive() up front, then a tick before each subsequent one, so
+		// all 4 gap values below are actually used as inter-arrival intervals
+		// (5 percepts -> 4 gaps), rather than ticking away the last entry.
+		const gaps = [5, 40, 8, 45];
+		embodiedService.perceive('interaction', 'jitter-start', '');
+		for (const gap of gaps) {
+			clock.tick(gap);
+			embodiedService.perceive('interaction', `jitter-${gap}`, '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(patterns.filter(p => p.kind === 'temporal').length, 0);
+	});
+
+	test('should not report a cadence pattern below the occurrence threshold', () => {
+		embodiedService.perceive('interaction', 'a', '');
+		embodiedService.perceive('interaction', 'b', '');
+		embodiedService.perceive('interaction', 'c', '');
+
+		// 3 percepts -> 2 gaps, below minOccurrences=3; must not be reported
+		// even if the two gaps happen to look regular.
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(patterns.filter(p => p.kind === 'temporal').length, 0);
+	});
+
+	test('should persist detected patterns in the hypergraph', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+
+		embodiedService.detectInteractionPatterns(3);
+
+		const nodes = hypergraphStore.getNodesByType('InteractionPattern');
+		assert.ok(nodes.length > 0);
+	});
+
+	test('should fire onDidDetectInteractionPattern for each new pattern', () => {
+		let eventCount = 0;
+		embodiedService.onDidDetectInteractionPattern(() => eventCount++);
+
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		embodiedService.detectInteractionPatterns(3);
+
+		assert.ok(eventCount > 0);
+	});
+
+	test('should accumulate pattern history across detection runs', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		embodiedService.detectInteractionPatterns(3);
+
+		const history = embodiedService.getInteractionPatterns();
+		assert.ok(history.length > 0);
+	});
+
+	test('should not re-report an already-known pattern on an unchanged history', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+
+		const first = embodiedService.detectInteractionPatterns(3);
+		assert.ok(first.length > 0);
+		const historySizeAfterFirst = embodiedService.getInteractionPatterns().length;
+
+		// No new percepts recorded -- re-running detection must not duplicate
+		// history entries or report the same patterns as newly detected.
+		const second = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(second.length, 0);
+		assert.strictEqual(embodiedService.getInteractionPatterns().length, historySizeAfterFirst);
+	});
+
+	test('should report a pattern again once its occurrence count changes', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		const first = embodiedService.detectInteractionPatterns(3);
+		assert.ok(first.some(p => p.kind === 'frequency'));
+
+		embodiedService.perceive('interaction', 'save-file', '');
+		const second = embodiedService.detectInteractionPatterns(3);
+		assert.ok(second.some(p => p.kind === 'frequency' && p.occurrences === 4));
+	});
+
+	test('should clear interaction patterns on reset', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		embodiedService.detectInteractionPatterns(3);
+		assert.ok(embodiedService.getInteractionPatterns().length > 0);
+
+		embodiedService.reset();
+		assert.strictEqual(embodiedService.getInteractionPatterns().length, 0);
 	});
 });
