@@ -6,12 +6,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CombinedSpliceable = void 0;
 class CombinedSpliceable {
-    spliceables;
-    constructor(spliceables) {
-        this.spliceables = spliceables;
-    }
-    splice(start, deleteCount, elements) {
-        this.spliceables.forEach(s => s.splice(start, deleteCount, elements));
-    }
+	spliceables;
+	constructor(spliceables) {
+		this.spliceables = spliceables;
+	}
+	splice(start, deleteCount, elements) {
+		this.spliceables.forEach(s => s.splice(start, deleteCount, elements));
+	}
 }
 exports.CombinedSpliceable = CombinedSpliceable;

@@ -1,40 +1,40 @@
 "use strict";
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
+	*  Copyright (c) Microsoft Corporation. All rights reserved.
+	*  Licensed under the MIT License. See License.txt in the project root for license information.
+	*--------------------------------------------------------------------------------------------*/
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
+	if (k2 === undefined) k2 = k;
+	var desc = Object.getOwnPropertyDescriptor(m, k);
+	if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+		desc = { enumerable: true, get: function() { return m[k]; } };
+	}
+	Object.defineProperty(o, k2, desc);
 }) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
+	if (k2 === undefined) k2 = k;
+	o[k2] = m[k];
 }));
 var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
+	Object.defineProperty(o, "default", { enumerable: true, value: v });
 }) : function(o, v) {
-    o["default"] = v;
+	o["default"] = v;
 });
 var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
+	var ownKeys = function(o) {
+		ownKeys = Object.getOwnPropertyNames || function (o) {
+			var ar = [];
+			for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+			return ar;
+		};
+		return ownKeys(o);
+	};
+	return function (mod) {
+		if (mod && mod.__esModule) return mod;
+		var result = {};
+		if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+		__setModuleDefault(result, mod);
+		return result;
+	};
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FontInfo = exports.SERIALIZED_FONT_INFO_VERSION = exports.BareFontInfo = void 0;
@@ -42,180 +42,180 @@ const platform = __importStar(require("vs/base/common/platform"));
 const editorOptions_1 = require("vs/editor/common/config/editorOptions");
 const editorZoom_1 = require("vs/editor/common/config/editorZoom");
 /**
- * Determined from empirical observations.
- * @internal
- */
+	* Determined from empirical observations.
+	* @internal
+	*/
 const GOLDEN_LINE_HEIGHT_RATIO = platform.isMacintosh ? 1.5 : 1.35;
 /**
- * @internal
- */
+	* @internal
+	*/
 const MINIMUM_LINE_HEIGHT = 8;
 class BareFontInfo {
-    _bareFontInfoBrand = undefined;
-    /**
-     * @internal
-     */
-    static createFromValidatedSettings(options, pixelRatio, ignoreEditorZoom) {
-        const fontFamily = options.get(48 /* EditorOption.fontFamily */);
-        const fontWeight = options.get(52 /* EditorOption.fontWeight */);
-        const fontSize = options.get(51 /* EditorOption.fontSize */);
-        const fontFeatureSettings = options.get(50 /* EditorOption.fontLigatures */);
-        const fontVariationSettings = options.get(53 /* EditorOption.fontVariations */);
-        const lineHeight = options.get(65 /* EditorOption.lineHeight */);
-        const letterSpacing = options.get(62 /* EditorOption.letterSpacing */);
-        return BareFontInfo._create(fontFamily, fontWeight, fontSize, fontFeatureSettings, fontVariationSettings, lineHeight, letterSpacing, pixelRatio, ignoreEditorZoom);
-    }
-    /**
-     * @internal
-     */
-    static createFromRawSettings(opts, pixelRatio, ignoreEditorZoom = false) {
-        const fontFamily = editorOptions_1.EditorOptions.fontFamily.validate(opts.fontFamily);
-        const fontWeight = editorOptions_1.EditorOptions.fontWeight.validate(opts.fontWeight);
-        const fontSize = editorOptions_1.EditorOptions.fontSize.validate(opts.fontSize);
-        const fontFeatureSettings = editorOptions_1.EditorOptions.fontLigatures2.validate(opts.fontLigatures);
-        const fontVariationSettings = editorOptions_1.EditorOptions.fontVariations.validate(opts.fontVariations);
-        const lineHeight = editorOptions_1.EditorOptions.lineHeight.validate(opts.lineHeight);
-        const letterSpacing = editorOptions_1.EditorOptions.letterSpacing.validate(opts.letterSpacing);
-        return BareFontInfo._create(fontFamily, fontWeight, fontSize, fontFeatureSettings, fontVariationSettings, lineHeight, letterSpacing, pixelRatio, ignoreEditorZoom);
-    }
-    /**
-     * @internal
-     */
-    static _create(fontFamily, fontWeight, fontSize, fontFeatureSettings, fontVariationSettings, lineHeight, letterSpacing, pixelRatio, ignoreEditorZoom) {
-        if (lineHeight === 0) {
-            lineHeight = GOLDEN_LINE_HEIGHT_RATIO * fontSize;
-        }
-        else if (lineHeight < MINIMUM_LINE_HEIGHT) {
-            // Values too small to be line heights in pixels are in ems.
-            lineHeight = lineHeight * fontSize;
-        }
-        // Enforce integer, minimum constraints
-        lineHeight = Math.round(lineHeight);
-        if (lineHeight < MINIMUM_LINE_HEIGHT) {
-            lineHeight = MINIMUM_LINE_HEIGHT;
-        }
-        const editorZoomLevelMultiplier = 1 + (ignoreEditorZoom ? 0 : editorZoom_1.EditorZoom.getZoomLevel() * 0.1);
-        fontSize *= editorZoomLevelMultiplier;
-        lineHeight *= editorZoomLevelMultiplier;
-        if (fontVariationSettings === editorOptions_1.EditorFontVariations.TRANSLATE) {
-            if (fontWeight === 'normal' || fontWeight === 'bold') {
-                fontVariationSettings = editorOptions_1.EditorFontVariations.OFF;
-            }
-            else {
-                const fontWeightAsNumber = parseInt(fontWeight, 10);
-                fontVariationSettings = `'wght' ${fontWeightAsNumber}`;
-                fontWeight = 'normal';
-            }
-        }
-        return new BareFontInfo({
-            pixelRatio: pixelRatio,
-            fontFamily: fontFamily,
-            fontWeight: fontWeight,
-            fontSize: fontSize,
-            fontFeatureSettings: fontFeatureSettings,
-            fontVariationSettings,
-            lineHeight: lineHeight,
-            letterSpacing: letterSpacing
-        });
-    }
-    pixelRatio;
-    fontFamily;
-    fontWeight;
-    fontSize;
-    fontFeatureSettings;
-    fontVariationSettings;
-    lineHeight;
-    letterSpacing;
-    /**
-     * @internal
-     */
-    constructor(opts) {
-        this.pixelRatio = opts.pixelRatio;
-        this.fontFamily = String(opts.fontFamily);
-        this.fontWeight = String(opts.fontWeight);
-        this.fontSize = opts.fontSize;
-        this.fontFeatureSettings = opts.fontFeatureSettings;
-        this.fontVariationSettings = opts.fontVariationSettings;
-        this.lineHeight = opts.lineHeight | 0;
-        this.letterSpacing = opts.letterSpacing;
-    }
-    /**
-     * @internal
-     */
-    getId() {
-        return `${this.pixelRatio}-${this.fontFamily}-${this.fontWeight}-${this.fontSize}-${this.fontFeatureSettings}-${this.fontVariationSettings}-${this.lineHeight}-${this.letterSpacing}`;
-    }
-    /**
-     * @internal
-     */
-    getMassagedFontFamily() {
-        const fallbackFontFamily = editorOptions_1.EDITOR_FONT_DEFAULTS.fontFamily;
-        const fontFamily = BareFontInfo._wrapInQuotes(this.fontFamily);
-        if (fallbackFontFamily && this.fontFamily !== fallbackFontFamily) {
-            return `${fontFamily}, ${fallbackFontFamily}`;
-        }
-        return fontFamily;
-    }
-    static _wrapInQuotes(fontFamily) {
-        if (/[,"']/.test(fontFamily)) {
-            // Looks like the font family might be already escaped
-            return fontFamily;
-        }
-        if (/[+ ]/.test(fontFamily)) {
-            // Wrap a font family using + or <space> with quotes
-            return `"${fontFamily}"`;
-        }
-        return fontFamily;
-    }
+	_bareFontInfoBrand = undefined;
+	/**
+		* @internal
+		*/
+	static createFromValidatedSettings(options, pixelRatio, ignoreEditorZoom) {
+		const fontFamily = options.get(48 /* EditorOption.fontFamily */);
+		const fontWeight = options.get(52 /* EditorOption.fontWeight */);
+		const fontSize = options.get(51 /* EditorOption.fontSize */);
+		const fontFeatureSettings = options.get(50 /* EditorOption.fontLigatures */);
+		const fontVariationSettings = options.get(53 /* EditorOption.fontVariations */);
+		const lineHeight = options.get(65 /* EditorOption.lineHeight */);
+		const letterSpacing = options.get(62 /* EditorOption.letterSpacing */);
+		return BareFontInfo._create(fontFamily, fontWeight, fontSize, fontFeatureSettings, fontVariationSettings, lineHeight, letterSpacing, pixelRatio, ignoreEditorZoom);
+	}
+	/**
+		* @internal
+		*/
+	static createFromRawSettings(opts, pixelRatio, ignoreEditorZoom = false) {
+		const fontFamily = editorOptions_1.EditorOptions.fontFamily.validate(opts.fontFamily);
+		const fontWeight = editorOptions_1.EditorOptions.fontWeight.validate(opts.fontWeight);
+		const fontSize = editorOptions_1.EditorOptions.fontSize.validate(opts.fontSize);
+		const fontFeatureSettings = editorOptions_1.EditorOptions.fontLigatures2.validate(opts.fontLigatures);
+		const fontVariationSettings = editorOptions_1.EditorOptions.fontVariations.validate(opts.fontVariations);
+		const lineHeight = editorOptions_1.EditorOptions.lineHeight.validate(opts.lineHeight);
+		const letterSpacing = editorOptions_1.EditorOptions.letterSpacing.validate(opts.letterSpacing);
+		return BareFontInfo._create(fontFamily, fontWeight, fontSize, fontFeatureSettings, fontVariationSettings, lineHeight, letterSpacing, pixelRatio, ignoreEditorZoom);
+	}
+	/**
+		* @internal
+		*/
+	static _create(fontFamily, fontWeight, fontSize, fontFeatureSettings, fontVariationSettings, lineHeight, letterSpacing, pixelRatio, ignoreEditorZoom) {
+		if (lineHeight === 0) {
+			lineHeight = GOLDEN_LINE_HEIGHT_RATIO * fontSize;
+		}
+		else if (lineHeight < MINIMUM_LINE_HEIGHT) {
+			// Values too small to be line heights in pixels are in ems.
+			lineHeight = lineHeight * fontSize;
+		}
+		// Enforce integer, minimum constraints
+		lineHeight = Math.round(lineHeight);
+		if (lineHeight < MINIMUM_LINE_HEIGHT) {
+			lineHeight = MINIMUM_LINE_HEIGHT;
+		}
+		const editorZoomLevelMultiplier = 1 + (ignoreEditorZoom ? 0 : editorZoom_1.EditorZoom.getZoomLevel() * 0.1);
+		fontSize *= editorZoomLevelMultiplier;
+		lineHeight *= editorZoomLevelMultiplier;
+		if (fontVariationSettings === editorOptions_1.EditorFontVariations.TRANSLATE) {
+			if (fontWeight === 'normal' || fontWeight === 'bold') {
+				fontVariationSettings = editorOptions_1.EditorFontVariations.OFF;
+			}
+			else {
+				const fontWeightAsNumber = parseInt(fontWeight, 10);
+				fontVariationSettings = `'wght' ${fontWeightAsNumber}`;
+				fontWeight = 'normal';
+			}
+		}
+		return new BareFontInfo({
+			pixelRatio: pixelRatio,
+			fontFamily: fontFamily,
+			fontWeight: fontWeight,
+			fontSize: fontSize,
+			fontFeatureSettings: fontFeatureSettings,
+			fontVariationSettings,
+			lineHeight: lineHeight,
+			letterSpacing: letterSpacing
+		});
+	}
+	pixelRatio;
+	fontFamily;
+	fontWeight;
+	fontSize;
+	fontFeatureSettings;
+	fontVariationSettings;
+	lineHeight;
+	letterSpacing;
+	/**
+		* @internal
+		*/
+	constructor(opts) {
+		this.pixelRatio = opts.pixelRatio;
+		this.fontFamily = String(opts.fontFamily);
+		this.fontWeight = String(opts.fontWeight);
+		this.fontSize = opts.fontSize;
+		this.fontFeatureSettings = opts.fontFeatureSettings;
+		this.fontVariationSettings = opts.fontVariationSettings;
+		this.lineHeight = opts.lineHeight | 0;
+		this.letterSpacing = opts.letterSpacing;
+	}
+	/**
+		* @internal
+		*/
+	getId() {
+		return `${this.pixelRatio}-${this.fontFamily}-${this.fontWeight}-${this.fontSize}-${this.fontFeatureSettings}-${this.fontVariationSettings}-${this.lineHeight}-${this.letterSpacing}`;
+	}
+	/**
+		* @internal
+		*/
+	getMassagedFontFamily() {
+		const fallbackFontFamily = editorOptions_1.EDITOR_FONT_DEFAULTS.fontFamily;
+		const fontFamily = BareFontInfo._wrapInQuotes(this.fontFamily);
+		if (fallbackFontFamily && this.fontFamily !== fallbackFontFamily) {
+			return `${fontFamily}, ${fallbackFontFamily}`;
+		}
+		return fontFamily;
+	}
+	static _wrapInQuotes(fontFamily) {
+		if (/[,"']/.test(fontFamily)) {
+			// Looks like the font family might be already escaped
+			return fontFamily;
+		}
+		if (/[+ ]/.test(fontFamily)) {
+			// Wrap a font family using + or <space> with quotes
+			return `"${fontFamily}"`;
+		}
+		return fontFamily;
+	}
 }
 exports.BareFontInfo = BareFontInfo;
 // change this whenever `FontInfo` members are changed
 exports.SERIALIZED_FONT_INFO_VERSION = 2;
 class FontInfo extends BareFontInfo {
-    _editorStylingBrand = undefined;
-    version = exports.SERIALIZED_FONT_INFO_VERSION;
-    isTrusted;
-    isMonospace;
-    typicalHalfwidthCharacterWidth;
-    typicalFullwidthCharacterWidth;
-    canUseHalfwidthRightwardsArrow;
-    spaceWidth;
-    middotWidth;
-    wsmiddotWidth;
-    maxDigitWidth;
-    /**
-     * @internal
-     */
-    constructor(opts, isTrusted) {
-        super(opts);
-        this.isTrusted = isTrusted;
-        this.isMonospace = opts.isMonospace;
-        this.typicalHalfwidthCharacterWidth = opts.typicalHalfwidthCharacterWidth;
-        this.typicalFullwidthCharacterWidth = opts.typicalFullwidthCharacterWidth;
-        this.canUseHalfwidthRightwardsArrow = opts.canUseHalfwidthRightwardsArrow;
-        this.spaceWidth = opts.spaceWidth;
-        this.middotWidth = opts.middotWidth;
-        this.wsmiddotWidth = opts.wsmiddotWidth;
-        this.maxDigitWidth = opts.maxDigitWidth;
-    }
-    /**
-     * @internal
-     */
-    equals(other) {
-        return (this.fontFamily === other.fontFamily
-            && this.fontWeight === other.fontWeight
-            && this.fontSize === other.fontSize
-            && this.fontFeatureSettings === other.fontFeatureSettings
-            && this.fontVariationSettings === other.fontVariationSettings
-            && this.lineHeight === other.lineHeight
-            && this.letterSpacing === other.letterSpacing
-            && this.typicalHalfwidthCharacterWidth === other.typicalHalfwidthCharacterWidth
-            && this.typicalFullwidthCharacterWidth === other.typicalFullwidthCharacterWidth
-            && this.canUseHalfwidthRightwardsArrow === other.canUseHalfwidthRightwardsArrow
-            && this.spaceWidth === other.spaceWidth
-            && this.middotWidth === other.middotWidth
-            && this.wsmiddotWidth === other.wsmiddotWidth
-            && this.maxDigitWidth === other.maxDigitWidth);
-    }
+	_editorStylingBrand = undefined;
+	version = exports.SERIALIZED_FONT_INFO_VERSION;
+	isTrusted;
+	isMonospace;
+	typicalHalfwidthCharacterWidth;
+	typicalFullwidthCharacterWidth;
+	canUseHalfwidthRightwardsArrow;
+	spaceWidth;
+	middotWidth;
+	wsmiddotWidth;
+	maxDigitWidth;
+	/**
+		* @internal
+		*/
+	constructor(opts, isTrusted) {
+		super(opts);
+		this.isTrusted = isTrusted;
+		this.isMonospace = opts.isMonospace;
+		this.typicalHalfwidthCharacterWidth = opts.typicalHalfwidthCharacterWidth;
+		this.typicalFullwidthCharacterWidth = opts.typicalFullwidthCharacterWidth;
+		this.canUseHalfwidthRightwardsArrow = opts.canUseHalfwidthRightwardsArrow;
+		this.spaceWidth = opts.spaceWidth;
+		this.middotWidth = opts.middotWidth;
+		this.wsmiddotWidth = opts.wsmiddotWidth;
+		this.maxDigitWidth = opts.maxDigitWidth;
+	}
+	/**
+		* @internal
+		*/
+	equals(other) {
+		return (this.fontFamily === other.fontFamily
+			&& this.fontWeight === other.fontWeight
+			&& this.fontSize === other.fontSize
+			&& this.fontFeatureSettings === other.fontFeatureSettings
+			&& this.fontVariationSettings === other.fontVariationSettings
+			&& this.lineHeight === other.lineHeight
+			&& this.letterSpacing === other.letterSpacing
+			&& this.typicalHalfwidthCharacterWidth === other.typicalHalfwidthCharacterWidth
+			&& this.typicalFullwidthCharacterWidth === other.typicalFullwidthCharacterWidth
+			&& this.canUseHalfwidthRightwardsArrow === other.canUseHalfwidthRightwardsArrow
+			&& this.spaceWidth === other.spaceWidth
+			&& this.middotWidth === other.middotWidth
+			&& this.wsmiddotWidth === other.wsmiddotWidth
+			&& this.maxDigitWidth === other.maxDigitWidth);
+	}
 }
 exports.FontInfo = FontInfo;

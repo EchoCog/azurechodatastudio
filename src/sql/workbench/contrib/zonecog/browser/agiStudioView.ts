@@ -20,7 +20,7 @@ import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { IAgiStudioService, StudioRun, StudioAgent, AgentMessage } from 'sql/workbench/services/zonecog/common/agiStudio';
 
 /**
- * AGI Studio View — displays the current run status, agent hierarchy, and
+ * AGI Studio View - displays the current run status, agent hierarchy, and
  * recent inter-agent messages in the Zone-Cog panel.
  *
  * Refreshes reactively on `onDidChangeRun`, `onDidSpawnAgent`, and
@@ -133,7 +133,7 @@ export class AgiStudioView extends ViewPane {
 			const statusLabel = this._runStatusLabel(lastRun);
 			lastEl.textContent = localize(
 				'zonecog.agiStudio.lastRun',
-				'Last run: {0} — {1}',
+				'Last run: {0} - {1}',
 				statusLabel,
 				lastRun.goal.slice(0, 60),
 			);

@@ -7,12 +7,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Sequence = void 0;
 const event_1 = require("vs/base/common/event");
 class Sequence {
-    elements = [];
-    _onDidSplice = new event_1.Emitter();
-    onDidSplice = this._onDidSplice.event;
-    splice(start, deleteCount, toInsert = []) {
-        this.elements.splice(start, deleteCount, ...toInsert);
-        this._onDidSplice.fire({ start, deleteCount, toInsert });
-    }
+	elements = [];
+	_onDidSplice = new event_1.Emitter();
+	onDidSplice = this._onDidSplice.event;
+	splice(start, deleteCount, toInsert = []) {
+		this.elements.splice(start, deleteCount, ...toInsert);
+		this._onDidSplice.fire({ start, deleteCount, toInsert });
+	}
 }
 exports.Sequence = Sequence;

@@ -13,35 +13,35 @@ const lifecycle_1 = require("vs/base/common/lifecycle");
  * Editor models are typically cached for some while because they are expensive to construct.
  */
 class EditorModel extends lifecycle_1.Disposable {
-    _onWillDispose = this._register(new event_1.Emitter());
-    onWillDispose = this._onWillDispose.event;
-    disposed = false;
-    resolved = false;
-    /**
-     * Causes this model to resolve returning a promise when loading is completed.
-     */
-    async resolve() {
-        this.resolved = true;
-    }
-    /**
-     * Returns whether this model was loaded or not.
-     */
-    isResolved() {
-        return this.resolved;
-    }
-    /**
-     * Find out if this model has been disposed.
-     */
-    isDisposed() {
-        return this.disposed;
-    }
-    /**
-     * Subclasses should implement to free resources that have been claimed through loading.
-     */
-    dispose() {
-        this.disposed = true;
-        this._onWillDispose.fire();
-        super.dispose();
-    }
+	_onWillDispose = this._register(new event_1.Emitter());
+	onWillDispose = this._onWillDispose.event;
+	disposed = false;
+	resolved = false;
+	/**
+	 * Causes this model to resolve returning a promise when loading is completed.
+	 */
+	async resolve() {
+		this.resolved = true;
+	}
+	/**
+	 * Returns whether this model was loaded or not.
+	 */
+	isResolved() {
+		return this.resolved;
+	}
+	/**
+	 * Find out if this model has been disposed.
+	 */
+	isDisposed() {
+		return this.disposed;
+	}
+	/**
+	 * Subclasses should implement to free resources that have been claimed through loading.
+	 */
+	dispose() {
+		this.disposed = true;
+		this._onWillDispose.fire();
+		super.dispose();
+	}
 }
 exports.EditorModel = EditorModel;

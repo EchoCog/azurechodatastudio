@@ -6,13 +6,13 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SyncDescriptor = void 0;
 class SyncDescriptor {
-    ctor;
-    staticArguments;
-    supportsDelayedInstantiation;
-    constructor(ctor, staticArguments = [], supportsDelayedInstantiation = false) {
-        this.ctor = ctor;
-        this.staticArguments = staticArguments;
-        this.supportsDelayedInstantiation = supportsDelayedInstantiation;
-    }
+	ctor;
+	staticArguments;
+	supportsDelayedInstantiation;
+	constructor(ctor, staticArguments = [], supportsDelayedInstantiation = false) {
+		this.ctor = ctor;
+		this.staticArguments = staticArguments;
+		this.supportsDelayedInstantiation = supportsDelayedInstantiation;
+	}
 }
 exports.SyncDescriptor = SyncDescriptor;

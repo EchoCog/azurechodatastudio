@@ -37,6 +37,12 @@ import { ICognitiveWorkflowAutomationService } from 'sql/workbench/services/zone
 import { CognitiveWorkflowAutomationService } from 'sql/workbench/services/zonecog/browser/cognitiveWorkflowAutomationService';
 import { IAgiStudioService } from 'sql/workbench/services/zonecog/common/agiStudio';
 import { AgiStudioService } from 'sql/workbench/services/zonecog/browser/agiStudioService';
+import { IUserInteractionLearningService } from 'sql/workbench/services/zonecog/common/userInteractionLearning';
+import { UserInteractionLearningService } from 'sql/workbench/services/zonecog/browser/userInteractionLearningService';
+import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
+import { CognitiveProvenanceService } from 'sql/workbench/services/zonecog/browser/cognitiveProvenanceService';
+import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
+import { SchemaEvolutionService } from 'sql/workbench/services/zonecog/browser/schemaEvolutionService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -104,3 +110,17 @@ registerSingleton(IAgiStudioService, AgiStudioService, InstantiationType.Eager);
 
 // Register the ZoneCog service as a singleton
 registerSingleton(IZoneCogService, ZoneCogService, InstantiationType.Eager);
+
+// Register Phase 8 services
+
+// Register the User Interaction Learning service (behavioral analytics, pattern
+// mining into the hypergraph, and Q-learning strategy selection)
+registerSingleton(IUserInteractionLearningService, UserInteractionLearningService, InstantiationType.Eager);
+
+// Register the Cognitive Provenance service (audit trails and transitive
+// provenance chains for cognitive decisions)
+registerSingleton(ICognitiveProvenanceService, CognitiveProvenanceService, InstantiationType.Eager);
+
+// Register the Schema Evolution service (snapshot diffing of perceived
+// schemas into a persisted SchemaChange history)
+registerSingleton(ISchemaEvolutionService, SchemaEvolutionService, InstantiationType.Eager);

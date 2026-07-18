@@ -696,7 +696,7 @@ export class AgiStudioService extends Disposable implements IAgiStudioService {
 
 	/**
 	 * Deterministic fallback decomposition based on keyword matching.
-	 * Always returns 2–4 subtasks regardless of LLM availability.
+	 * Always returns 2-4 subtasks regardless of LLM availability.
 	 */
 	private _fallbackDecompose(goal: string): string[] {
 		const lower = goal.toLowerCase();
@@ -811,7 +811,7 @@ export class AgiStudioService extends Disposable implements IAgiStudioService {
 
 		} catch (err) {
 			// Structural fallback synthesis
-			const fallback = `AGI Studio Report — Goal: ${goal}\n\n` +
+			const fallback = `AGI Studio Report - Goal: ${goal}\n\n` +
 				results.map((r, i) => `Finding ${i + 1}: ${r}`).join('\n\n') +
 				'\n\nRecommendation: Review the above findings and apply them to the original goal.';
 

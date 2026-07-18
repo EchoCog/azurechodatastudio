@@ -12,122 +12,122 @@ const arrays_1 = require("vs/base/common/arrays");
 const iterator_1 = require("vs/base/common/iterator");
 const uuid_1 = require("vs/base/common/uuid");
 function createStringDataTransferItem(stringOrPromise) {
-    return {
-        asString: async () => stringOrPromise,
-        asFile: () => undefined,
-        value: typeof stringOrPromise === 'string' ? stringOrPromise : undefined,
-    };
+	return {
+		asString: async () => stringOrPromise,
+		asFile: () => undefined,
+		value: typeof stringOrPromise === 'string' ? stringOrPromise : undefined,
+	};
 }
 function createFileDataTransferItem(fileName, uri, data) {
-    const file = { id: (0, uuid_1.generateUuid)(), name: fileName, uri, data };
-    return {
-        asString: async () => '',
-        asFile: () => file,
-        value: undefined,
-    };
+	const file = { id: (0, uuid_1.generateUuid)(), name: fileName, uri, data };
+	return {
+		asString: async () => '',
+		asFile: () => file,
+		value: undefined,
+	};
 }
 class VSDataTransfer {
-    _entries = new Map();
-    get size() {
-        let size = 0;
-        for (const _ of this._entries) {
-            size++;
-        }
-        return size;
-    }
-    has(mimeType) {
-        return this._entries.has(this.toKey(mimeType));
-    }
-    matches(pattern) {
-        const mimes = [...this._entries.keys()];
-        if (iterator_1.Iterable.some(this, ([_, item]) => item.asFile())) {
-            mimes.push('files');
-        }
-        return matchesMimeType_normalized(normalizeMimeType(pattern), mimes);
-    }
-    get(mimeType) {
-        return this._entries.get(this.toKey(mimeType))?.[0];
-    }
-    /**
-     * Add a new entry to this data transfer.
-     *
-     * This does not replace existing entries for `mimeType`.
-     */
-    append(mimeType, value) {
-        const existing = this._entries.get(mimeType);
-        if (existing) {
-            existing.push(value);
-        }
-        else {
-            this._entries.set(this.toKey(mimeType), [value]);
-        }
-    }
-    /**
-     * Set the entry for a given mime type.
-     *
-     * This replaces all existing entries for `mimeType`.
-     */
-    replace(mimeType, value) {
-        this._entries.set(this.toKey(mimeType), [value]);
-    }
-    /**
-     * Remove all entries for `mimeType`.
-     */
-    delete(mimeType) {
-        this._entries.delete(this.toKey(mimeType));
-    }
-    /**
-     * Iterate over all `[mime, item]` pairs in this data transfer.
-     *
-     * There may be multiple entries for each mime type.
-     */
-    *[Symbol.iterator]() {
-        for (const [mine, items] of this._entries) {
-            for (const item of items) {
-                yield [mine, item];
-            }
-        }
-    }
-    toKey(mimeType) {
-        return normalizeMimeType(mimeType);
-    }
+	_entries = new Map();
+	get size() {
+		let size = 0;
+		for (const _ of this._entries) {
+			size++;
+		}
+		return size;
+	}
+	has(mimeType) {
+		return this._entries.has(this.toKey(mimeType));
+	}
+	matches(pattern) {
+		const mimes = [...this._entries.keys()];
+		if (iterator_1.Iterable.some(this, ([_, item]) => item.asFile())) {
+			mimes.push('files');
+		}
+		return matchesMimeType_normalized(normalizeMimeType(pattern), mimes);
+	}
+	get(mimeType) {
+		return this._entries.get(this.toKey(mimeType))?.[0];
+	}
+	/**
+	 * Add a new entry to this data transfer.
+	 *
+	 * This does not replace existing entries for `mimeType`.
+	 */
+	append(mimeType, value) {
+		const existing = this._entries.get(mimeType);
+		if (existing) {
+			existing.push(value);
+		}
+		else {
+			this._entries.set(this.toKey(mimeType), [value]);
+		}
+	}
+	/**
+	 * Set the entry for a given mime type.
+	 *
+	 * This replaces all existing entries for `mimeType`.
+	 */
+	replace(mimeType, value) {
+		this._entries.set(this.toKey(mimeType), [value]);
+	}
+	/**
+	 * Remove all entries for `mimeType`.
+	 */
+	delete(mimeType) {
+		this._entries.delete(this.toKey(mimeType));
+	}
+	/**
+	 * Iterate over all `[mime, item]` pairs in this data transfer.
+	 *
+	 * There may be multiple entries for each mime type.
+	 */
+	*[Symbol.iterator]() {
+		for (const [mine, items] of this._entries) {
+			for (const item of items) {
+				yield [mine, item];
+			}
+		}
+	}
+	toKey(mimeType) {
+		return normalizeMimeType(mimeType);
+	}
 }
 exports.VSDataTransfer = VSDataTransfer;
 function normalizeMimeType(mimeType) {
-    return mimeType.toLowerCase();
+	return mimeType.toLowerCase();
 }
 function matchesMimeType(pattern, mimeTypes) {
-    return matchesMimeType_normalized(normalizeMimeType(pattern), mimeTypes.map(normalizeMimeType));
+	return matchesMimeType_normalized(normalizeMimeType(pattern), mimeTypes.map(normalizeMimeType));
 }
 function matchesMimeType_normalized(normalizedPattern, normalizedMimeTypes) {
-    // Anything wildcard
-    if (normalizedPattern === '*/*') {
-        return normalizedMimeTypes.length > 0;
-    }
-    // Exact match
-    if (normalizedMimeTypes.includes(normalizedPattern)) {
-        return true;
-    }
-    // Wildcard, such as `image/*`
-    const wildcard = normalizedPattern.match(/^([a-z]+)\/([a-z]+|\*)$/i);
-    if (!wildcard) {
-        return false;
-    }
-    const [_, type, subtype] = wildcard;
-    if (subtype === '*') {
-        return normalizedMimeTypes.some(mime => mime.startsWith(type + '/'));
-    }
-    return false;
+	// Anything wildcard
+	if (normalizedPattern === '*/*') {
+		return normalizedMimeTypes.length > 0;
+	}
+	// Exact match
+	if (normalizedMimeTypes.includes(normalizedPattern)) {
+		return true;
+	}
+	// Wildcard, such as `image/*`
+	const wildcard = normalizedPattern.match(/^([a-z]+)\/([a-z]+|\*)$/i);
+	if (!wildcard) {
+		return false;
+	}
+	const [_, type, subtype] = wildcard;
+	if (subtype === '*') {
+		return normalizedMimeTypes.some(mime => mime.startsWith(type + '/'));
+	}
+	return false;
 }
 exports.UriList = Object.freeze({
-    // http://amundsen.com/hypermedia/urilist/
-    create: (entries) => {
-        return (0, arrays_1.distinct)(entries.map(x => x.toString())).join('\r\n');
-    },
-    split: (str) => {
-        return str.split('\r\n');
-    },
-    parse: (str) => {
-        return exports.UriList.split(str).filter(value => !value.startsWith('#'));
-    }
+	// http://amundsen.com/hypermedia/urilist/
+	create: (entries) => {
+		return (0, arrays_1.distinct)(entries.map(x => x.toString())).join('\r\n');
+	},
+	split: (str) => {
+		return str.split('\r\n');
+	},
+	parse: (str) => {
+		return exports.UriList.split(str).filter(value => !value.startsWith('#'));
+	}
 });

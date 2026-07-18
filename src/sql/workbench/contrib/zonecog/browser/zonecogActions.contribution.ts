@@ -26,6 +26,8 @@ import { IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions } fr
 import { LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle';
 import { CognitiveLoopStatusBarContribution } from 'sql/workbench/contrib/zonecog/browser/cognitiveLoopStatusBar';
 import { IAgiStudioService } from 'sql/workbench/services/zonecog/common/agiStudio';
+import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
+import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
 
@@ -1699,7 +1701,7 @@ class ZoneCogAgiStudioShowStatusAction extends Action2 {
 
 		const agentTree = agents.map(a => {
 			const indent = '  '.repeat(a.depth);
-			return `${indent}[${a.role}] ${a.name} — ${a.status}`;
+			return `${indent}[${a.role}] ${a.name} - ${a.status}`;
 		}).join('\n');
 
 		const recentMessages = messages.slice(-5).map(m =>
@@ -1762,6 +1764,107 @@ class ZoneCogAgiStudioStopRunAction extends Action2 {
 registerAction2(ZoneCogAgiStudioStartRunAction);
 registerAction2(ZoneCogAgiStudioShowStatusAction);
 registerAction2(ZoneCogAgiStudioStopRunAction);
+
+// ============================================================================
+// Phase 3.4 Actions: Cognitive Provenance and Schema Evolution
+// ============================================================================
+
+/**
+ * Action to show the cognitive decision audit trail
+ */
+class ZoneCogAuditTrailAction extends Action2 {
+
+	static ID = 'zonecog.auditTrail';
+	constructor() {
+		super({
+			id: ZoneCogAuditTrailAction.ID,
+			title: { value: localize('zonecog.auditTrail', 'Show Cognitive Audit Trail'), original: 'Show Cognitive Audit Trail' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.law,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const provenanceService = accessor.get(ICognitiveProvenanceService);
+		const notificationService = accessor.get(INotificationService);
+
+		const decisions = provenanceService.getAuditTrail({ limit: 10 });
+		if (decisions.length === 0) {
+			notificationService.info(localize('zonecog.auditTrailEmpty',
+				'Cognitive Audit Trail: no decisions recorded yet ({0} total).',
+				provenanceService.getDecisionCount()));
+			return;
+		}
+
+		const lines = decisions.map(d =>
+			`  [${new Date(d.timestamp).toISOString()}] ${d.actor} / ${d.decisionType}: ${d.summary} (confidence ${Math.round(d.confidence * 100)}%, ${d.evidenceNodeIds.length} evidence)`
+		).join('\n');
+
+		notificationService.info(localize('zonecog.auditTrailInfo',
+			'Cognitive Audit Trail ({0} decisions retained, showing most recent {1}):\n{2}',
+			provenanceService.getDecisionCount(),
+			decisions.length,
+			lines
+		));
+	}
+}
+
+/**
+ * Action to show the schema evolution history for a connection
+ */
+class ZoneCogSchemaEvolutionAction extends Action2 {
+
+	static ID = 'zonecog.schemaEvolution';
+	constructor() {
+		super({
+			id: ZoneCogSchemaEvolutionAction.ID,
+			title: { value: localize('zonecog.schemaEvolution', 'Show Schema Evolution History'), original: 'Show Schema Evolution History' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.history,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const evolutionService = accessor.get(ISchemaEvolutionService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const tracked = evolutionService.getTrackedConnections();
+		if (tracked.length === 0) {
+			notificationService.info(localize('zonecog.schemaEvolutionNone',
+				'Schema Evolution: no connections are tracked yet. Perceive a schema first.'));
+			return;
+		}
+
+		const connectionUri = await quickInputService.pick(
+			tracked.map(uri => ({ label: uri })),
+			{ placeHolder: localize('zonecog.schemaEvolutionPick', 'Select a tracked connection') }
+		);
+		if (!connectionUri) { return; }
+
+		const info = evolutionService.getSnapshotInfo(connectionUri.label);
+		const changes = evolutionService.getChangeHistory(connectionUri.label, 10);
+		const lines = changes.map(c =>
+			`  [${new Date(c.detectedAt).toISOString()}] ${c.changeType}: ${c.qualifiedName} (${c.elementType})`
+		).join('\n');
+
+		notificationService.info(localize('zonecog.schemaEvolutionInfo',
+			'Schema Evolution for {0}:\nSnapshots: {1}\nElements: {2}\nRecent Changes:\n{3}',
+			connectionUri.label,
+			info ? info.snapshotCount : 0,
+			info ? info.elementCount : 0,
+			lines || localize('zonecog.schemaEvolutionNoChanges', '  (no changes detected since baseline)')
+		));
+	}
+}
+
+// Phase 3.4 actions
+registerAction2(ZoneCogAuditTrailAction);
+registerAction2(ZoneCogSchemaEvolutionAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.

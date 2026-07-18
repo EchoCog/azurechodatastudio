@@ -296,7 +296,7 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 	/**
 	 * External streaming completion with exponential backoff retry, mirroring
 	 * `_externalCompleteWithRetry`. A retry only happens if the failed attempt
-	 * emitted no tokens yet — once partial content has streamed to the caller,
+	 * emitted no tokens yet - once partial content has streamed to the caller,
 	 * restarting the stream would duplicate/interleave incoherent output.
 	 */
 	private async _externalCompleteStreamWithRetry(
