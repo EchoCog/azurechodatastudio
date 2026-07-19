@@ -36,6 +36,7 @@ import { ICognitiveInsightsService } from 'sql/workbench/services/zonecog/common
 import { ICognitiveTraceService } from 'sql/workbench/services/zonecog/common/cognitiveTrace';
 import { ISharedCognitionService } from 'sql/workbench/services/zonecog/common/sharedCognition';
 import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
+import { IFederatedQueryService } from 'sql/workbench/services/zonecog/common/federatedQuery';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
 
@@ -2390,6 +2391,98 @@ class ZoneCogToggleSharedCognitionAction extends Action2 {
 	}
 }
 
+/**
+ * Action to toggle the federated query session (multi-window hypergraph
+ * query federation)
+ */
+class ZoneCogToggleFederatedQueryAction extends Action2 {
+
+	static ID = 'zonecog.toggleFederatedQuery';
+	constructor() {
+		super({
+			id: ZoneCogToggleFederatedQueryAction.ID,
+			title: { value: localize('zonecog.toggleFederatedQuery', 'Toggle Federated Query Session'), original: 'Toggle Federated Query Session' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.broadcast,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const federatedQueryService = accessor.get(IFederatedQueryService);
+		const notificationService = accessor.get(INotificationService);
+
+		const state = federatedQueryService.getState();
+		if (state.active) {
+			federatedQueryService.stopSession();
+			notificationService.info(localize('zonecog.federatedStopped',
+				'Federated query session stopped ({0} queries sent, {1} responses received from {2} peer(s)).',
+				state.queriesSent, state.responsesReceived, state.knownPeers.length));
+			return;
+		}
+
+		if (federatedQueryService.startSession()) {
+			notificationService.info(localize('zonecog.federatedStarted',
+				'Federated query session started - hypergraph queries now also search other workbench windows that join.'));
+		} else {
+			notificationService.error(localize('zonecog.federatedUnavailable',
+				'Federated query is unavailable: BroadcastChannel is not supported in this environment.'));
+		}
+	}
+}
+
+/**
+ * Action to run a federated hypergraph query across this window and any
+ * joined peer windows.
+ */
+class ZoneCogFederatedQueryAction extends Action2 {
+
+	static ID = 'zonecog.federatedQuery';
+	constructor() {
+		super({
+			id: ZoneCogFederatedQueryAction.ID,
+			title: { value: localize('zonecog.federatedQuery', 'Run Federated Hypergraph Query'), original: 'Run Federated Hypergraph Query' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.search,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const federatedQueryService = accessor.get(IFederatedQueryService);
+		const quickInputService = accessor.get(IQuickInputService);
+		const notificationService = accessor.get(INotificationService);
+
+		const keyword = await quickInputService.input({
+			prompt: localize('zonecog.federatedQueryPrompt', 'Keyword to search for across this window and joined peer windows (leave empty to match all)'),
+		});
+		if (keyword === undefined) {
+			return;
+		}
+
+		const state = federatedQueryService.getState();
+		const results = await federatedQueryService.query({ keyword: keyword || undefined, limit: 10 });
+
+		const summary = results.map(result => {
+			const label = result.isSelf ? 'this window' : `peer ${result.peerId.substring(0, 8)}`;
+			const nodes = result.nodes.map(n =>
+				`  [${n.node_type}] ${n.content.substring(0, 80)}${n.content.length > 80 ? '...' : ''} (salience: ${n.salience_score.toFixed(2)})`
+			).join('\n');
+			return `${label} (${result.nodes.length} match${result.nodes.length === 1 ? '' : 'es'}):\n${nodes}`;
+		}).join('\n');
+
+		notificationService.info(localize('zonecog.federatedResults',
+			'Federated query results across {0} participant(s):\n{1}', results.length, summary || localize('zonecog.federatedNoMatches', '(no matches)')));
+
+		if (!state.active && state.knownPeers.length === 0) {
+			notificationService.info(localize('zonecog.federatedLocalOnly',
+				'No federated query session is active, so only this window was searched. Start one with "Toggle Federated Query Session" to include other windows.'));
+		}
+	}
+}
+
 // Phase 4 completion actions
 registerAction2(ZoneCogConversationalExplorationAction);
 registerAction2(ZoneCogSchemaDesignAssistantAction);
@@ -2397,6 +2490,8 @@ registerAction2(ZoneCogShowInsightsAction);
 registerAction2(ZoneCogExportTraceAction);
 registerAction2(ZoneCogImportTraceAction);
 registerAction2(ZoneCogToggleSharedCognitionAction);
+registerAction2(ZoneCogToggleFederatedQueryAction);
+registerAction2(ZoneCogFederatedQueryAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.

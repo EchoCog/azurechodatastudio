@@ -53,6 +53,8 @@ import { CognitiveTraceService } from 'sql/workbench/services/zonecog/browser/co
 import { ISharedCognitionService } from 'sql/workbench/services/zonecog/common/sharedCognition';
 import { SharedCognitionService } from 'sql/workbench/services/zonecog/browser/sharedCognitionService';
 import { CognitiveAnalyticsService } from 'sql/workbench/services/zonecog/browser/cognitiveAnalyticsService';
+import { IFederatedQueryService } from 'sql/workbench/services/zonecog/common/federatedQuery';
+import { FederatedQueryService } from 'sql/workbench/services/zonecog/browser/federatedQueryService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -157,3 +159,7 @@ registerSingleton(ICognitiveTraceService, CognitiveTraceService, InstantiationTy
 // Register the Shared Cognition service (multi-window shared hypergraph
 // state over a BroadcastChannel)
 registerSingleton(ISharedCognitionService, SharedCognitionService, InstantiationType.Eager);
+
+// Register the Federated Query service (same-machine multi-window
+// hypergraph query federation over a BroadcastChannel; Phase 3.4)
+registerSingleton(IFederatedQueryService, FederatedQueryService, InstantiationType.Eager);

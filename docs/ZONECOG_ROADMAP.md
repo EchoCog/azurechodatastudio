@@ -172,7 +172,7 @@
 
 ### 3.4 Knowledge Graph Enhancement
 - [x] Persistent hypergraph storage — `HypergraphPersistenceService` (IndexedDB, versioned schema, snapshots); a real AtomSpace-Rocks backend remains future work
-- [ ] Federated hypergraph queries (FlareCog integration)
+- [x] Federated hypergraph queries (FlareCog integration) — `IFederatedQueryService`/`FederatedQueryService` (same-machine multi-window query federation over the `ISharedCognitionService` BroadcastChannel transport: `query()` broadcasts a keyword/type/salience filter to joined peer windows and collects per-peer matches with a timeout, `queryMerged()` dedupes by node id keeping the highest salience; a real FlareCog cross-machine federation transport remains future work)
 - [x] Schema evolution tracking — `ISchemaEvolutionService`/`SchemaEvolutionService` (per-connection snapshot diffing of perceived schemas into added/removed/modified `SchemaChange` hypergraph nodes, self-wired to `ISchemaPerceptionService.onDidPerceiveSchema`)
 - [x] Provenance and audit trails for cognitive decisions — `ICognitiveProvenanceService`/`CognitiveProvenanceService` (bounded audit trail, `CognitiveDecision` hypergraph nodes with `EvidencedBy` links, transitive provenance chain resolution)
 
