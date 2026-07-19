@@ -375,4 +375,32 @@ suite('Cognitive Loop Service Tests', () => {
 		const phaseOrder = iteration.phases.map(p => p.name);
 		assert.deepStrictEqual(phaseOrder, ['perceive', 'attend', 'think', 'act', 'reflect']);
 	});
+
+	// --- Watchdog Tests (Phase 7.2) ---
+
+	test('should have zero watchdog recoveries initially', () => {
+		const state = loopService.getState();
+		assert.strictEqual(state.watchdogRecoveries, 0);
+	});
+
+	test('should keep watchdog recoveries at zero for healthy iterations', async () => {
+		await loopService.runOnce();
+		await loopService.runOnce();
+		const state = loopService.getState();
+		assert.strictEqual(state.watchdogRecoveries, 0);
+	});
+
+	test('should reset watchdog recoveries on reset', () => {
+		loopService.reset();
+		const state = loopService.getState();
+		assert.strictEqual(state.watchdogRecoveries, 0);
+	});
+
+	test('runOnce should release the in-flight marker so back-to-back runs work', async () => {
+		const first = await loopService.runOnce();
+		const second = await loopService.runOnce();
+		assert.strictEqual(first.iteration + 1, second.iteration);
+		assert.strictEqual(first.success, true);
+		assert.strictEqual(second.success, true);
+	});
 });

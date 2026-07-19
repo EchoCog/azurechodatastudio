@@ -29,6 +29,7 @@ import { IAgiStudioService } from 'sql/workbench/services/zonecog/common/agiStud
 import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
 import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
 import { IPLNReasoningService } from 'sql/workbench/services/zonecog/common/plnReasoning';
+import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
 
@@ -1883,6 +1884,24 @@ class ZoneCogRunInferenceAction extends Action2 {
 			title: { value: localize('zonecog.runInference', 'Run PLN Inference'), original: 'Run PLN Inference' },
 			category: ZONECOG_CATEGORY,
 			icon: Codicon.beaker,
+// =============================================================================
+// Phase 6.3 actions - Cognitive Analytics & Telemetry
+// =============================================================================
+
+/**
+ * Action to show the cognitive analytics report (query latency, thinking
+ * phase durations, ECAN efficiency, working memory utilization, LLM token
+ * economics, and DTESN training convergence).
+ */
+class ZoneCogAnalyticsReportAction extends Action2 {
+
+	static ID = 'zonecog.analyticsReport';
+	constructor() {
+		super({
+			id: ZoneCogAnalyticsReportAction.ID,
+			title: { value: localize('zonecog.analyticsReport', 'Show Cognitive Analytics Report'), original: 'Show Cognitive Analytics Report' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.graph,
 			f1: true,
 			menu: { id: MenuId.CommandPalette },
 		});
@@ -1914,6 +1933,44 @@ class ZoneCogRunInferenceAction extends Action2 {
 }
 
 registerAction2(ZoneCogRunInferenceAction);
+		const analyticsService = accessor.get(ICognitiveAnalyticsService);
+		const notificationService = accessor.get(INotificationService);
+
+		const report = analyticsService.generateReport();
+		notificationService.info(report);
+	}
+}
+
+/**
+ * Action to reset all collected cognitive analytics metrics.
+ */
+class ZoneCogAnalyticsResetAction extends Action2 {
+
+	static ID = 'zonecog.analyticsReset';
+	constructor() {
+		super({
+			id: ZoneCogAnalyticsResetAction.ID,
+			title: { value: localize('zonecog.analyticsReset', 'Reset Cognitive Analytics Metrics'), original: 'Reset Cognitive Analytics Metrics' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.clearAll,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const analyticsService = accessor.get(ICognitiveAnalyticsService);
+		const notificationService = accessor.get(INotificationService);
+
+		analyticsService.reset();
+		notificationService.info(localize('zonecog.analyticsResetDone',
+			'Cognitive analytics metrics have been reset.'));
+	}
+}
+
+// Phase 6.3 actions
+registerAction2(ZoneCogAnalyticsReportAction);
+registerAction2(ZoneCogAnalyticsResetAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.

@@ -29,7 +29,7 @@ The system implements the P-System Membrane Architecture:
 | **Somatic** | Extension & UI interaction | Command Palette, bridge extension, LLM calls |
 | **Autonomic** | Health monitoring & validation | `CognitiveMembraneService`, ECAN rent, error tracking |
 
-### Services (10 total)
+### Services (11 total)
 
 | Service | Interface | Implementation |
 |---|---|---|
@@ -43,6 +43,30 @@ The system implements the P-System Membrane Architecture:
 | Cognitive Loop | `ICognitiveLoopService` | `CognitiveLoopService` |
 | AGI Studio | `IAgiStudioService` | `AgiStudioService` |
 | Interaction Learning | `IUserInteractionLearningService` | `UserInteractionLearningService` |
+| Cognitive Analytics | `ICognitiveAnalyticsService` | `CognitiveAnalyticsService` |
+
+### Cognitive Analytics & Telemetry (Phase 6.3)
+
+The Cognitive Analytics service passively observes the cognitive subsystems
+and aggregates the metrics needed to measure and optimize cognitive
+performance:
+
+- **Query latency histograms** — bucketed processing-time distribution from `IZoneCogService.onDidProcessQuery`
+- **Thinking phase durations** — per-phase count / mean / max statistics
+- **ECAN efficiency** — attentional focus ratio and rent collection, sampled per processed query
+- **Working memory utilization** — fill ratio (mean / latest / peak) sampled per processed query
+- **LLM token economics** — request, fallback, and streaming counts plus token totals via `ILLMProviderService.onDidCompleteRequest`
+- **DTESN training convergence** — MSE history and convergence trend via `IDTESNService.onDidLearn`
+
+Use the `zonecog.analyticsReport` Command Palette action to generate a
+human-readable report; each report is persisted as an `AnalyticsReport`
+hypergraph node for longitudinal analysis. `zonecog.analyticsReset` clears
+all collected metrics.
+
+The Cognitive Loop additionally runs a **watchdog timer** (Phase 7.2): if an
+iteration hangs for longer than three tick intervals, the watchdog recovers
+the loop, records an autonomic membrane error, and increments the
+`watchdogRecoveries` counter exposed via `CognitiveLoopState`.
 
 ### AGI Studio (Phase 7)
 
