@@ -43,6 +43,8 @@ import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/comm
 import { CognitiveProvenanceService } from 'sql/workbench/services/zonecog/browser/cognitiveProvenanceService';
 import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
 import { SchemaEvolutionService } from 'sql/workbench/services/zonecog/browser/schemaEvolutionService';
+import { IPLNReasoningService } from 'sql/workbench/services/zonecog/common/plnReasoning';
+import { PLNReasoningService } from 'sql/workbench/services/zonecog/browser/plnReasoningService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -124,3 +126,8 @@ registerSingleton(ICognitiveProvenanceService, CognitiveProvenanceService, Insta
 // Register the Schema Evolution service (snapshot diffing of perceived
 // schemas into a persisted SchemaChange history)
 registerSingleton(ISchemaEvolutionService, SchemaEvolutionService, InstantiationType.Eager);
+
+// Register the PLN Reasoning service (PLN-style truth values and URE-lite
+// forward-chaining deduction/inversion/similarity inference over the
+// hypergraph store's binary directed links)
+registerSingleton(IPLNReasoningService, PLNReasoningService, InstantiationType.Eager);

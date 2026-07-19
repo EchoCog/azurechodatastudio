@@ -28,6 +28,7 @@ import { CognitiveLoopStatusBarContribution } from 'sql/workbench/contrib/zoneco
 import { IAgiStudioService } from 'sql/workbench/services/zonecog/common/agiStudio';
 import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
 import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
+import { IPLNReasoningService } from 'sql/workbench/services/zonecog/common/plnReasoning';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
 
@@ -1865,6 +1866,54 @@ class ZoneCogSchemaEvolutionAction extends Action2 {
 // Phase 3.4 actions
 registerAction2(ZoneCogAuditTrailAction);
 registerAction2(ZoneCogSchemaEvolutionAction);
+
+// ============================================================================
+// Phase 3.2 Action: PLN Reasoning
+// ============================================================================
+
+/**
+ * Action to run PLN-style forward-chaining inference over the hypergraph
+ */
+class ZoneCogRunInferenceAction extends Action2 {
+
+	static ID = 'zonecog.runInference';
+	constructor() {
+		super({
+			id: ZoneCogRunInferenceAction.ID,
+			title: { value: localize('zonecog.runInference', 'Run PLN Inference'), original: 'Run PLN Inference' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.beaker,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const plnService = accessor.get(IPLNReasoningService);
+		const notificationService = accessor.get(INotificationService);
+
+		const result = plnService.infer();
+		if (result.inferred.length === 0) {
+			notificationService.info(localize('zonecog.runInferenceEmpty',
+				'PLN Inference: examined {0} link(s) over {1} iteration(s), no new conclusions derived (total inferred so far: {2}).',
+				result.linksExamined, result.iterations, plnService.getInferredLinks().length));
+			return;
+		}
+
+		const top = result.inferred
+			.slice()
+			.sort((a, b) => b.truthValue.confidence - a.truthValue.confidence)
+			.slice(0, 5)
+			.map(l => `  ${l.from} -> ${l.to} [${l.rule}] (strength ${l.truthValue.strength.toFixed(2)}, confidence ${l.truthValue.confidence.toFixed(2)})`)
+			.join('\n');
+
+		notificationService.info(localize('zonecog.runInferenceInfo',
+			'PLN Inference: derived {0} new link(s) over {1} iteration(s) from {2} examined link(s).\nTop conclusions:\n{3}',
+			result.inferred.length, result.iterations, result.linksExamined, top));
+	}
+}
+
+registerAction2(ZoneCogRunInferenceAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.

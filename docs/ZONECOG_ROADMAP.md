@@ -2,7 +2,7 @@
 
 **Ticket**: ECH-4  
 **Status**: Active  
-**Last Updated**: 2026-07-16
+**Last Updated**: 2026-07-19
 
 ## Phase Overview
 
@@ -160,8 +160,8 @@
 
 ### 3.2 AtomSpace Reasoning
 - [ ] Real AtomSpace transport (there is no mock adapter to replace — `HypergraphStore` is a from-scratch in-memory store; a real transport is new work)
-- [ ] PLN (Probabilistic Logic Networks) integration for rule-based reasoning
-- [ ] URE (Unified Rule Engine) for inference chains
+- [x] PLN (Probabilistic Logic Networks) integration for rule-based reasoning — `IPLNReasoningService`/`PLNReasoningService` (strength/confidence truth values on hypergraph links, PLN deduction formula using node salience as a prior)
+- [x] URE (Unified Rule Engine) for inference chains — `PLNReasoningService.infer()` (forward-chaining deduction/inversion/similarity rules over binary directed links, iterated to a fixed point or `maxIterations`, conclusions persisted as `Inferred` hypergraph links that feed later chaining rounds)
 - [x] ECAN (Economic Attention Networks) for salience-based focus — `IECANAttentionService`/`ECANAttentionService` (spreading activation, rent collection, attentional focus)
 
 ### 3.3 Pattern Mining
