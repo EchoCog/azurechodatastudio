@@ -29,8 +29,12 @@ import { IAgiStudioService } from 'sql/workbench/services/zonecog/common/agiStud
 import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
 import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
 import { IPLNReasoningService } from 'sql/workbench/services/zonecog/common/plnReasoning';
-import { ISQLAnalyzerAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
+import { ISQLAnalyzerAgent, ISchemaReasonerAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
 import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
+import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmProvider';
+import { ICognitiveInsightsService } from 'sql/workbench/services/zonecog/common/cognitiveInsights';
+import { ICognitiveTraceService } from 'sql/workbench/services/zonecog/common/cognitiveTrace';
+import { ISharedCognitionService } from 'sql/workbench/services/zonecog/common/sharedCognition';
 import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
@@ -2081,6 +2085,318 @@ class ZoneCogExplainSQLAction extends Action2 {
 // Phase 4.3 actions
 registerAction2(ZoneCogNaturalLanguageQueryAction);
 registerAction2(ZoneCogExplainSQLAction);
+
+// ============================================================================
+// Phase 4 completion actions: conversational exploration, schema design
+// assistant, insights, trace sharing/replay, shared cognition
+// ============================================================================
+
+/** Maximum turns in one conversational exploration session. */
+const MAX_CONVERSATION_TURNS = 20;
+
+/**
+ * Action to explore data conversationally: a multi-turn natural language
+ * loop where each turn carries the running transcript as context.
+ */
+class ZoneCogConversationalExplorationAction extends Action2 {
+
+	static ID = 'zonecog.conversationalExploration';
+	constructor() {
+		super({
+			id: ZoneCogConversationalExplorationAction.ID,
+			title: { value: localize('zonecog.conversationalExploration', 'Explore Data Conversationally'), original: 'Explore Data Conversationally' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.commentDiscussion,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const llmService = accessor.get(ILLMProviderService);
+		const schemaPerception = accessor.get(ISchemaPerceptionService);
+		const schemaEvolution = accessor.get(ISchemaEvolutionService);
+		const quickInputService = accessor.get(IQuickInputService);
+		const notificationService = accessor.get(INotificationService);
+
+		let schemaContext = '';
+		const tracked = schemaEvolution.getTrackedConnections();
+		if (tracked.length > 0) {
+			const tables = schemaPerception.getElementsByType(tracked[0], 'table').slice(0, 30);
+			if (tables.length > 0) {
+				schemaContext = `Available tables:\n${tables.map(t => t.qualifiedName).join('\n')}\n\n`;
+			}
+		}
+
+		const transcript: Array<{ question: string; answer: string }> = [];
+		for (let turn = 0; turn < MAX_CONVERSATION_TURNS; turn++) {
+			const question = await quickInputService.input({
+				prompt: turn === 0
+					? localize('zonecog.conversationStart', 'Ask a question about your data (Esc to end the conversation)')
+					: localize('zonecog.conversationFollowUp', 'Follow-up question ({0} turns so far, Esc to end)', transcript.length),
+				placeHolder: localize('zonecog.conversationPlaceholder', 'e.g. which customers ordered the most last month?')
+			});
+			if (!question) {
+				break;
+			}
+
+			const history = transcript.map(t => `Q: ${t.question}\nA: ${t.answer}`).join('\n\n');
+			const prompt = `You are a data exploration assistant for a SQL workbench. Answer concisely; include SQL when it helps.\n\n${schemaContext}${history ? `Conversation so far:\n${history}\n\n` : ''}Q: ${question}\nA:`;
+
+			try {
+				const answer = await llmService.complete(prompt);
+				transcript.push({ question, answer });
+				notificationService.info(localize('zonecog.conversationTurn', 'Q: {0}\n\n{1}', question, answer));
+			} catch (error) {
+				notificationService.error(localize('zonecog.conversationError',
+					'Conversational exploration failed: {0}', error instanceof Error ? error.message : String(error)));
+				break;
+			}
+		}
+	}
+}
+
+/**
+ * Action providing a guided schema design assistant over the schema
+ * reasoner agent: quality review, domain model inference, or documentation.
+ */
+class ZoneCogSchemaDesignAssistantAction extends Action2 {
+
+	static ID = 'zonecog.schemaDesignAssistant';
+	constructor() {
+		super({
+			id: ZoneCogSchemaDesignAssistantAction.ID,
+			title: { value: localize('zonecog.schemaDesignAssistant', 'Schema Design Assistant'), original: 'Schema Design Assistant' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.tools,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const reasoner = accessor.get(ISchemaReasonerAgent);
+		const quickInputService = accessor.get(IQuickInputService);
+		const notificationService = accessor.get(INotificationService);
+
+		const ddl = await quickInputService.input({
+			prompt: localize('zonecog.designDdlPrompt', 'Paste the schema DDL to analyze (CREATE TABLE statements)'),
+			placeHolder: 'CREATE TABLE ...'
+		});
+		if (!ddl) { return; }
+
+		const MODES = {
+			improvements: localize('zonecog.designImprovements', 'Suggest design improvements'),
+			domainModel: localize('zonecog.designDomainModel', 'Infer the domain model'),
+			documentation: localize('zonecog.designDocumentation', 'Generate documentation')
+		};
+		const mode = await quickInputService.pick([
+			{ label: MODES.improvements, id: 'improvements' },
+			{ label: MODES.domainModel, id: 'domainModel' },
+			{ label: MODES.documentation, id: 'documentation' }
+		], { placeHolder: localize('zonecog.designModePick', 'What should the assistant do?') });
+		if (!mode) { return; }
+
+		try {
+			if (mode.id === 'improvements') {
+				const issues = await reasoner.suggestImprovements(ddl);
+				if (issues.length === 0) {
+					notificationService.info(localize('zonecog.designNoIssues', 'Schema Design Assistant: no design issues found.'));
+					return;
+				}
+				const lines = issues.slice(0, 10).map(i =>
+					`  [${i.severity}] ${i.element}: ${i.description} -> ${i.recommendation}`
+				).join('\n');
+				notificationService.info(localize('zonecog.designIssues',
+					'Schema Design Assistant found {0} issue(s):\n{1}', issues.length, lines));
+			} else if (mode.id === 'domainModel') {
+				const model = await reasoner.inferDomainModel(ddl);
+				notificationService.info(localize('zonecog.designDomainResult',
+					'Inferred domain model:\nEntities: {0}\nAggregates: {1}\nBounded contexts: {2}\nBusiness rules:\n{3}',
+					model.entities.map(e => e.name).join(', '),
+					model.aggregates.join(', ') || '-',
+					model.boundedContexts.join(', ') || '-',
+					model.businessRules.map(r => `  ${r}`).join('\n') || '  -'));
+			} else {
+				const docs = await reasoner.generateDocumentation(ddl);
+				notificationService.info(localize('zonecog.designDocsResult', 'Generated documentation:\n{0}', docs));
+			}
+		} catch (error) {
+			notificationService.error(localize('zonecog.designError',
+				'Schema Design Assistant failed: {0}', error instanceof Error ? error.message : String(error)));
+		}
+	}
+}
+
+/**
+ * Action to show recently auto-generated insights
+ */
+class ZoneCogShowInsightsAction extends Action2 {
+
+	static ID = 'zonecog.showInsights';
+	constructor() {
+		super({
+			id: ZoneCogShowInsightsAction.ID,
+			title: { value: localize('zonecog.showInsights', 'Show Generated Insights'), original: 'Show Generated Insights' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.lightbulb,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const insightsService = accessor.get(ICognitiveInsightsService);
+		const notificationService = accessor.get(INotificationService);
+
+		const insights = insightsService.getRecentInsights(10);
+		if (insights.length === 0) {
+			notificationService.info(localize('zonecog.noInsights',
+				'No insights generated yet - insights accumulate automatically as queries run and schemas are perceived.'));
+			return;
+		}
+		const lines = insights.map(i =>
+			`  [${i.severity}] ${i.subject ? `${i.subject}: ` : ''}${i.message}`
+		).join('\n');
+		notificationService.info(localize('zonecog.insightsList',
+			'Generated Insights ({0} total this session, latest {1}):\n{2}',
+			insightsService.getInsightCount(), insights.length, lines));
+	}
+}
+
+/**
+ * Action to export the session's cognitive trace to the clipboard
+ */
+class ZoneCogExportTraceAction extends Action2 {
+
+	static ID = 'zonecog.exportTrace';
+	constructor() {
+		super({
+			id: ZoneCogExportTraceAction.ID,
+			title: { value: localize('zonecog.exportTrace', 'Export Cognitive Trace'), original: 'Export Cognitive Trace' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.exportIcon,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const traceService = accessor.get(ICognitiveTraceService);
+		const notificationService = accessor.get(INotificationService);
+		const clipboardService = accessor.get(IClipboardService);
+
+		const queries = traceService.getSessionTrace().length;
+		await clipboardService.writeText(traceService.exportTrace());
+		notificationService.info(localize('zonecog.exportTraceDone',
+			'Cognitive trace with {0} query(ies) copied to clipboard - share it and replay it in another session.', queries));
+	}
+}
+
+/**
+ * Action to import a cognitive trace from the clipboard and replay it
+ */
+class ZoneCogImportTraceAction extends Action2 {
+
+	static ID = 'zonecog.importTrace';
+	constructor() {
+		super({
+			id: ZoneCogImportTraceAction.ID,
+			title: { value: localize('zonecog.importTrace', 'Import and Replay Cognitive Trace'), original: 'Import and Replay Cognitive Trace' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.debugRestartFrame,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const traceService = accessor.get(ICognitiveTraceService);
+		const notificationService = accessor.get(INotificationService);
+		const clipboardService = accessor.get(IClipboardService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		try {
+			const trace = traceService.importTrace(await clipboardService.readText());
+			if (trace.queries.length === 0) {
+				notificationService.info(localize('zonecog.importTraceEmpty', 'Imported trace "{0}" contains no queries.', trace.label));
+				return;
+			}
+
+			let index = 0;
+			if (trace.queries.length > 1) {
+				const picked = await quickInputService.pick(
+					trace.queries.map((q, i) => ({
+						label: q.query || localize('zonecog.unnamedQuery', '(query {0})', i + 1),
+						description: localize('zonecog.replayPickDetail', '{0} phases · confidence {1}%', q.phases.length, Math.round(q.confidence * 100)),
+						id: String(i)
+					})),
+					{ placeHolder: localize('zonecog.replayPick', 'Select the traced query to replay') }
+				);
+				if (!picked) { return; }
+				index = Number(picked.id);
+			}
+
+			const replayed = traceService.replay(index, trace);
+			if (replayed) {
+				notificationService.info(localize('zonecog.replayDone',
+					'Replayed {0} thinking phase(s) from trace "{1}" - see the Thinking Process view.',
+					replayed.phases.length, trace.label));
+			}
+		} catch (error) {
+			notificationService.error(localize('zonecog.importTraceError',
+				'Trace import failed: {0}', error instanceof Error ? error.message : String(error)));
+		}
+	}
+}
+
+/**
+ * Action to toggle the shared cognition session (multi-window hypergraph sync)
+ */
+class ZoneCogToggleSharedCognitionAction extends Action2 {
+
+	static ID = 'zonecog.toggleSharedCognition';
+	constructor() {
+		super({
+			id: ZoneCogToggleSharedCognitionAction.ID,
+			title: { value: localize('zonecog.toggleSharedCognition', 'Toggle Shared Cognition Session'), original: 'Toggle Shared Cognition Session' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.liveShare,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const sharedService = accessor.get(ISharedCognitionService);
+		const notificationService = accessor.get(INotificationService);
+
+		const state = sharedService.getState();
+		if (state.active) {
+			sharedService.stopSession();
+			notificationService.info(localize('zonecog.sharedStopped',
+				'Shared cognition session stopped ({0} updates sent, {1} applied from {2} peer(s)).',
+				state.sentUpdates, state.appliedUpdates, state.knownPeers.length));
+			return;
+		}
+
+		if (sharedService.startSession()) {
+			notificationService.info(localize('zonecog.sharedStarted',
+				'Shared cognition session started - hypergraph changes now sync with other workbench windows that join.'));
+		} else {
+			notificationService.error(localize('zonecog.sharedUnavailable',
+				'Shared cognition is unavailable: BroadcastChannel is not supported in this environment.'));
+		}
+	}
+}
+
+// Phase 4 completion actions
+registerAction2(ZoneCogConversationalExplorationAction);
+registerAction2(ZoneCogSchemaDesignAssistantAction);
+registerAction2(ZoneCogShowInsightsAction);
+registerAction2(ZoneCogExportTraceAction);
+registerAction2(ZoneCogImportTraceAction);
+registerAction2(ZoneCogToggleSharedCognitionAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.

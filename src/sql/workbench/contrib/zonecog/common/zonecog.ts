@@ -39,3 +39,9 @@ export const ZONECOG_AGI_STUDIO_VIEW_ID = 'zonecog.agiStudioView';
 
 /** Thinking process view ID. */
 export const ZONECOG_THINKING_VIEW_ID = 'zonecog.thinkingView';
+
+/** Memory explorer view ID. */
+export const ZONECOG_MEMORY_VIEW_ID = 'zonecog.memoryView';
+
+/** Schema-to-cognition map view ID. */
+export const ZONECOG_SCHEMA_MAP_VIEW_ID = 'zonecog.schemaMapView';

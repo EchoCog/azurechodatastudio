@@ -46,6 +46,12 @@ import { SchemaEvolutionService } from 'sql/workbench/services/zonecog/browser/s
 import { IPLNReasoningService } from 'sql/workbench/services/zonecog/common/plnReasoning';
 import { PLNReasoningService } from 'sql/workbench/services/zonecog/browser/plnReasoningService';
 import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
+import { ICognitiveInsightsService } from 'sql/workbench/services/zonecog/common/cognitiveInsights';
+import { CognitiveInsightsService } from 'sql/workbench/services/zonecog/browser/cognitiveInsightsService';
+import { ICognitiveTraceService } from 'sql/workbench/services/zonecog/common/cognitiveTrace';
+import { CognitiveTraceService } from 'sql/workbench/services/zonecog/browser/cognitiveTraceService';
+import { ISharedCognitionService } from 'sql/workbench/services/zonecog/common/sharedCognition';
+import { SharedCognitionService } from 'sql/workbench/services/zonecog/browser/sharedCognitionService';
 import { CognitiveAnalyticsService } from 'sql/workbench/services/zonecog/browser/cognitiveAnalyticsService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
@@ -137,3 +143,17 @@ registerSingleton(IPLNReasoningService, PLNReasoningService, InstantiationType.E
 // histograms, thinking phase durations, ECAN efficiency, working memory
 // utilization, LLM token economics, and DTESN training convergence)
 registerSingleton(ICognitiveAnalyticsService, CognitiveAnalyticsService, InstantiationType.Eager);
+
+// Register Phase 4 completion services
+
+// Register the Cognitive Insights service (auto-generated insights from
+// observed queries and perceived schemas, persisted as Insight nodes)
+registerSingleton(ICognitiveInsightsService, CognitiveInsightsService, InstantiationType.Eager);
+
+// Register the Cognitive Trace service (session trace recording, shareable
+// JSON export/import, and phase-by-phase replay)
+registerSingleton(ICognitiveTraceService, CognitiveTraceService, InstantiationType.Eager);
+
+// Register the Shared Cognition service (multi-window shared hypergraph
+// state over a BroadcastChannel)
+registerSingleton(ISharedCognitionService, SharedCognitionService, InstantiationType.Eager);

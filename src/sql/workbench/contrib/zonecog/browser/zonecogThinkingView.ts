@@ -18,6 +18,7 @@ import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 
 import { IZoneCogService, ThinkingPhase, ZoneCogResponse } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { ICognitiveTraceService } from 'sql/workbench/services/zonecog/common/cognitiveTrace';
 
 /** Maximum completed queries retained in the recent list. */
 const MAX_RECENT_QUERIES = 5;
@@ -62,7 +63,8 @@ export class ThinkingProcessView extends ViewPane {
 		@IKeybindingService keybindingService: IKeybindingService,
 		@IOpenerService openerService: IOpenerService,
 		@IThemeService themeService: IThemeService,
-		@IZoneCogService private readonly zonecogService: IZoneCogService
+		@IZoneCogService private readonly zonecogService: IZoneCogService,
+		@ICognitiveTraceService private readonly traceService: ICognitiveTraceService
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, telemetryService);
 	}
@@ -84,6 +86,14 @@ export class ThinkingProcessView extends ViewPane {
 		this._register(this.zonecogService.onDidCompleteThinkingPhase(phase => this._onPhase(phase)));
 		this._register(this.zonecogService.onDidStreamResponseToken(e => this._onToken(e.token)));
 		this._register(this.zonecogService.onDidProcessQuery(response => this._onQueryComplete(response)));
+		// Replayed traces render through the same live pipeline, so another
+		// session's reasoning appears exactly as it originally unfolded.
+		this._register(this.traceService.onDidReplayPhase(e => this._onPhase(e.phase)));
+		this._register(this.traceService.onDidCompleteReplay(query => {
+			this._currentPhases = [];
+			this._onToken(query.response);
+			this._currentResponseText = '';
+		}));
 
 		this._renderIdle();
 		this._renderRecent();
