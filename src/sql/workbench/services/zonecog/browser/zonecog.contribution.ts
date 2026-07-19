@@ -43,6 +43,8 @@ import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/comm
 import { CognitiveProvenanceService } from 'sql/workbench/services/zonecog/browser/cognitiveProvenanceService';
 import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
 import { SchemaEvolutionService } from 'sql/workbench/services/zonecog/browser/schemaEvolutionService';
+import { IPLNReasoningService } from 'sql/workbench/services/zonecog/common/plnReasoning';
+import { PLNReasoningService } from 'sql/workbench/services/zonecog/browser/plnReasoningService';
 import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 import { CognitiveAnalyticsService } from 'sql/workbench/services/zonecog/browser/cognitiveAnalyticsService';
 
@@ -127,6 +129,10 @@ registerSingleton(ICognitiveProvenanceService, CognitiveProvenanceService, Insta
 // schemas into a persisted SchemaChange history)
 registerSingleton(ISchemaEvolutionService, SchemaEvolutionService, InstantiationType.Eager);
 
+// Register the PLN Reasoning service (PLN-style truth values and URE-lite
+// forward-chaining deduction/inversion/similarity inference over the
+// hypergraph store's binary directed links)
+registerSingleton(IPLNReasoningService, PLNReasoningService, InstantiationType.Eager);
 // Register the Cognitive Analytics service (Phase 6.3: query latency
 // histograms, thinking phase durations, ECAN efficiency, working memory
 // utilization, LLM token economics, and DTESN training convergence)
