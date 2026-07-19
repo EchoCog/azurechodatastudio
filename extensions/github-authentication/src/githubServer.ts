@@ -336,11 +336,11 @@ export class GitHubServer implements IGitHubServer {
 			/* __GDPR__
 				"ghe-session" : {
 					"owner": "TylerLeonhardt",
-					"version": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+					"installedVersion": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
 				}
 			*/
 			this._telemetryReporter.sendTelemetryEvent('ghe-session', {
-				version
+				installedVersion: version
 			});
 		} catch {
 			// No-op

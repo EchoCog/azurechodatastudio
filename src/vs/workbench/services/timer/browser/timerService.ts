@@ -11,7 +11,7 @@ import { IUpdateService } from 'vs/platform/update/common/update';
 import { ILifecycleService, LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IAccessibilityService } from 'vs/platform/accessibility/common/accessibility';
-import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
+import { ITelemetryData, ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { Barrier, timeout } from 'vs/base/common/async';
 import { IWorkbenchLayoutService } from 'vs/workbench/services/layout/browser/layoutService';
 import { IPaneCompositePartService } from 'vs/workbench/services/panecomposite/browser/panecomposite';
@@ -37,7 +37,6 @@ export interface IMemoryInfo {
 
 /* __GDPR__FRAGMENT__
 	"IStartupMetrics" : {
-		"version" : { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth" },
 		"ellapsed" : { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth", "isMeasurement": true },
 		"isLatestVersion": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth" },
 		"didUseCachedData": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth" },
@@ -591,6 +590,9 @@ export abstract class AbstractTimerService implements ITimerService {
 
 	private _reportStartupTimes(metrics: IStartupMetrics): void {
 		// report IStartupMetrics as telemetry
+		const { version, ...metricsWithoutVersion } = metrics;
+		void version;
+
 		/* __GDPR__
 			"startupTimeVaried" : {
 				"owner": "jrieken",
@@ -599,7 +601,7 @@ export abstract class AbstractTimerService implements ITimerService {
 				]
 			}
 		*/
-		this._telemetryService.publicLog('startupTimeVaried', metrics);
+		this._telemetryService.publicLog('startupTimeVaried', metricsWithoutVersion as ITelemetryData);
 	}
 
 	protected _shouldReportPerfMarks(): boolean {
