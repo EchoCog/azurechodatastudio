@@ -29,6 +29,8 @@ import { IAgiStudioService } from 'sql/workbench/services/zonecog/common/agiStud
 import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
 import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
 import { IPLNReasoningService } from 'sql/workbench/services/zonecog/common/plnReasoning';
+import { ISQLAnalyzerAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
+import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
 import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
@@ -1884,24 +1886,6 @@ class ZoneCogRunInferenceAction extends Action2 {
 			title: { value: localize('zonecog.runInference', 'Run PLN Inference'), original: 'Run PLN Inference' },
 			category: ZONECOG_CATEGORY,
 			icon: Codicon.beaker,
-// =============================================================================
-// Phase 6.3 actions - Cognitive Analytics & Telemetry
-// =============================================================================
-
-/**
- * Action to show the cognitive analytics report (query latency, thinking
- * phase durations, ECAN efficiency, working memory utilization, LLM token
- * economics, and DTESN training convergence).
- */
-class ZoneCogAnalyticsReportAction extends Action2 {
-
-	static ID = 'zonecog.analyticsReport';
-	constructor() {
-		super({
-			id: ZoneCogAnalyticsReportAction.ID,
-			title: { value: localize('zonecog.analyticsReport', 'Show Cognitive Analytics Report'), original: 'Show Cognitive Analytics Report' },
-			category: ZONECOG_CATEGORY,
-			icon: Codicon.graph,
 			f1: true,
 			menu: { id: MenuId.CommandPalette },
 		});
@@ -1933,6 +1917,31 @@ class ZoneCogAnalyticsReportAction extends Action2 {
 }
 
 registerAction2(ZoneCogRunInferenceAction);
+
+// =============================================================================
+// Phase 6.3 actions - Cognitive Analytics & Telemetry
+// =============================================================================
+
+/**
+ * Action to show the cognitive analytics report (query latency, thinking
+ * phase durations, ECAN efficiency, working memory utilization, LLM token
+ * economics, and DTESN training convergence).
+ */
+class ZoneCogAnalyticsReportAction extends Action2 {
+
+	static ID = 'zonecog.analyticsReport';
+	constructor() {
+		super({
+			id: ZoneCogAnalyticsReportAction.ID,
+			title: { value: localize('zonecog.analyticsReport', 'Show Cognitive Analytics Report'), original: 'Show Cognitive Analytics Report' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.graph,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
 		const analyticsService = accessor.get(ICognitiveAnalyticsService);
 		const notificationService = accessor.get(INotificationService);
 
@@ -1971,6 +1980,107 @@ class ZoneCogAnalyticsResetAction extends Action2 {
 // Phase 6.3 actions
 registerAction2(ZoneCogAnalyticsReportAction);
 registerAction2(ZoneCogAnalyticsResetAction);
+
+// ============================================================================
+// Phase 4.3 Actions: Natural Language Interface
+// ============================================================================
+
+/**
+ * Action to translate a natural language description into SQL
+ */
+class ZoneCogNaturalLanguageQueryAction extends Action2 {
+
+	static ID = 'zonecog.naturalLanguageQuery';
+	constructor() {
+		super({
+			id: ZoneCogNaturalLanguageQueryAction.ID,
+			title: { value: localize('zonecog.naturalLanguageQuery', 'Natural Language to SQL'), original: 'Natural Language to SQL' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.commentDiscussion,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const sqlAnalyzer = accessor.get(ISQLAnalyzerAgent);
+		const schemaPerception = accessor.get(ISchemaPerceptionService);
+		const schemaEvolution = accessor.get(ISchemaEvolutionService);
+		const quickInputService = accessor.get(IQuickInputService);
+		const notificationService = accessor.get(INotificationService);
+		const clipboardService = accessor.get(IClipboardService);
+
+		const description = await quickInputService.input({
+			prompt: localize('zonecog.nlQueryPrompt', 'Describe the query you want in plain language'),
+			placeHolder: localize('zonecog.nlQueryPlaceholder', 'e.g. total orders per customer in the last 30 days')
+		});
+		if (!description) { return; }
+
+		// Use the first tracked connection's perceived tables as schema context,
+		// when any schema has been perceived this session.
+		let schemaContext: string | undefined;
+		const tracked = schemaEvolution.getTrackedConnections();
+		if (tracked.length > 0) {
+			const tables = schemaPerception.getElementsByType(tracked[0], 'table').slice(0, 30);
+			if (tables.length > 0) {
+				schemaContext = tables.map(t => t.qualifiedName).join('\n');
+			}
+		}
+
+		try {
+			const sql = await sqlAnalyzer.naturalLanguageToSQL(description, schemaContext);
+			await clipboardService.writeText(sql);
+			notificationService.info(localize('zonecog.nlQueryResult',
+				'Generated SQL (copied to clipboard):\n{0}', sql));
+		} catch (error) {
+			notificationService.error(localize('zonecog.nlQueryError',
+				'Natural language translation failed: {0}', error instanceof Error ? error.message : String(error)));
+		}
+	}
+}
+
+/**
+ * Action to explain a SQL query in plain language
+ */
+class ZoneCogExplainSQLAction extends Action2 {
+
+	static ID = 'zonecog.explainSQL';
+	constructor() {
+		super({
+			id: ZoneCogExplainSQLAction.ID,
+			title: { value: localize('zonecog.explainSQL', 'Explain SQL in Plain Language'), original: 'Explain SQL in Plain Language' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.book,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const sqlAnalyzer = accessor.get(ISQLAnalyzerAgent);
+		const quickInputService = accessor.get(IQuickInputService);
+		const notificationService = accessor.get(INotificationService);
+
+		const query = await quickInputService.input({
+			prompt: localize('zonecog.explainSQLPrompt', 'Paste the SQL query to explain'),
+			placeHolder: localize('zonecog.explainSQLPlaceholder', 'SELECT ...')
+		});
+		if (!query) { return; }
+
+		try {
+			const explanation = await sqlAnalyzer.sqlToNaturalLanguage(query);
+			notificationService.info(localize('zonecog.explainSQLResult',
+				'Explanation:\n{0}', explanation));
+		} catch (error) {
+			notificationService.error(localize('zonecog.explainSQLError',
+				'SQL explanation failed: {0}', error instanceof Error ? error.message : String(error)));
+		}
+	}
+}
+
+// Phase 4.3 actions
+registerAction2(ZoneCogNaturalLanguageQueryAction);
+registerAction2(ZoneCogExplainSQLAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.

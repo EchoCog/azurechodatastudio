@@ -13,7 +13,7 @@
 | 2.5 | Embodied Workbench | **Complete** (ECH-62) | Sensorimotor grounding, workspace memory, workbench actions |
 | 2.6 | Test Suite | **Complete** (ECH-27) | Comprehensive tests for all agents and services |
 | 3 | Intelligence Layer | **In Progress** (ECH-61) | AI/LLM integration, pattern mining, reasoning |
-| 4 | Workbench UX | Planned | Visual cognitive maps, interactive exploration |
+| 4 | Workbench UX | **In Progress** | Visual cognitive maps, interactive exploration |
 | 5 | Post-ADS Migration | Planned | VS Code standalone, portable cognitive workbench |
 
 ---
@@ -178,24 +178,24 @@
 
 ---
 
-## Phase 4: Workbench UX (Planned)
+## Phase 4: Workbench UX (In Progress)
 
 **Goal**: Transform the UI into an immersive cognitive workbench.
 
 ### 4.1 Visual Cognitive Maps
 - [ ] Interactive hypergraph visualization (D3.js/WebGL)
-- [ ] Thinking process timeline view
+- [x] Thinking process timeline view — `ThinkingProcessView` (ordered live phase timeline with per-phase durations)
 - [ ] Schema-to-cognition mapping explorer
-- [ ] Salience heat maps for attention visualization
+- [x] Salience heat maps for attention visualization — `ECANAttentionView` (attention distribution bars over the most salient nodes)
 
 ### 4.2 Cognitive Panels
-- [ ] Dedicated ZoneCog sidebar panel
-- [ ] Real-time thinking process display
-- [ ] Cognitive state dashboard
-- [ ] Memory explorer (declarative/procedural/episodic)
+- [x] Dedicated ZoneCog sidebar panel — `zonecogPanel.contribution` view container (workbench panel with 9 views; note: existed but was never imported into `workbench.common.main.ts`, so it never loaded until now)
+- [x] Real-time thinking process display — `ThinkingProcessView` (streams `onDidCompleteThinkingPhase` phases and `onDidStreamResponseToken` tokens live, retains recent query summaries)
+- [x] Cognitive state dashboard — `CognitiveStateView` + `MembraneHealthView` + `DTESNNetworkView` + `AAROrchestrationView`
+- [ ] Memory explorer (declarative/procedural/episodic) — `WorkingMemoryView` covers working memory only
 
 ### 4.3 Natural Language Interface
-- [ ] Natural language query bar (beyond SQL)
+- [x] Natural language query bar (beyond SQL) — `Zone-Cog: Natural Language to SQL` command (quick-input NL description → `SQLAnalyzerAgent.naturalLanguageToSQL` with perceived-schema context, result copied to clipboard) and `Zone-Cog: Explain SQL in Plain Language` (reverse direction)
 - [ ] Conversational data exploration
 - [ ] Cognitive assistant for schema design
 - [ ] Auto-generated insights from data patterns

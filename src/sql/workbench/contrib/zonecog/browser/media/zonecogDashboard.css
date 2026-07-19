@@ -720,3 +720,99 @@
 	font-size: 9px;
 	color: var(--vscode-descriptionForeground);
 }
+
+/* Thinking process view */
+.zonecog-thinking-phases {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.zonecog-thinking-idle {
+	font-size: 11px;
+	font-style: italic;
+	color: var(--vscode-descriptionForeground);
+	padding: 8px;
+}
+
+.zonecog-thinking-phase {
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-thinking-phase-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 4px;
+}
+
+.zonecog-thinking-phase-name {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.zonecog-thinking-phase-duration {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-thinking-phase-content {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.zonecog-thinking-response {
+	margin-top: 8px;
+}
+
+.zonecog-thinking-response-label {
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: 4px;
+}
+
+.zonecog-thinking-response-text {
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	white-space: pre-wrap;
+	word-break: break-word;
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-thinking-recent {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.zonecog-thinking-recent-item {
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-thinking-recent-meta {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: 2px;
+}
+
+.zonecog-thinking-recent-preview {
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
