@@ -41,6 +41,10 @@ interface DirectedEdge {
 	from: string;
 	to: string;
 	truthValue: TruthValue;
+	/** For edges backed by an inferred link: the rule that produced it. */
+	rule?: string;
+	/** For edges backed by an inferred link: the premise link ids it was derived from. */
+	premises?: string[];
 }
 
 /**
@@ -169,11 +173,14 @@ export class PLNReasoningService extends Disposable implements IPLNReasoningServ
 					continue;
 				}
 				seenLinkIds.add(link.id);
+				const premises = link.metadata['premises'];
 				edges.push({
 					linkId: link.id,
 					from: link.outgoing[0],
 					to: link.outgoing[1],
-					truthValue: this._truthValueOf(link.id)
+					truthValue: this._truthValueOf(link.id),
+					rule: link.metadata['inferred'] === true && typeof link.metadata['rule'] === 'string' ? link.metadata['rule'] : undefined,
+					premises: Array.isArray(premises) ? premises.filter((p): p is string => typeof p === 'string') : undefined
 				});
 			}
 		}
@@ -226,6 +233,10 @@ export class PLNReasoningService extends Disposable implements IPLNReasoningServ
 	private _applyInversion(edges: DirectedEdge[]): InferredLink[] {
 		const results: InferredLink[] = [];
 		for (const edge of edges) {
+			// Inverting an inversion only re-derives the original relation with
+			// degraded confidence - pure noise, so inversion-derived edges are
+			// not premises for further inversion.
+			if (edge.rule === 'inversion') { continue; }
 			const sA = this._priorOf(edge.from);
 			const sB = this._priorOf(edge.to);
 			const strength = sB > 0.0001 ? clamp01((edge.truthValue.strength * sA) / sB) : 0;
@@ -254,6 +265,10 @@ export class PLNReasoningService extends Disposable implements IPLNReasoningServ
 		for (const edge of edges) {
 			const reverse = byPair.get(`${edge.to}|${edge.from}`);
 			if (!reverse) { continue; }
+			// If one direction was derived from the other, the pair carries no
+			// independent evidence - similarity from a link and its own
+			// inversion would just double-count the same premise.
+			if (edge.premises?.includes(reverse.linkId) || reverse.premises?.includes(edge.linkId)) { continue; }
 			const pairKey = [edge.from, edge.to].sort().join('|');
 			if (seenPairs.has(pairKey)) { continue; }
 			seenPairs.add(pairKey);

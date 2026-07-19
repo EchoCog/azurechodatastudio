@@ -141,6 +141,24 @@ suite('PLN Reasoning Service Tests', () => {
 		assert.strictEqual(countAfterFirst, countAfterSecond, 'no duplicate conclusions should be added');
 	});
 
+	test('should not chain degenerate derivations from a single base link', () => {
+		hypergraphStore.addNode(node('A'));
+		hypergraphStore.addNode(node('B'));
+		hypergraphStore.addLink(link('ab', 'A', 'B'));
+		plnService.setTruthValue('ab', { strength: 0.9, confidence: 0.9 });
+
+		plnService.infer({ maxIterations: 3 });
+		const inferred = plnService.getInferredLinks();
+
+		// Only the B->A inversion is a real conclusion. Inverting that inversion
+		// back into A->B, or deriving Similarity(A,B) from ab and its own
+		// inversion, would just recycle the same evidence.
+		assert.strictEqual(inferred.length, 1);
+		assert.strictEqual(inferred[0].rule, 'inversion');
+		assert.strictEqual(inferred[0].from, 'B');
+		assert.strictEqual(inferred[0].to, 'A');
+	});
+
 	test('should discard conclusions below the minConfidence threshold', () => {
 		hypergraphStore.addNode(node('A'));
 		hypergraphStore.addNode(node('B'));

@@ -87,7 +87,10 @@ export interface IPLNReasoningService {
 	 * directed links, repeating until no new conclusions are derived or
 	 * `maxIterations` is reached. New conclusions are persisted as
 	 * hypergraph links (`link_type: 'Inferred'`) so they feed subsequent
-	 * inference passes.
+	 * inference passes. Degenerate derivations that merely recycle their own
+	 * evidence - inverting an inversion, or similarity between a link and
+	 * its own inversion - are skipped, so repeated calls converge to a
+	 * fixed point instead of accumulating noise.
 	 */
 	infer(options?: InferenceOptions): InferenceRunResult;
 
