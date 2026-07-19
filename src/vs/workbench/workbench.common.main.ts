@@ -600,6 +600,7 @@ import 'sql/workbench/contrib/table/browser/table.contribution';
 // zonecog - cognitive protocol integration
 import 'sql/workbench/services/zonecog/browser/zonecog.contribution';
 import 'sql/workbench/contrib/zonecog/browser/zonecogActions.contribution';
+import 'sql/workbench/contrib/zonecog/browser/zonecogPanel.contribution';
 
 // Deprecated Extension Migrator
 import 'vs/workbench/contrib/deprecatedExtensionMigrator/browser/deprecatedExtensionMigrator.contribution';

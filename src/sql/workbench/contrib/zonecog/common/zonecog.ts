@@ -36,3 +36,6 @@ export const ZONECOG_WORKFLOWS_VIEW_ID = 'zonecog.workflowsView';
 
 /** AGI Studio view ID. */
 export const ZONECOG_AGI_STUDIO_VIEW_ID = 'zonecog.agiStudioView';
+
+/** Thinking process view ID. */
+export const ZONECOG_THINKING_VIEW_ID = 'zonecog.thinkingView';

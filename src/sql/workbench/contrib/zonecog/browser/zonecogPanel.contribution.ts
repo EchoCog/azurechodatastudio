@@ -27,8 +27,10 @@ import {
 	ZONECOG_AAR_VIEW_ID,
 	ZONECOG_WORKFLOWS_VIEW_ID,
 	ZONECOG_AGI_STUDIO_VIEW_ID,
+	ZONECOG_THINKING_VIEW_ID,
 } from 'sql/workbench/contrib/zonecog/common/zonecog';
 import { CognitiveStateView, MembraneHealthView } from 'sql/workbench/contrib/zonecog/browser/zonecogViews';
+import { ThinkingProcessView } from 'sql/workbench/contrib/zonecog/browser/zonecogThinkingView';
 import { ECANAttentionView, WorkingMemoryView } from 'sql/workbench/contrib/zonecog/browser/zonecogAttentionViews';
 import { DTESNNetworkView, AAROrchestrationView, CognitiveWorkflowsView } from 'sql/workbench/contrib/zonecog/browser/zonecogAdvancedViews';
 import { AgiStudioView } from 'sql/workbench/contrib/zonecog/browser/agiStudioView';
@@ -190,6 +192,14 @@ Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews
 		canMoveView: false,
 		ctorDescriptor: new SyncDescriptor(AgiStudioView),
 		order: 8,
+	},
+	{
+		id: ZONECOG_THINKING_VIEW_ID,
+		name: localize('zonecog.thinkingView', 'Thinking Process'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(ThinkingProcessView),
+		order: 9,
 	},
 ], VIEW_CONTAINER);
 
