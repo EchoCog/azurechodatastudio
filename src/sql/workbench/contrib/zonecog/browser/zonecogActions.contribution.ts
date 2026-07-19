@@ -1884,24 +1884,6 @@ class ZoneCogRunInferenceAction extends Action2 {
 			title: { value: localize('zonecog.runInference', 'Run PLN Inference'), original: 'Run PLN Inference' },
 			category: ZONECOG_CATEGORY,
 			icon: Codicon.beaker,
-// =============================================================================
-// Phase 6.3 actions - Cognitive Analytics & Telemetry
-// =============================================================================
-
-/**
- * Action to show the cognitive analytics report (query latency, thinking
- * phase durations, ECAN efficiency, working memory utilization, LLM token
- * economics, and DTESN training convergence).
- */
-class ZoneCogAnalyticsReportAction extends Action2 {
-
-	static ID = 'zonecog.analyticsReport';
-	constructor() {
-		super({
-			id: ZoneCogAnalyticsReportAction.ID,
-			title: { value: localize('zonecog.analyticsReport', 'Show Cognitive Analytics Report'), original: 'Show Cognitive Analytics Report' },
-			category: ZONECOG_CATEGORY,
-			icon: Codicon.graph,
 			f1: true,
 			menu: { id: MenuId.CommandPalette },
 		});
@@ -1933,6 +1915,31 @@ class ZoneCogAnalyticsReportAction extends Action2 {
 }
 
 registerAction2(ZoneCogRunInferenceAction);
+
+// =============================================================================
+// Phase 6.3 actions - Cognitive Analytics & Telemetry
+// =============================================================================
+
+/**
+ * Action to show the cognitive analytics report (query latency, thinking
+ * phase durations, ECAN efficiency, working memory utilization, LLM token
+ * economics, and DTESN training convergence).
+ */
+class ZoneCogAnalyticsReportAction extends Action2 {
+
+	static ID = 'zonecog.analyticsReport';
+	constructor() {
+		super({
+			id: ZoneCogAnalyticsReportAction.ID,
+			title: { value: localize('zonecog.analyticsReport', 'Show Cognitive Analytics Report'), original: 'Show Cognitive Analytics Report' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.graph,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
 		const analyticsService = accessor.get(ICognitiveAnalyticsService);
 		const notificationService = accessor.get(INotificationService);
 
