@@ -13,7 +13,7 @@
 | 2.5 | Embodied Workbench | **Complete** (ECH-62) | Sensorimotor grounding, workspace memory, workbench actions |
 | 2.6 | Test Suite | **Complete** (ECH-27) | Comprehensive tests for all agents and services |
 | 3 | Intelligence Layer | **In Progress** (ECH-61) | AI/LLM integration, pattern mining, reasoning |
-| 4 | Workbench UX | **In Progress** | Visual cognitive maps, interactive exploration |
+| 4 | Workbench UX | **Near-Complete** | Visual cognitive maps, interactive exploration |
 | 5 | Post-ADS Migration | Planned | VS Code standalone, portable cognitive workbench |
 
 ---
@@ -183,28 +183,28 @@
 **Goal**: Transform the UI into an immersive cognitive workbench.
 
 ### 4.1 Visual Cognitive Maps
-- [ ] Interactive hypergraph visualization (D3.js/WebGL)
+- [x] Interactive hypergraph visualization — `HypergraphExplorerView` (canvas force-directed layout, nodes colored by type and sized by salience, live relayout on hypergraph changes; hand-rolled simulation, no D3/WebGL dependency)
 - [x] Thinking process timeline view — `ThinkingProcessView` (ordered live phase timeline with per-phase durations)
-- [ ] Schema-to-cognition mapping explorer
+- [x] Schema-to-cognition mapping explorer — `SchemaCognitionMapView` (per perceived table: hypergraph nodes referencing it and schema-evolution changes recorded for it)
 - [x] Salience heat maps for attention visualization — `ECANAttentionView` (attention distribution bars over the most salient nodes)
 
 ### 4.2 Cognitive Panels
-- [x] Dedicated ZoneCog sidebar panel — `zonecogPanel.contribution` view container (workbench panel with 9 views; note: existed but was never imported into `workbench.common.main.ts`, so it never loaded until now)
-- [x] Real-time thinking process display — `ThinkingProcessView` (streams `onDidCompleteThinkingPhase` phases and `onDidStreamResponseToken` tokens live, retains recent query summaries)
+- [x] Dedicated ZoneCog sidebar panel — `zonecogPanel.contribution` view container (workbench panel, now 12 views; note: existed but was never imported into `workbench.common.main.ts`, so it never loaded until wired in)
+- [x] Real-time thinking process display — `ThinkingProcessView` (streams `onDidCompleteThinkingPhase` phases and `onDidStreamResponseToken` tokens live, retains recent query summaries, also renders trace replays)
 - [x] Cognitive state dashboard — `CognitiveStateView` + `MembraneHealthView` + `DTESNNetworkView` + `AAROrchestrationView`
-- [ ] Memory explorer (declarative/procedural/episodic) — `WorkingMemoryView` covers working memory only
+- [x] Memory explorer (declarative/procedural/episodic) — `MemoryExplorerView` (episodic memory, task contexts, and declarative node-type breakdown; `WorkingMemoryView` covers working memory)
 
 ### 4.3 Natural Language Interface
 - [x] Natural language query bar (beyond SQL) — `Zone-Cog: Natural Language to SQL` command (quick-input NL description → `SQLAnalyzerAgent.naturalLanguageToSQL` with perceived-schema context, result copied to clipboard) and `Zone-Cog: Explain SQL in Plain Language` (reverse direction)
-- [ ] Conversational data exploration
-- [ ] Cognitive assistant for schema design
-- [ ] Auto-generated insights from data patterns
+- [x] Conversational data exploration — `Zone-Cog: Explore Data Conversationally` (multi-turn loop; each turn carries the running Q&A transcript and perceived-schema context to the LLM provider)
+- [x] Cognitive assistant for schema design — `Zone-Cog: Schema Design Assistant` (guided DDL analysis over `SchemaReasonerAgent`: design-issue review, domain model inference, documentation generation)
+- [x] Auto-generated insights from data patterns — `ICognitiveInsightsService`/`CognitiveInsightsService` (rule-based insights generated automatically from observed queries and perceived schemas, persisted as `Insight` hypergraph nodes, surfaced via `Zone-Cog: Show Generated Insights`)
 
 ### 4.4 Collaborative Cognition
-- [ ] Multi-user cognitive workspaces
-- [ ] Shared hypergraph state
-- [ ] Collaborative reasoning sessions
-- [ ] Cognitive trace sharing and replay
+- [ ] Multi-user cognitive workspaces — same-machine multi-window sharing landed via `ISharedCognitionService`; true multi-user across machines requires a sync backend (future work)
+- [x] Shared hypergraph state — `ISharedCognitionService`/`SharedCognitionService` (BroadcastChannel sync of hypergraph node/link upserts across workbench windows with hello handshake and echo suppression; cross-machine sharing remains future work)
+- [ ] Collaborative reasoning sessions — foundation in place (shared hypergraph sessions + trace replay); live multi-user co-reasoning requires a sync backend (future work)
+- [x] Cognitive trace sharing and replay — `ICognitiveTraceService`/`CognitiveTraceService` (session trace recording, versioned JSON export/import via clipboard, phase-by-phase replay rendered in the Thinking Process view)
 
 ---
 

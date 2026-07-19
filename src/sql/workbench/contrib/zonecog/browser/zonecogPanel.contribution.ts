@@ -28,9 +28,15 @@ import {
 	ZONECOG_WORKFLOWS_VIEW_ID,
 	ZONECOG_AGI_STUDIO_VIEW_ID,
 	ZONECOG_THINKING_VIEW_ID,
+	ZONECOG_HYPERGRAPH_VIEW_ID,
+	ZONECOG_MEMORY_VIEW_ID,
+	ZONECOG_SCHEMA_MAP_VIEW_ID,
 } from 'sql/workbench/contrib/zonecog/common/zonecog';
 import { CognitiveStateView, MembraneHealthView } from 'sql/workbench/contrib/zonecog/browser/zonecogViews';
 import { ThinkingProcessView } from 'sql/workbench/contrib/zonecog/browser/zonecogThinkingView';
+import { HypergraphExplorerView } from 'sql/workbench/contrib/zonecog/browser/zonecogHypergraphView';
+import { MemoryExplorerView } from 'sql/workbench/contrib/zonecog/browser/zonecogMemoryView';
+import { SchemaCognitionMapView } from 'sql/workbench/contrib/zonecog/browser/zonecogSchemaMapView';
 import { ECANAttentionView, WorkingMemoryView } from 'sql/workbench/contrib/zonecog/browser/zonecogAttentionViews';
 import { DTESNNetworkView, AAROrchestrationView, CognitiveWorkflowsView } from 'sql/workbench/contrib/zonecog/browser/zonecogAdvancedViews';
 import { AgiStudioView } from 'sql/workbench/contrib/zonecog/browser/agiStudioView';
@@ -200,6 +206,30 @@ Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews
 		canMoveView: false,
 		ctorDescriptor: new SyncDescriptor(ThinkingProcessView),
 		order: 9,
+	},
+	{
+		id: ZONECOG_HYPERGRAPH_VIEW_ID,
+		name: localize('zonecog.hypergraphView', 'Hypergraph Explorer'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(HypergraphExplorerView),
+		order: 10,
+	},
+	{
+		id: ZONECOG_MEMORY_VIEW_ID,
+		name: localize('zonecog.memoryView', 'Memory Explorer'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(MemoryExplorerView),
+		order: 11,
+	},
+	{
+		id: ZONECOG_SCHEMA_MAP_VIEW_ID,
+		name: localize('zonecog.schemaMapView', 'Schema-Cognition Map'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(SchemaCognitionMapView),
+		order: 12,
 	},
 ], VIEW_CONTAINER);
 

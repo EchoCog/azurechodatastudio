@@ -816,3 +816,39 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
+
+/* Hypergraph explorer view */
+.zonecog-hypergraph-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.zonecog-hypergraph-canvas {
+	flex: 1;
+	min-height: 100px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-hypergraph-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 6px 2px;
+}
+
+.zonecog-hypergraph-legend-entry {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-hypergraph-legend-swatch {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+}
