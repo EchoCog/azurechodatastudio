@@ -60,6 +60,8 @@ export interface CognitiveLoopState {
 	tickIntervalMs: number;
 	/** Timestamp of the last completed iteration. */
 	lastIterationTime: number;
+	/** Number of hung iterations recovered by the watchdog timer. */
+	watchdogRecoveries: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +85,9 @@ export interface CognitiveLoopState {
  *    decay working memory, and adjust attention boundaries
  *
  * The loop runs on a configurable interval (default 5 seconds) and
- * can be started, stopped, and paused.
+ * can be started, stopped, and paused. While running, a watchdog timer
+ * monitors iteration execution and recovers the loop if an iteration
+ * hangs, ensuring the autonomous cycle cannot stall permanently.
  */
 export interface ICognitiveLoopService {
 	readonly _serviceBrand: undefined;

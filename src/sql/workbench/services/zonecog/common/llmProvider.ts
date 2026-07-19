@@ -67,6 +67,30 @@ export interface LLMCompletionResponse {
 }
 
 /**
+ * Telemetry record for a single completed LLM request, fired after every
+ * successful `complete()` / `completeStream()` call. Consumed by the
+ * Cognitive Analytics service to track LLM token economics.
+ */
+export interface LLMRequestTelemetry {
+	/** Provider that actually produced the response (post-fallback). */
+	providerId: string;
+	/** Whether the built-in fallback produced the response. */
+	isFallback: boolean;
+	/** Whether the response was produced via the streaming path. */
+	streamed: boolean;
+	/** End-to-end request latency in ms. */
+	latencyMs: number;
+	/** Prompt tokens consumed (0 when the provider reports no usage). */
+	promptTokens: number;
+	/** Completion tokens produced (0 when the provider reports no usage). */
+	completionTokens: number;
+	/** Total tokens (0 when the provider reports no usage). */
+	totalTokens: number;
+	/** Timestamp when the request completed. */
+	timestamp: number;
+}
+
+/**
  * Pluggable LLM provider service for Zone-Cog cognitive processing.
  *
  * Supports multiple backends: OpenAI-compatible APIs, Aphrodite Engine,
@@ -81,6 +105,12 @@ export interface ILLMProviderService {
 
 	/** Fired when a provider becomes available or unavailable. */
 	readonly onDidChangeAvailability: Event<{ providerId: string; available: boolean }>;
+
+	/**
+	 * Fired after every successfully completed request (streaming or not)
+	 * with latency and token-usage telemetry for cognitive analytics.
+	 */
+	readonly onDidCompleteRequest: Event<LLMRequestTelemetry>;
 
 	/**
 	 * Register a new LLM provider configuration.

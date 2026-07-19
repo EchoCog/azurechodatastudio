@@ -8,6 +8,7 @@ import {
 	LLMProviderConfig,
 	LLMCompletionRequest,
 	LLMCompletionResponse,
+	LLMRequestTelemetry,
 	LLMStreamTokenCallback
 } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
@@ -84,6 +85,9 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 
 	private readonly _onDidChangeAvailability = this._register(new Emitter<{ providerId: string; available: boolean }>());
 	readonly onDidChangeAvailability: Event<{ providerId: string; available: boolean }> = this._onDidChangeAvailability.event;
+
+	private readonly _onDidCompleteRequest = this._register(new Emitter<LLMRequestTelemetry>());
+	readonly onDidCompleteRequest: Event<LLMRequestTelemetry> = this._onDidCompleteRequest.event;
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
@@ -164,12 +168,18 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 			}
 			: requestOrPrompt;
 
+		const startTime = Date.now();
+		const response = await this._completeCore(request);
+		this._fireRequestTelemetry(response, Date.now() - startTime, false);
+		return typeof requestOrPrompt === 'string' ? response.content : response;
+	}
+
+	private async _completeCore(request: LLMCompletionRequest): Promise<LLMCompletionResponse> {
 		const provider = this.getActiveProvider();
 		this.membraneService.recordActivity('cerebral');
 
 		if (provider.id === BUILTIN_PROVIDER_ID) {
-			const response = this._builtinComplete(request);
-			return typeof requestOrPrompt === 'string' ? response.content : response;
+			return this._builtinComplete(request);
 		}
 
 		// Check circuit breaker state
@@ -185,25 +195,30 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 			// Circuit is open - fall back immediately
 			this.logService.warn(`LLMProviderService: circuit open for '${provider.id}', using fallback`);
 			this.membraneService.recordActivity('autonomic'); // Record error recovery
-			const response = this._builtinComplete(request);
-			return typeof requestOrPrompt === 'string' ? response.content : response;
+			return this._builtinComplete(request);
 		}
 
 		// Circuit is closed - try normal request
 		try {
 			const response = await this._externalCompleteWithRetry(provider, request);
 			this._recordSuccess(provider.id);
-			return typeof requestOrPrompt === 'string' ? response.content : response;
+			return response;
 		} catch (err) {
 			this._recordFailure(provider.id);
 			this.logService.warn(`LLMProviderService: external provider '${provider.id}' failed, falling back`, err);
 			this.membraneService.recordActivity('autonomic'); // Record error recovery
-			const response = this._builtinComplete(request);
-			return typeof requestOrPrompt === 'string' ? response.content : response;
+			return this._builtinComplete(request);
 		}
 	}
 
 	async completeStream(request: LLMCompletionRequest, onToken: LLMStreamTokenCallback): Promise<LLMCompletionResponse> {
+		const startTime = Date.now();
+		const response = await this._completeStreamCore(request, onToken);
+		this._fireRequestTelemetry(response, Date.now() - startTime, true);
+		return response;
+	}
+
+	private async _completeStreamCore(request: LLMCompletionRequest, onToken: LLMStreamTokenCallback): Promise<LLMCompletionResponse> {
 		const provider = this.getActiveProvider();
 		this.membraneService.recordActivity('cerebral');
 
@@ -332,6 +347,25 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 		}
 
 		throw lastError;
+	}
+
+	// -- Telemetry -----------------------------------------------------------
+
+	/**
+	 * Emit token-economics telemetry for a completed request. Consumed by
+	 * the Cognitive Analytics service (Phase 6.3).
+	 */
+	private _fireRequestTelemetry(response: LLMCompletionResponse, latencyMs: number, streamed: boolean): void {
+		this._onDidCompleteRequest.fire({
+			providerId: response.providerId,
+			isFallback: response.isFallback,
+			streamed,
+			latencyMs,
+			promptTokens: response.usage?.promptTokens ?? 0,
+			completionTokens: response.usage?.completionTokens ?? 0,
+			totalTokens: response.usage?.totalTokens ?? 0,
+			timestamp: Date.now(),
+		});
 	}
 
 	// -- Circuit Breaker Logic -----------------------------------------------

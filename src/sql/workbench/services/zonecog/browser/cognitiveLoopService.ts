@@ -33,6 +33,12 @@ const MIN_TICK_INTERVAL_MS = 1000;
 const MAX_ITERATION_HISTORY = 100;
 
 /**
+ * Multiple of the tick interval after which an in-flight iteration is
+ * considered hung and recovered by the watchdog timer.
+ */
+const WATCHDOG_HANG_MULTIPLIER = 3;
+
+/**
  * Cognitive Loop Service - the autonomous heartbeat of the Zone-Cog system.
  *
  * Orchestrates a continuous cognitive cycle:
@@ -58,6 +64,10 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	private _paused = false;
 	private _tickIntervalMs = DEFAULT_TICK_INTERVAL_MS;
 	private _timerHandle: ReturnType<typeof setInterval> | null = null;
+	private _watchdogHandle: ReturnType<typeof setInterval> | null = null;
+	private _iterationInFlightSince: number | null = null;
+	private _flightToken = 0;
+	private _watchdogRecoveries = 0;
 	private _iterationCount = 0;
 	private _failedIterations = 0;
 	private _totalDurationMs = 0;
@@ -98,6 +108,8 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 			}
 		}, this._tickIntervalMs);
 
+		this._startWatchdog();
+
 		this.membraneService.recordActivity('cerebral');
 		this._fireStateChange();
 		this.logService.info(`CognitiveLoopService: started (interval=${this._tickIntervalMs}ms)`);
@@ -112,6 +124,8 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 			clearInterval(this._timerHandle);
 			this._timerHandle = null;
 		}
+
+		this._stopWatchdog();
 
 		this._running = false;
 		this._paused = false;
@@ -155,6 +169,7 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 					this._tick();
 				}
 			}, this._tickIntervalMs);
+			this._startWatchdog();
 		}
 
 		this._fireStateChange();
@@ -172,6 +187,7 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 				: 0,
 			tickIntervalMs: this._tickIntervalMs,
 			lastIterationTime: this._lastIterationTime,
+			watchdogRecoveries: this._watchdogRecoveries,
 		};
 	}
 
@@ -187,6 +203,8 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 		this._lastIterationTime = 0;
 		this._recentIterations.length = 0;
 		this._tickIntervalMs = DEFAULT_TICK_INTERVAL_MS;
+		this._watchdogRecoveries = 0;
+		this._iterationInFlightSince = null;
 		this._fireStateChange();
 		this.logService.info('CognitiveLoopService: reset');
 	}
@@ -199,12 +217,19 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	// -- Private: Core loop ---------------------------------------------------
 
 	private _tick(): void {
+		// Skip if a previous iteration is still in flight - the watchdog
+		// timer will recover the loop if that iteration has hung.
+		if (this._iterationInFlightSince !== null) {
+			return;
+		}
 		// Fire-and-forget; errors are handled inside _executeIteration
 		this._executeIteration().catch(() => { /* errors already recorded */ });
 	}
 
 	private async _executeIteration(): Promise<CognitiveLoopIteration> {
 		const startTime = Date.now();
+		const flightToken = ++this._flightToken;
+		this._iterationInFlightSince = startTime;
 		const phases: CognitiveLoopPhase[] = [];
 		let success = true;
 		let error: string | undefined;
@@ -234,6 +259,11 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 		}
 
 		const durationMs = Date.now() - startTime;
+		// Release the in-flight marker unless the watchdog already recovered
+		// this iteration (a newer flight token would have been issued).
+		if (this._flightToken === flightToken) {
+			this._iterationInFlightSince = null;
+		}
 		this._iterationCount++;
 		this._totalDurationMs += durationMs;
 		this._lastIterationTime = startTime;
@@ -441,6 +471,50 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 			durationMs: Date.now() - start,
 			summary: `Decayed WM (${wm.length} items), recorded episode`,
 		};
+	}
+
+	// -- Watchdog (Phase 7.2: error recovery & resilience) ---------------------
+
+	/**
+	 * Start (or restart) the watchdog timer. The watchdog checks once per
+	 * tick interval whether an in-flight iteration has been running for
+	 * longer than WATCHDOG_HANG_MULTIPLIER tick intervals; if so, the
+	 * iteration is considered hung and the loop is recovered so future
+	 * ticks can execute again.
+	 */
+	private _startWatchdog(): void {
+		this._stopWatchdog();
+		this._watchdogHandle = setInterval(() => this._watchdogCheck(), this._tickIntervalMs);
+	}
+
+	private _stopWatchdog(): void {
+		if (this._watchdogHandle !== null) {
+			clearInterval(this._watchdogHandle);
+			this._watchdogHandle = null;
+		}
+	}
+
+	private _watchdogCheck(): void {
+		this.membraneService.recordActivity('autonomic');
+
+		if (!this._running || this._iterationInFlightSince === null) {
+			return;
+		}
+
+		const hungMs = Date.now() - this._iterationInFlightSince;
+		const hangLimitMs = this._tickIntervalMs * WATCHDOG_HANG_MULTIPLIER;
+
+		if (hungMs > hangLimitMs) {
+			// Invalidate the hung iteration's flight token and release the
+			// in-flight marker so subsequent ticks resume executing.
+			this._flightToken++;
+			this._iterationInFlightSince = null;
+			this._watchdogRecoveries++;
+			this._failedIterations++;
+			this.membraneService.recordError('autonomic', `Cognitive loop watchdog recovered a hung iteration after ${hungMs}ms`);
+			this.logService.warn(`CognitiveLoopService: watchdog recovered hung iteration after ${hungMs}ms (limit ${hangLimitMs}ms)`);
+			this._fireStateChange();
+		}
 	}
 
 	// -- Helpers --------------------------------------------------------------

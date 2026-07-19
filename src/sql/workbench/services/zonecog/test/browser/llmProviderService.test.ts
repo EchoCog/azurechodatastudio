@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
-import { ILLMProviderService, LLMProviderConfig, LLMCompletionRequest } from 'sql/workbench/services/zonecog/common/llmProvider';
+import { ILLMProviderService, LLMProviderConfig, LLMCompletionRequest, LLMRequestTelemetry } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { LLMProviderService } from 'sql/workbench/services/zonecog/browser/llmProviderService';
 import { ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
@@ -359,6 +359,33 @@ suite('LLM Provider Service Tests', () => {
 		assert.ok(firedEvent);
 		assert.strictEqual(firedEvent!.providerId, 'remove-provider');
 		assert.strictEqual(firedEvent!.available, false);
+	});
+
+	test('should fire onDidCompleteRequest with telemetry after a completion', async () => {
+		let telemetry: LLMRequestTelemetry | undefined;
+		llmService.onDidCompleteRequest(t => { telemetry = t; });
+
+		await llmService.complete('telemetry test prompt');
+
+		assert.ok(telemetry, 'telemetry event should have fired');
+		assert.strictEqual(telemetry!.providerId, 'builtin-fallback');
+		assert.strictEqual(telemetry!.isFallback, true);
+		assert.strictEqual(telemetry!.streamed, false);
+		assert.ok(telemetry!.latencyMs >= 0);
+		assert.ok(telemetry!.timestamp > 0);
+	});
+
+	test('should fire onDidCompleteRequest with streamed=true for streaming completions', async () => {
+		let telemetry: LLMRequestTelemetry | undefined;
+		llmService.onDidCompleteRequest(t => { telemetry = t; });
+
+		await llmService.completeStream({
+			systemPrompt: 'system',
+			userMessage: 'stream telemetry test',
+		}, () => { /* consume tokens */ });
+
+		assert.ok(telemetry, 'telemetry event should have fired');
+		assert.strictEqual(telemetry!.streamed, true);
 	});
 
 	// --- Provider Configuration Tests ---

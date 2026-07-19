@@ -43,6 +43,8 @@ import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/comm
 import { CognitiveProvenanceService } from 'sql/workbench/services/zonecog/browser/cognitiveProvenanceService';
 import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
 import { SchemaEvolutionService } from 'sql/workbench/services/zonecog/browser/schemaEvolutionService';
+import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
+import { CognitiveAnalyticsService } from 'sql/workbench/services/zonecog/browser/cognitiveAnalyticsService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -124,3 +126,8 @@ registerSingleton(ICognitiveProvenanceService, CognitiveProvenanceService, Insta
 // Register the Schema Evolution service (snapshot diffing of perceived
 // schemas into a persisted SchemaChange history)
 registerSingleton(ISchemaEvolutionService, SchemaEvolutionService, InstantiationType.Eager);
+
+// Register the Cognitive Analytics service (Phase 6.3: query latency
+// histograms, thinking phase durations, ECAN efficiency, working memory
+// utilization, LLM token economics, and DTESN training convergence)
+registerSingleton(ICognitiveAnalyticsService, CognitiveAnalyticsService, InstantiationType.Eager);
