@@ -29,7 +29,7 @@ export interface SemanticSearchResult {
 /**
  * Hypergraph Semantic Search service.
  *
- * Closes the "Embedding Support — vector embeddings for hypergraph semantic
+ * Closes the "Embedding Support - vector embeddings for hypergraph semantic
  * search" item from the Aphrodite deep-integration plan (issue #53, 5.3):
  * indexed hypergraph nodes are embedded via `IAphroditeService.embed()` when
  * an Aphrodite engine is connected, falling back to a deterministic local
