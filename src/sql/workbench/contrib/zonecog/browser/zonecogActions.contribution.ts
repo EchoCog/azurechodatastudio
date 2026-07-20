@@ -36,6 +36,7 @@ import { ICognitiveInsightsService } from 'sql/workbench/services/zonecog/common
 import { ICognitiveTraceService } from 'sql/workbench/services/zonecog/common/cognitiveTrace';
 import { ISharedCognitionService } from 'sql/workbench/services/zonecog/common/sharedCognition';
 import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
+import { IHypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/common/hypergraphSemanticSearch';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
 
@@ -2390,6 +2391,84 @@ class ZoneCogToggleSharedCognitionAction extends Action2 {
 	}
 }
 
+/**
+ * Action to index the hypergraph for semantic search
+ */
+class ZoneCogIndexSemanticSearchAction extends Action2 {
+
+	static ID = 'zonecog.indexSemanticSearch';
+	constructor() {
+		super({
+			id: ZoneCogIndexSemanticSearchAction.ID,
+			title: { value: localize('zonecog.indexSemanticSearch', 'Index Hypergraph for Semantic Search'), original: 'Index Hypergraph for Semantic Search' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.search,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const searchService = accessor.get(IHypergraphSemanticSearchService);
+		const notificationService = accessor.get(INotificationService);
+
+		const indexed = await searchService.indexAll();
+		notificationService.info(localize('zonecog.indexSemanticSearchDone',
+			'Indexed {0} hypergraph node(s) for semantic search ({1} total in index).',
+			indexed, searchService.getIndexedCount()));
+	}
+}
+
+/**
+ * Action to run a semantic search over the hypergraph
+ */
+class ZoneCogSemanticSearchAction extends Action2 {
+
+	static ID = 'zonecog.semanticSearch';
+	constructor() {
+		super({
+			id: ZoneCogSemanticSearchAction.ID,
+			title: { value: localize('zonecog.semanticSearch', 'Semantic Search Hypergraph'), original: 'Semantic Search Hypergraph' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.search,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const searchService = accessor.get(IHypergraphSemanticSearchService);
+		const hypergraphStore = accessor.get(IHypergraphStore);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		if (hypergraphStore.nodeCount() === 0) {
+			notificationService.info(localize('zonecog.semanticSearchEmpty', 'Hypergraph is empty. Process a query first to populate it.'));
+			return;
+		}
+
+		const query = await quickInputService.input({
+			placeHolder: localize('zonecog.semanticSearchPlaceholder', 'Describe what you are looking for (e.g. "tables about customer orders")'),
+			prompt: localize('zonecog.semanticSearchPrompt', 'Semantic Search Hypergraph'),
+		});
+		if (!query || query.trim().length === 0) {
+			return;
+		}
+
+		const results = await searchService.search(query, 10);
+		if (results.length === 0) {
+			notificationService.info(localize('zonecog.semanticSearchNoResults', 'No matching hypergraph nodes found for "{0}".', query));
+			return;
+		}
+
+		const summary = results.map(r =>
+			`[${r.node.node_type}] ${r.node.content.substring(0, 80)}${r.node.content.length > 80 ? '...' : ''} (score: ${r.score.toFixed(3)})`
+		).join('\n');
+
+		notificationService.info(localize('zonecog.semanticSearchResults', 'Semantic Search Results for "{0}":\n{1}', query, summary));
+	}
+}
+
 // Phase 4 completion actions
 registerAction2(ZoneCogConversationalExplorationAction);
 registerAction2(ZoneCogSchemaDesignAssistantAction);
@@ -2397,6 +2476,8 @@ registerAction2(ZoneCogShowInsightsAction);
 registerAction2(ZoneCogExportTraceAction);
 registerAction2(ZoneCogImportTraceAction);
 registerAction2(ZoneCogToggleSharedCognitionAction);
+registerAction2(ZoneCogIndexSemanticSearchAction);
+registerAction2(ZoneCogSemanticSearchAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.
