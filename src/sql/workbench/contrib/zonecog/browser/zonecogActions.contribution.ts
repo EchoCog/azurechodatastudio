@@ -35,6 +35,7 @@ import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmPr
 import { ICognitiveInsightsService } from 'sql/workbench/services/zonecog/common/cognitiveInsights';
 import { ICognitiveTraceService } from 'sql/workbench/services/zonecog/common/cognitiveTrace';
 import { ISharedCognitionService } from 'sql/workbench/services/zonecog/common/sharedCognition';
+import { ISensorimotorBindingService } from 'sql/workbench/services/zonecog/common/sensorimotorBinding';
 import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 import { IHypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/common/hypergraphSemanticSearch';
 
@@ -2392,6 +2393,17 @@ class ZoneCogToggleSharedCognitionAction extends Action2 {
 }
 
 /**
+ * Action to toggle the DTESN sensorimotor binding loop (Phase 5.4).
+ */
+class ZoneCogToggleSensorimotorBindingAction extends Action2 {
+
+	static ID = 'zonecog.toggleSensorimotorBinding';
+	constructor() {
+		super({
+			id: ZoneCogToggleSensorimotorBindingAction.ID,
+			title: { value: localize('zonecog.toggleSensorimotorBinding', 'Toggle DTESN Sensorimotor Binding'), original: 'Toggle DTESN Sensorimotor Binding' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.pulse,
  * Action to index the hypergraph for semantic search
  */
 class ZoneCogIndexSemanticSearchAction extends Action2 {
@@ -2409,6 +2421,35 @@ class ZoneCogIndexSemanticSearchAction extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
+		const bindingService = accessor.get(ISensorimotorBindingService);
+		const notificationService = accessor.get(INotificationService);
+
+		if (bindingService.getState().active) {
+			bindingService.stop();
+			const state = bindingService.getState();
+			notificationService.info(localize('zonecog.sensorimotorStopped',
+				'DTESN sensorimotor binding stopped ({0} percept(s) encoded, {1} motor action(s) emitted).',
+				state.perceptsEncoded, state.actionsEmitted));
+		} else {
+			bindingService.start();
+			notificationService.info(localize('zonecog.sensorimotorStarted',
+				'DTESN sensorimotor binding started - workspace percepts now drive the Deep Tree Echo State Network.'));
+		}
+	}
+}
+
+/**
+ * Action to show DTESN sensorimotor binding status (Phase 5.4).
+ */
+class ZoneCogSensorimotorStatusAction extends Action2 {
+
+	static ID = 'zonecog.sensorimotorStatus';
+	constructor() {
+		super({
+			id: ZoneCogSensorimotorStatusAction.ID,
+			title: { value: localize('zonecog.sensorimotorStatus', 'Show DTESN Sensorimotor Binding Status'), original: 'Show DTESN Sensorimotor Binding Status' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.pulse,
 		const searchService = accessor.get(IHypergraphSemanticSearchService);
 		const notificationService = accessor.get(INotificationService);
 
@@ -2437,6 +2478,16 @@ class ZoneCogSemanticSearchAction extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
+		const bindingService = accessor.get(ISensorimotorBindingService);
+		const notificationService = accessor.get(INotificationService);
+
+		const state = bindingService.getState();
+		notificationService.info(localize('zonecog.sensorimotorStatusInfo',
+			'Sensorimotor Binding: {0} | Percepts encoded: {1} | Actions emitted: {2} | Feedback samples: {3} | Training runs: {4} | Last MSE: {5} | Confidence threshold: {6}',
+			state.active ? localize('zonecog.sensorimotorActive', 'ACTIVE') : localize('zonecog.sensorimotorInactive', 'INACTIVE'),
+			state.perceptsEncoded, state.actionsEmitted, state.feedbackSamples, state.trainingRuns,
+			state.lastTrainingMse === null ? localize('zonecog.sensorimotorNoTraining', 'n/a') : state.lastTrainingMse.toFixed(6),
+			state.confidenceThreshold.toFixed(2)));
 		const searchService = accessor.get(IHypergraphSemanticSearchService);
 		const hypergraphStore = accessor.get(IHypergraphStore);
 		const notificationService = accessor.get(INotificationService);
@@ -2478,6 +2529,10 @@ registerAction2(ZoneCogImportTraceAction);
 registerAction2(ZoneCogToggleSharedCognitionAction);
 registerAction2(ZoneCogIndexSemanticSearchAction);
 registerAction2(ZoneCogSemanticSearchAction);
+
+// Phase 5.4 DTESN sensorimotor binding actions
+registerAction2(ZoneCogToggleSensorimotorBindingAction);
+registerAction2(ZoneCogSensorimotorStatusAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.

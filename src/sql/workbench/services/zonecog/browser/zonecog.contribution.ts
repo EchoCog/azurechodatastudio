@@ -20,6 +20,8 @@ import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cog
 import { CognitiveLoopService } from 'sql/workbench/services/zonecog/browser/cognitiveLoopService';
 import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
 import { DTESNService } from 'sql/workbench/services/zonecog/browser/dtesnService';
+import { ISensorimotorBindingService } from 'sql/workbench/services/zonecog/common/sensorimotorBinding';
+import { SensorimotorBindingService } from 'sql/workbench/services/zonecog/browser/sensorimotorBindingService';
 import { IAAROrchestrationService } from 'sql/workbench/services/zonecog/common/aarOrchestration';
 import { AAROrchestrationService } from 'sql/workbench/services/zonecog/browser/aarOrchestrationService';
 import { IHypergraphPersistenceService } from 'sql/workbench/services/zonecog/common/hypergraphPersistence';
@@ -81,6 +83,9 @@ registerSingleton(ICognitiveLoopService, CognitiveLoopService, InstantiationType
 
 // Register the DTESN service (Deep Tree Echo State Network - temporal reservoir computing)
 registerSingleton(IDTESNService, DTESNService, InstantiationType.Eager);
+
+// Register the Sensorimotor Binding service (Phase 5.4: DTESN sensorimotor binding - temporal encoding, motor decoding, online learning)
+registerSingleton(ISensorimotorBindingService, SensorimotorBindingService, InstantiationType.Eager);
 
 // Register the AAR Orchestration service (Agent-Arena-Relation core orchestration)
 registerSingleton(IAAROrchestrationService, AAROrchestrationService, InstantiationType.Eager);
