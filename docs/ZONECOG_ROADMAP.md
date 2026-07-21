@@ -175,6 +175,7 @@
 - [ ] Federated hypergraph queries (FlareCog integration)
 - [x] Schema evolution tracking — `ISchemaEvolutionService`/`SchemaEvolutionService` (per-connection snapshot diffing of perceived schemas into added/removed/modified `SchemaChange` hypergraph nodes, self-wired to `ISchemaPerceptionService.onDidPerceiveSchema`)
 - [x] Provenance and audit trails for cognitive decisions — `ICognitiveProvenanceService`/`CognitiveProvenanceService` (bounded audit trail, `CognitiveDecision` hypergraph nodes with `EvidencedBy` links, transitive provenance chain resolution)
+- [x] Semantic (embedding-based) search over hypergraph nodes — `IHypergraphSemanticSearchService`/`HypergraphSemanticSearchService` (closes the "Embedding Support" item of the Aphrodite deep-integration plan, issue #53 §5.3: nodes and queries embedded via `IAphroditeService.embed()` when connected, deterministic local hashing-trick bag-of-words fallback otherwise; cosine-similarity ranking with lazy re-indexing on node content changes)
 
 ---
 
