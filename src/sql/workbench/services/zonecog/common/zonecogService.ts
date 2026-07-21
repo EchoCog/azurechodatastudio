@@ -198,6 +198,13 @@ export interface ICognitiveMembraneService {
 
 	/** Reset error counts for a triad. */
 	resetErrors(triad: MembraneTriad): void;
+
+	/**
+	 * Attempt to recover an unhealthy triad by halving its accumulated error
+	 * count (autonomic self-healing). Returns true when the triad is healthy
+	 * after the recovery attempt.
+	 */
+	attemptRecovery(triad: MembraneTriad): boolean;
 }
 
 // ---------------------------------------------------------------------------

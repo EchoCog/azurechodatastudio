@@ -30,8 +30,9 @@ import { ISchemaPerceptionService } from 'sql/workbench/services/zonecog/common/
 import { SchemaPerceptionService } from 'sql/workbench/services/zonecog/browser/schemaPerceptionService';
 import { IAphroditeService } from 'sql/workbench/services/zonecog/common/aphrodite';
 import { AphroditeService } from 'sql/workbench/services/zonecog/browser/aphroditeService';
-import { ISQLAnalyzerAgent, ISchemaReasonerAgent, IPerformanceAdvisorAgent, IDataPatternAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
+import { ISQLAnalyzerAgent, ISchemaReasonerAgent, IPerformanceAdvisorAgent, IDataPatternAgent, INaturalLanguageAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
 import { SQLAnalyzerAgent } from 'sql/workbench/services/zonecog/browser/sqlAnalyzerAgent';
+import { NaturalLanguageAgent } from 'sql/workbench/services/zonecog/browser/naturalLanguageAgent';
 import { SchemaReasonerAgent } from 'sql/workbench/services/zonecog/browser/schemaReasonerAgent';
 import { PerformanceAdvisorAgent } from 'sql/workbench/services/zonecog/browser/performanceAdvisorAgent';
 import { DataPatternAgent } from 'sql/workbench/services/zonecog/browser/dataPatternAgent';
@@ -116,6 +117,9 @@ registerSingleton(IPerformanceAdvisorAgent, PerformanceAdvisorAgent, Instantiati
 
 // Register the Data Pattern Agent (statistical pattern recognition)
 registerSingleton(IDataPatternAgent, DataPatternAgent, InstantiationType.Eager);
+
+// Register the Natural Language Agent (NL-to-SQL translation via LLM)
+registerSingleton(INaturalLanguageAgent, NaturalLanguageAgent, InstantiationType.Eager);
 
 // Register Phase 6 services
 
