@@ -326,6 +326,11 @@ Available through Command Palette (`Ctrl+Shift+P`):
 - `Zone-Cog: Show Workflow Execution History` — View recent executions
 - `Zone-Cog: Toggle Workflow Enabled` — Enable/disable a workflow
 
+### Phase 3.4 / 4.4 - Shared and Federated Cognition
+- `Zone-Cog: Toggle Shared Cognition Session` — Sync hypergraph node/link upserts with other workbench windows on this machine
+- `Zone-Cog: Toggle Federated Query Session` — Join same-machine query federation so hypergraph queries also search other windows
+- `Zone-Cog: Run Federated Hypergraph Query` — Search this window (and any joined peer windows) by keyword/type/salience
+
 ## Panel Views
 
 The Zone-Cog panel (View > Zone-Cog) includes seven dashboard views:
