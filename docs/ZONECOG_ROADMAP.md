@@ -2,7 +2,7 @@
 
 **Ticket**: ECH-4  
 **Status**: Active  
-**Last Updated**: 2026-07-19
+**Last Updated**: 2026-07-21
 
 ## Phase Overview
 
@@ -204,7 +204,7 @@
 ### 4.4 Collaborative Cognition
 - [ ] Multi-user cognitive workspaces — same-machine multi-window sharing landed via `ISharedCognitionService`; true multi-user across machines requires a sync backend (future work)
 - [x] Shared hypergraph state — `ISharedCognitionService`/`SharedCognitionService` (BroadcastChannel sync of hypergraph node/link upserts across workbench windows with hello handshake and echo suppression; cross-machine sharing remains future work)
-- [ ] Collaborative reasoning sessions — foundation in place (shared hypergraph sessions + trace replay); live multi-user co-reasoning requires a sync backend (future work)
+- [x] Collaborative reasoning sessions — `ICollaborativeReasoningService`/`CollaborativeReasoningService` (same-machine multi-window live broadcast of this window's `onDidCompleteThinkingPhase` stream over a BroadcastChannel, merged into a unified transcript alongside peer phases, plus shareable annotations attached to any phase; "Toggle Collaborative Reasoning Session", "Show Collaborative Session Log", and "Annotate Latest Collaborative Phase" commands); true multi-user co-reasoning across machines requires a sync backend (future work)
 - [x] Cognitive trace sharing and replay — `ICognitiveTraceService`/`CognitiveTraceService` (session trace recording, versioned JSON export/import via clipboard, phase-by-phase replay rendered in the Thinking Process view)
 
 ---
