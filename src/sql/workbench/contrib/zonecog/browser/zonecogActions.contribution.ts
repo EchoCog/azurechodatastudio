@@ -39,6 +39,7 @@ import { ISensorimotorBindingService } from 'sql/workbench/services/zonecog/comm
 import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 import { IFederatedQueryService } from 'sql/workbench/services/zonecog/common/federatedQuery';
 import { IHypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/common/hypergraphSemanticSearch';
+import { ICollaborativeReasoningService, CollaborativePhaseEvent } from 'sql/workbench/services/zonecog/common/collaborativeReasoning';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
 
@@ -2406,28 +2407,6 @@ class ZoneCogToggleFederatedQueryAction extends Action2 {
 			title: { value: localize('zonecog.toggleFederatedQuery', 'Toggle Federated Query Session'), original: 'Toggle Federated Query Session' },
 			category: ZONECOG_CATEGORY,
 			icon: Codicon.broadcast,
- * Action to toggle the DTESN sensorimotor binding loop (Phase 5.4).
- */
-class ZoneCogToggleSensorimotorBindingAction extends Action2 {
-
-	static ID = 'zonecog.toggleSensorimotorBinding';
-	constructor() {
-		super({
-			id: ZoneCogToggleSensorimotorBindingAction.ID,
-			title: { value: localize('zonecog.toggleSensorimotorBinding', 'Toggle DTESN Sensorimotor Binding'), original: 'Toggle DTESN Sensorimotor Binding' },
-			category: ZONECOG_CATEGORY,
-			icon: Codicon.pulse,
- * Action to index the hypergraph for semantic search
- */
-class ZoneCogIndexSemanticSearchAction extends Action2 {
-
-	static ID = 'zonecog.indexSemanticSearch';
-	constructor() {
-		super({
-			id: ZoneCogIndexSemanticSearchAction.ID,
-			title: { value: localize('zonecog.indexSemanticSearch', 'Index Hypergraph for Semantic Search'), original: 'Index Hypergraph for Semantic Search' },
-			category: ZONECOG_CATEGORY,
-			icon: Codicon.search,
 			f1: true,
 			menu: { id: MenuId.CommandPalette },
 		});
@@ -2467,55 +2446,6 @@ class ZoneCogFederatedQueryAction extends Action2 {
 		super({
 			id: ZoneCogFederatedQueryAction.ID,
 			title: { value: localize('zonecog.federatedQuery', 'Run Federated Hypergraph Query'), original: 'Run Federated Hypergraph Query' },
-		const bindingService = accessor.get(ISensorimotorBindingService);
-		const notificationService = accessor.get(INotificationService);
-
-		if (bindingService.getState().active) {
-			bindingService.stop();
-			const state = bindingService.getState();
-			notificationService.info(localize('zonecog.sensorimotorStopped',
-				'DTESN sensorimotor binding stopped ({0} percept(s) encoded, {1} motor action(s) emitted).',
-				state.perceptsEncoded, state.actionsEmitted));
-		} else {
-			bindingService.start();
-			notificationService.info(localize('zonecog.sensorimotorStarted',
-				'DTESN sensorimotor binding started - workspace percepts now drive the Deep Tree Echo State Network.'));
-		}
-	}
-}
-
-/**
- * Action to show DTESN sensorimotor binding status (Phase 5.4).
- */
-class ZoneCogSensorimotorStatusAction extends Action2 {
-
-	static ID = 'zonecog.sensorimotorStatus';
-	constructor() {
-		super({
-			id: ZoneCogSensorimotorStatusAction.ID,
-			title: { value: localize('zonecog.sensorimotorStatus', 'Show DTESN Sensorimotor Binding Status'), original: 'Show DTESN Sensorimotor Binding Status' },
-			category: ZONECOG_CATEGORY,
-			icon: Codicon.pulse,
-		const searchService = accessor.get(IHypergraphSemanticSearchService);
-		const notificationService = accessor.get(INotificationService);
-
-		const indexed = await searchService.indexAll();
-		notificationService.info(localize('zonecog.indexSemanticSearchDone',
-			'Indexed {0} hypergraph node(s) for semantic search ({1} total in index).',
-			indexed, searchService.getIndexedCount()));
-	}
-}
-
-/**
- * Action to run a semantic search over the hypergraph
- */
-class ZoneCogSemanticSearchAction extends Action2 {
-
-	static ID = 'zonecog.semanticSearch';
-	constructor() {
-		super({
-			id: ZoneCogSemanticSearchAction.ID,
-			title: { value: localize('zonecog.semanticSearch', 'Semantic Search Hypergraph'), original: 'Semantic Search Hypergraph' },
 			category: ZONECOG_CATEGORY,
 			icon: Codicon.search,
 			f1: true,
@@ -2553,16 +2483,55 @@ class ZoneCogSemanticSearchAction extends Action2 {
 			notificationService.info(localize('zonecog.federatedLocalOnly',
 				'No federated query session is active, so only this window was searched. Start one with "Toggle Federated Query Session" to include other windows.'));
 		}
-		const bindingService = accessor.get(ISensorimotorBindingService);
+	}
+}
+
+/**
+ * Action to index the hypergraph for semantic search
+ */
+class ZoneCogIndexSemanticSearchAction extends Action2 {
+
+	static ID = 'zonecog.indexSemanticSearch';
+	constructor() {
+		super({
+			id: ZoneCogIndexSemanticSearchAction.ID,
+			title: { value: localize('zonecog.indexSemanticSearch', 'Index Hypergraph for Semantic Search'), original: 'Index Hypergraph for Semantic Search' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.search,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const searchService = accessor.get(IHypergraphSemanticSearchService);
 		const notificationService = accessor.get(INotificationService);
 
-		const state = bindingService.getState();
-		notificationService.info(localize('zonecog.sensorimotorStatusInfo',
-			'Sensorimotor Binding: {0} | Percepts encoded: {1} | Actions emitted: {2} | Feedback samples: {3} | Training runs: {4} | Last MSE: {5} | Confidence threshold: {6}',
-			state.active ? localize('zonecog.sensorimotorActive', 'ACTIVE') : localize('zonecog.sensorimotorInactive', 'INACTIVE'),
-			state.perceptsEncoded, state.actionsEmitted, state.feedbackSamples, state.trainingRuns,
-			state.lastTrainingMse === null ? localize('zonecog.sensorimotorNoTraining', 'n/a') : state.lastTrainingMse.toFixed(6),
-			state.confidenceThreshold.toFixed(2)));
+		const indexed = await searchService.indexAll();
+		notificationService.info(localize('zonecog.indexSemanticSearchDone',
+			'Indexed {0} hypergraph node(s) for semantic search ({1} total in index).',
+			indexed, searchService.getIndexedCount()));
+	}
+}
+
+/**
+ * Action to run a semantic search over the hypergraph
+ */
+class ZoneCogSemanticSearchAction extends Action2 {
+
+	static ID = 'zonecog.semanticSearch';
+	constructor() {
+		super({
+			id: ZoneCogSemanticSearchAction.ID,
+			title: { value: localize('zonecog.semanticSearch', 'Semantic Search Hypergraph'), original: 'Semantic Search Hypergraph' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.search,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
 		const searchService = accessor.get(IHypergraphSemanticSearchService);
 		const hypergraphStore = accessor.get(IHypergraphStore);
 		const notificationService = accessor.get(INotificationService);
@@ -2595,6 +2564,200 @@ class ZoneCogSemanticSearchAction extends Action2 {
 	}
 }
 
+/**
+ * Action to toggle the DTESN sensorimotor binding loop (Phase 5.4).
+ */
+class ZoneCogToggleSensorimotorBindingAction extends Action2 {
+
+	static ID = 'zonecog.toggleSensorimotorBinding';
+	constructor() {
+		super({
+			id: ZoneCogToggleSensorimotorBindingAction.ID,
+			title: { value: localize('zonecog.toggleSensorimotorBinding', 'Toggle DTESN Sensorimotor Binding'), original: 'Toggle DTESN Sensorimotor Binding' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.pulse,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const bindingService = accessor.get(ISensorimotorBindingService);
+		const notificationService = accessor.get(INotificationService);
+
+		if (bindingService.getState().active) {
+			bindingService.stop();
+			const state = bindingService.getState();
+			notificationService.info(localize('zonecog.sensorimotorStopped',
+				'DTESN sensorimotor binding stopped ({0} percept(s) encoded, {1} motor action(s) emitted).',
+				state.perceptsEncoded, state.actionsEmitted));
+		} else {
+			bindingService.start();
+			notificationService.info(localize('zonecog.sensorimotorStarted',
+				'DTESN sensorimotor binding started - workspace percepts now drive the Deep Tree Echo State Network.'));
+		}
+	}
+}
+
+/**
+ * Action to show DTESN sensorimotor binding status (Phase 5.4).
+ */
+class ZoneCogSensorimotorStatusAction extends Action2 {
+
+	static ID = 'zonecog.sensorimotorStatus';
+	constructor() {
+		super({
+			id: ZoneCogSensorimotorStatusAction.ID,
+			title: { value: localize('zonecog.sensorimotorStatus', 'Show DTESN Sensorimotor Binding Status'), original: 'Show DTESN Sensorimotor Binding Status' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.pulse,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const bindingService = accessor.get(ISensorimotorBindingService);
+		const notificationService = accessor.get(INotificationService);
+
+		const state = bindingService.getState();
+		notificationService.info(localize('zonecog.sensorimotorStatusInfo',
+			'Sensorimotor Binding: {0} | Percepts encoded: {1} | Actions emitted: {2} | Feedback samples: {3} | Training runs: {4} | Last MSE: {5} | Confidence threshold: {6}',
+			state.active ? localize('zonecog.sensorimotorActive', 'ACTIVE') : localize('zonecog.sensorimotorInactive', 'INACTIVE'),
+			state.perceptsEncoded, state.actionsEmitted, state.feedbackSamples, state.trainingRuns,
+			state.lastTrainingMse === null ? localize('zonecog.sensorimotorNoTraining', 'n/a') : state.lastTrainingMse.toFixed(6),
+			state.confidenceThreshold.toFixed(2)));
+	}
+}
+
+/**
+ * Action to toggle the collaborative reasoning session (multi-window live
+ * thinking-phase broadcast and shared transcript).
+ */
+class ZoneCogToggleCollaborativeReasoningAction extends Action2 {
+
+	static ID = 'zonecog.toggleCollaborativeReasoning';
+	constructor() {
+		super({
+			id: ZoneCogToggleCollaborativeReasoningAction.ID,
+			title: { value: localize('zonecog.toggleCollaborativeReasoning', 'Toggle Collaborative Reasoning Session'), original: 'Toggle Collaborative Reasoning Session' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.commentDiscussion,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const collaborativeService = accessor.get(ICollaborativeReasoningService);
+		const notificationService = accessor.get(INotificationService);
+
+		const state = collaborativeService.getState();
+		if (state.active) {
+			collaborativeService.stopSession();
+			notificationService.info(localize('zonecog.collaborativeStopped',
+				'Collaborative reasoning session stopped ({0} phase(s) sent, {1} received from {2} peer(s)).',
+				state.phasesSent, state.phasesReceived, state.knownPeers.length));
+			return;
+		}
+
+		if (collaborativeService.startSession()) {
+			notificationService.info(localize('zonecog.collaborativeStarted',
+				'Collaborative reasoning session started - this window\'s thinking phases now stream to other workbench windows that join.'));
+		} else {
+			notificationService.error(localize('zonecog.collaborativeUnavailable',
+				'Collaborative reasoning is unavailable: BroadcastChannel is not supported in this environment.'));
+		}
+	}
+}
+
+/**
+ * Action to show the collaborative reasoning session transcript (own and
+ * peer thinking phases and annotations).
+ */
+class ZoneCogShowCollaborativeSessionLogAction extends Action2 {
+
+	static ID = 'zonecog.showCollaborativeSessionLog';
+	constructor() {
+		super({
+			id: ZoneCogShowCollaborativeSessionLogAction.ID,
+			title: { value: localize('zonecog.showCollaborativeSessionLog', 'Show Collaborative Session Log'), original: 'Show Collaborative Session Log' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.commentDiscussion,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const collaborativeService = accessor.get(ICollaborativeReasoningService);
+		const notificationService = accessor.get(INotificationService);
+
+		const log = collaborativeService.getSessionLog();
+		if (log.length === 0) {
+			notificationService.info(localize('zonecog.collaborativeLogEmpty',
+				'Collaborative session transcript is empty. Start a session and process a query to populate it.'));
+			return;
+		}
+
+		const state = collaborativeService.getState();
+		const lines = log.slice(-20).map(entry => {
+			const who = entry.event.peerId === state.peerId ? 'you' : `peer ${entry.event.peerId.substring(0, 8)}`;
+			if (entry.kind === 'phase') {
+				return `  [${who}] ${entry.event.phase.name} (query #${entry.event.querySeq}${entry.event.query ? `: "${entry.event.query}"` : ''})`;
+			}
+			return `  [${who} -> ${entry.event.targetPeerId.substring(0, 8)}] note on "${entry.event.targetPhaseName}": ${entry.event.text}`;
+		}).join('\n');
+
+		notificationService.info(localize('zonecog.collaborativeLog',
+			'Collaborative Session Log (last {0} of {1} entries):\n{2}', Math.min(20, log.length), log.length, lines));
+	}
+}
+
+/**
+ * Action to annotate the most recent phase in the collaborative session
+ * transcript (own or a peer's).
+ */
+class ZoneCogAnnotateCollaborativePhaseAction extends Action2 {
+
+	static ID = 'zonecog.annotateCollaborativePhase';
+	constructor() {
+		super({
+			id: ZoneCogAnnotateCollaborativePhaseAction.ID,
+			title: { value: localize('zonecog.annotateCollaborativePhase', 'Annotate Latest Collaborative Phase'), original: 'Annotate Latest Collaborative Phase' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.comment,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const collaborativeService = accessor.get(ICollaborativeReasoningService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const log = collaborativeService.getSessionLog();
+		const lastPhase = [...log].reverse().find((entry): entry is { kind: 'phase'; event: CollaborativePhaseEvent } => entry.kind === 'phase');
+		if (!lastPhase) {
+			notificationService.info(localize('zonecog.annotateNoPhase',
+				'No collaborative phase to annotate yet. Start a session and process a query first.'));
+			return;
+		}
+
+		const text = await quickInputService.input({
+			prompt: localize('zonecog.annotatePrompt', 'Annotation for "{0}" (query #{1})', lastPhase.event.phase.name, lastPhase.event.querySeq),
+		});
+		if (!text || text.trim().length === 0) {
+			return;
+		}
+
+		collaborativeService.postAnnotation(lastPhase.event.peerId, lastPhase.event.querySeq, lastPhase.event.phase.name, text);
+		notificationService.info(localize('zonecog.annotateDone',
+			'Annotation shared on "{0}".', lastPhase.event.phase.name));
+	}
+}
+
 // Phase 4 completion actions
 registerAction2(ZoneCogConversationalExplorationAction);
 registerAction2(ZoneCogSchemaDesignAssistantAction);
@@ -2610,6 +2773,11 @@ registerAction2(ZoneCogSemanticSearchAction);
 // Phase 5.4 DTESN sensorimotor binding actions
 registerAction2(ZoneCogToggleSensorimotorBindingAction);
 registerAction2(ZoneCogSensorimotorStatusAction);
+
+// Phase 4.4 collaborative reasoning session actions
+registerAction2(ZoneCogToggleCollaborativeReasoningAction);
+registerAction2(ZoneCogShowCollaborativeSessionLogAction);
+registerAction2(ZoneCogAnnotateCollaborativePhaseAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.
