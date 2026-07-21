@@ -317,6 +317,8 @@ Available through Command Palette (`Ctrl+Shift+P`):
 - `Zone-Cog: Connect to Aphrodite Engine` — Connect to local LLM inference
 - `Zone-Cog: Show Aphrodite Engine Status` — View model and performance stats
 - `Zone-Cog: Run Aphrodite Completion` — Test LLM inference
+- `Zone-Cog: Index Hypergraph for Semantic Search` — Embed hypergraph nodes for similarity search (`IAphroditeService.embed()` when connected, local hashing-trick fallback otherwise)
+- `Zone-Cog: Semantic Search Hypergraph` — Rank hypergraph nodes by cosine similarity to a natural-language query
 
 ### Phase 6 - Cognitive Workflow Automation
 - `Zone-Cog: List Cognitive Workflows` — View all registered workflows
