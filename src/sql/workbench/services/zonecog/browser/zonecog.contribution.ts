@@ -55,6 +55,8 @@ import { CognitiveTraceService } from 'sql/workbench/services/zonecog/browser/co
 import { ISharedCognitionService } from 'sql/workbench/services/zonecog/common/sharedCognition';
 import { SharedCognitionService } from 'sql/workbench/services/zonecog/browser/sharedCognitionService';
 import { CognitiveAnalyticsService } from 'sql/workbench/services/zonecog/browser/cognitiveAnalyticsService';
+import { IHypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/common/hypergraphSemanticSearch';
+import { HypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/browser/hypergraphSemanticSearchService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -162,3 +164,8 @@ registerSingleton(ICognitiveTraceService, CognitiveTraceService, InstantiationTy
 // Register the Shared Cognition service (multi-window shared hypergraph
 // state over a BroadcastChannel)
 registerSingleton(ISharedCognitionService, SharedCognitionService, InstantiationType.Eager);
+
+// Register the Hypergraph Semantic Search service (Aphrodite-embedding-backed
+// similarity search over hypergraph nodes, with a deterministic local
+// hashing-trick fallback when no Aphrodite engine is connected)
+registerSingleton(IHypergraphSemanticSearchService, HypergraphSemanticSearchService, InstantiationType.Eager);
