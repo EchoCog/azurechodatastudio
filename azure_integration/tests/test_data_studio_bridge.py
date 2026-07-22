@@ -24,6 +24,7 @@ from azure_integration.data_studio_bridge import (
     AtomSpaceAdapter,
     BridgeApp,
     FourE,
+    IngestAtomsRequest,
     IngestSchemaRequest,
     IngestTableRequest,
     ReasonRequest,
@@ -127,6 +128,25 @@ class TestBridgeAppIngestSchema:
         assert result["upsert"]["status"] == "ok"
         assert result["upsert"]["nodes"] == 0
         assert result["upsert"]["links"] == 0
+
+
+class TestBridgeAppIngestAtoms:
+    def test_ingest_atoms_returns_upsert_result(self) -> None:
+        bridge = BridgeApp()
+        batch = map_rows_to_atoms("dbo", "orders", [{"id": 1, "total": 99.5}], primary_key="id")
+        req = IngestAtomsRequest(atoms=batch)
+        result = bridge.ingest_atoms(req)
+        assert result["upsert"]["status"] == "ok"
+        assert result["upsert"]["nodes"] == len(batch["nodes"])
+        assert result["upsert"]["links"] == len(batch["links"])
+
+    def test_ingest_atoms_increments_processed_batches(self) -> None:
+        bridge = BridgeApp()
+        before = bridge.processed_batches
+        req = IngestAtomsRequest(atoms={"nodes": [], "links": []})
+        bridge.ingest_atoms(req)
+        assert bridge.processed_batches == before + 1
+        assert bridge.last_request_id is not None
 
 
 class TestBridgeAppIngestTable:
@@ -276,6 +296,60 @@ class TestAtomSpaceAdapterNotImplemented:
             adapter.reason(batch, mode=None)
 
 
+class TestAtomSpaceAdapterHttpMode:
+    """Verifies AtomSpaceAdapter dispatches to the real HTTP transport when
+    ATOMSPACE_MODE=http, using a local stub server rather than a mock."""
+
+    def setup_method(self) -> None:
+        import json
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802
+                length = int(self.headers.get("Content-Length", "0"))
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw) if raw else {}
+                body = json.dumps({"accepted": len(payload.get("atoms", []))}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+                pass
+
+        self._server = HTTPServer(("127.0.0.1", 0), _Handler)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+        host, port = self._server.server_address[:2]
+        os.environ["ATOMSPACE_MODE"] = "http"
+        os.environ["ATOMSPACE_URL"] = f"http://{host}:{port}"
+
+    def teardown_method(self) -> None:
+        self._server.shutdown()
+        self._thread.join(timeout=2)
+        os.environ.pop("ATOMSPACE_MODE", None)
+        os.environ.pop("ATOMSPACE_URL", None)
+
+    def test_upsert_dispatches_to_real_transport(self) -> None:
+        adapter = AtomSpaceAdapter()
+        batch = map_rows_to_atoms("dbo", "t", [{"id": 1, "x": 10}], primary_key="id")
+        result = adapter.upsert(batch)
+        assert result["status"] == "ok"
+        assert result["nodes"] == len(batch["nodes"])
+        assert result["links"] == len(batch["links"])
+        assert result["remote"]["accepted"] == len(batch["nodes"]) + len(batch["links"])
+
+    def test_upsert_wraps_unreachable_transport_error(self) -> None:
+        self._server.shutdown()
+        os.environ["ATOMSPACE_URL"] = "http://127.0.0.1:1"
+        adapter = AtomSpaceAdapter()
+        with pytest.raises(RuntimeError):
+            adapter.upsert({"nodes": [], "links": []})
+
+
 # ---------------------------------------------------------------------------
 # FourE processor unit tests
 # ---------------------------------------------------------------------------
@@ -412,6 +486,15 @@ class TestFastAPIEndpoints:
         data = response.json()
         assert data["upsert"]["status"] == "ok"
         assert data["upsert"]["nodes"] >= 2
+
+    def test_ingest_atoms_endpoint(self) -> None:
+        batch = map_rows_to_atoms("dbo", "orders", [{"id": 1, "amount": 10}], primary_key="id")
+        response = self.client.post("/ingest/atoms", json={"atoms": batch})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["upsert"]["status"] == "ok"
+        assert data["upsert"]["nodes"] == len(batch["nodes"])
+        assert data["upsert"]["links"] == len(batch["links"])
 
     def test_reason_endpoint(self) -> None:
         batch = map_rows_to_atoms("dbo", "orders", [{"id": 1, "qty": 5}], primary_key="id")

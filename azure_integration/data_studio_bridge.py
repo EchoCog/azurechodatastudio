@@ -16,6 +16,7 @@ except ImportError:  # pragma: no cover
     Field = None  # type: ignore
     uvicorn = None  # type: ignore
 
+from azure_integration.atomspace_transport import AtomSpaceTransportError, HttpAtomSpaceTransport
 from azure_integration.sql_to_atomspace import AtomBatch, map_rows_to_atoms, map_schema_to_atoms, merge_batches
 
 
@@ -27,6 +28,10 @@ class HealthResponse(BaseModel):  # type: ignore
 class IngestSchemaRequest(BaseModel):  # type: ignore
     tables: List[Dict[str, Any]]
     foreign_keys: List[Dict[str, Any]] = []
+
+
+class IngestAtomsRequest(BaseModel):  # type: ignore
+    atoms: AtomBatch
 
 
 class IngestTableRequest(BaseModel):  # type: ignore
@@ -56,17 +61,32 @@ class AtomSpaceAdapter:
     def __init__(self) -> None:
         self.mode = os.environ.get("ATOMSPACE_MODE", "mock")
         self.endpoint = os.environ.get("ATOMSPACE_URL")
+        self._transport: Optional[HttpAtomSpaceTransport] = None
+        if self.mode == "http" and self.endpoint:
+            self._transport = HttpAtomSpaceTransport(self.endpoint)
 
     def upsert(self, batch: AtomBatch) -> Dict[str, Any]:
         if self.mode == "mock" or not self.endpoint:
             nodes = len(batch.get("nodes", []))
             links = len(batch.get("links", []))
             return {"status": "ok", "nodes": nodes, "links": links}
+        if self.mode == "http":
+            assert self._transport is not None
+            try:
+                return self._transport.upsert(batch)
+            except AtomSpaceTransportError as exc:
+                raise RuntimeError(str(exc)) from exc
         raise NotImplementedError("Real AtomSpace transport not configured")
 
     def reason(self, batch: AtomBatch, mode: Optional[str]) -> Dict[str, Any]:
         if self.mode == "mock":
             return {"status": "ok", "mode": mode or "default", "insight": "noop", "atoms": len(batch.get("links", []))}
+        if self.mode == "http" and self.endpoint:
+            assert self._transport is not None
+            try:
+                return self._transport.reason(batch, mode)
+            except AtomSpaceTransportError as exc:
+                raise RuntimeError(str(exc)) from exc
         raise NotImplementedError("Real AtomSpace reasoning not configured")
 
 
@@ -93,6 +113,12 @@ class BridgeApp:
     def ingest_schema(self, req: IngestSchemaRequest) -> Dict[str, Any]:
         batch = map_schema_to_atoms(req.tables, req.foreign_keys)
         res = self.adapter.upsert(batch)
+        self.processed_batches += 1
+        self.last_request_id = str(uuid.uuid4())
+        return {"upsert": res}
+
+    def ingest_atoms(self, req: IngestAtomsRequest) -> Dict[str, Any]:
+        res = self.adapter.upsert(req.atoms)
         self.processed_batches += 1
         self.last_request_id = str(uuid.uuid4())
         return {"upsert": res}
@@ -136,6 +162,10 @@ if FastAPI:
     @app.post("/ingest/table")
     def post_ingest_table(req: IngestTableRequest) -> Dict[str, Any]:
         return app_impl.ingest_table(req)
+
+    @app.post("/ingest/atoms")
+    def post_ingest_atoms(req: IngestAtomsRequest) -> Dict[str, Any]:
+        return app_impl.ingest_atoms(req)
 
     @app.post("/reason")
     def post_reason(req: ReasonRequest) -> Dict[str, Any]:
