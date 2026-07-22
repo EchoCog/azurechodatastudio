@@ -29,7 +29,7 @@ import { IAgiStudioService } from 'sql/workbench/services/zonecog/common/agiStud
 import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
 import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
 import { IPLNReasoningService } from 'sql/workbench/services/zonecog/common/plnReasoning';
-import { ISQLAnalyzerAgent, ISchemaReasonerAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
+import { ISchemaReasonerAgent, INaturalLanguageAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
 import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
 import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { ICognitiveInsightsService } from 'sql/workbench/services/zonecog/common/cognitiveInsights';
@@ -2011,7 +2011,7 @@ class ZoneCogNaturalLanguageQueryAction extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const sqlAnalyzer = accessor.get(ISQLAnalyzerAgent);
+		const nlAgent = accessor.get(INaturalLanguageAgent);
 		const schemaPerception = accessor.get(ISchemaPerceptionService);
 		const schemaEvolution = accessor.get(ISchemaEvolutionService);
 		const quickInputService = accessor.get(IQuickInputService);
@@ -2036,10 +2036,10 @@ class ZoneCogNaturalLanguageQueryAction extends Action2 {
 		}
 
 		try {
-			const sql = await sqlAnalyzer.naturalLanguageToSQL(description, schemaContext);
-			await clipboardService.writeText(sql);
+			const translation = await nlAgent.translateToSQL(description, schemaContext);
+			await clipboardService.writeText(translation.sql);
 			notificationService.info(localize('zonecog.nlQueryResult',
-				'Generated SQL (copied to clipboard):\n{0}', sql));
+				'Generated SQL (copied to clipboard):\n{0}', translation.sql));
 		} catch (error) {
 			notificationService.error(localize('zonecog.nlQueryError',
 				'Natural language translation failed: {0}', error instanceof Error ? error.message : String(error)));
@@ -2065,7 +2065,7 @@ class ZoneCogExplainSQLAction extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const sqlAnalyzer = accessor.get(ISQLAnalyzerAgent);
+		const nlAgent = accessor.get(INaturalLanguageAgent);
 		const quickInputService = accessor.get(IQuickInputService);
 		const notificationService = accessor.get(INotificationService);
 
@@ -2076,7 +2076,7 @@ class ZoneCogExplainSQLAction extends Action2 {
 		if (!query) { return; }
 
 		try {
-			const explanation = await sqlAnalyzer.sqlToNaturalLanguage(query);
+			const explanation = await nlAgent.explainSQL(query);
 			notificationService.info(localize('zonecog.explainSQLResult',
 				'Explanation:\n{0}', explanation));
 		} catch (error) {
@@ -2483,6 +2483,86 @@ class ZoneCogFederatedQueryAction extends Action2 {
 			notificationService.info(localize('zonecog.federatedLocalOnly',
 				'No federated query session is active, so only this window was searched. Start one with "Toggle Federated Query Session" to include other windows.'));
 		}
+	}
+}
+
+/**
+ * Action to toggle the DTESN sensorimotor binding loop (Phase 5.4).
+ */
+class ZoneCogToggleSensorimotorBindingAction extends Action2 {
+
+	static ID = 'zonecog.toggleSensorimotorBinding';
+	constructor() {
+		super({
+			id: ZoneCogToggleSensorimotorBindingAction.ID,
+			title: { value: localize('zonecog.toggleSensorimotorBinding', 'Toggle DTESN Sensorimotor Binding'), original: 'Toggle DTESN Sensorimotor Binding' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.pulse,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const bindingService = accessor.get(ISensorimotorBindingService);
+		const notificationService = accessor.get(INotificationService);
+
+		const keyword = await quickInputService.input({
+			prompt: localize('zonecog.federatedQueryPrompt', 'Keyword to search for across this window and joined peer windows (leave empty to match all)'),
+		});
+		if (keyword === undefined) {
+			return;
+		}
+
+		const state = federatedQueryService.getState();
+		const results = await federatedQueryService.query({ keyword: keyword || undefined, limit: 10 });
+
+		const summary = results.map(result => {
+			const label = result.isSelf ? 'this window' : `peer ${result.peerId.substring(0, 8)}`;
+			const nodes = result.nodes.map(n =>
+				`  [${n.node_type}] ${n.content.substring(0, 80)}${n.content.length > 80 ? '...' : ''} (salience: ${n.salience_score.toFixed(2)})`
+			).join('\n');
+			return `${label} (${result.nodes.length} match${result.nodes.length === 1 ? '' : 'es'}):\n${nodes}`;
+		}).join('\n');
+
+		notificationService.info(localize('zonecog.federatedResults',
+			'Federated query results across {0} participant(s):\n{1}', results.length, summary || localize('zonecog.federatedNoMatches', '(no matches)')));
+
+		if (!state.active && state.knownPeers.length === 0) {
+			notificationService.info(localize('zonecog.federatedLocalOnly',
+				'No federated query session is active, so only this window was searched. Start one with "Toggle Federated Query Session" to include other windows.'));
+		}
+	}
+}
+
+/**
+ * Action to index the hypergraph for semantic search
+ */
+class ZoneCogIndexSemanticSearchAction extends Action2 {
+
+	static ID = 'zonecog.indexSemanticSearch';
+	constructor() {
+		super({
+			id: ZoneCogIndexSemanticSearchAction.ID,
+			title: { value: localize('zonecog.indexSemanticSearch', 'Index Hypergraph for Semantic Search'), original: 'Index Hypergraph for Semantic Search' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.pulse,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const bindingService = accessor.get(ISensorimotorBindingService);
+		const notificationService = accessor.get(INotificationService);
+
+		const state = bindingService.getState();
+		notificationService.info(localize('zonecog.sensorimotorStatusInfo',
+			'Sensorimotor Binding: {0} | Percepts encoded: {1} | Actions emitted: {2} | Feedback samples: {3} | Training runs: {4} | Last MSE: {5} | Confidence threshold: {6}',
+			state.active ? localize('zonecog.sensorimotorActive', 'ACTIVE') : localize('zonecog.sensorimotorInactive', 'INACTIVE'),
+			state.perceptsEncoded, state.actionsEmitted, state.feedbackSamples, state.trainingRuns,
+			state.lastTrainingMse === null ? localize('zonecog.sensorimotorNoTraining', 'n/a') : state.lastTrainingMse.toFixed(6),
+			state.confidenceThreshold.toFixed(2)));
 	}
 }
 

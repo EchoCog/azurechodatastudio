@@ -17,11 +17,17 @@ import { ILogService } from 'vs/platform/log/common/log';
  */
 const ERROR_THRESHOLD = 10;
 
+/**
+ * Delay before an automatic recovery attempt is made on an unhealthy membrane.
+ */
+const AUTO_RECOVERY_DELAY_MS = 30_000;
+
 interface MembraneState {
 	activeProcesses: number;
 	errorCount: number;
 	lastActivity: number;
 	errors: string[];
+	recoveryTimer: any | undefined;
 }
 
 /**
@@ -60,6 +66,7 @@ export class CognitiveMembraneService extends Disposable implements ICognitiveMe
 				errorCount: 0,
 				lastActivity: Date.now(),
 				errors: [],
+				recoveryTimer: undefined,
 			});
 		}
 
@@ -83,6 +90,11 @@ export class CognitiveMembraneService extends Disposable implements ICognitiveMe
 		}
 		this.logService.warn(`CognitiveMembraneService [${triad}]: ${message}`);
 		this._fireStatus(triad);
+		// Autonomic self-healing: when a membrane becomes unhealthy, schedule
+		// an automatic recovery attempt (Security Membrane error correction).
+		if (state.errorCount >= ERROR_THRESHOLD) {
+			this._scheduleAutoRecovery(triad);
+		}
 	}
 
 	getStatus(triad: MembraneTriad): MembraneStatus {
@@ -113,11 +125,62 @@ export class CognitiveMembraneService extends Disposable implements ICognitiveMe
 		const state = this._getState(triad);
 		state.errorCount = 0;
 		state.errors = [];
+		this._clearRecoveryTimer(state);
 		this.logService.info(`CognitiveMembraneService: reset errors for ${triad}`);
 		this._fireStatus(triad);
 	}
 
+	attemptRecovery(triad: MembraneTriad): boolean {
+		const state = this._getState(triad);
+		this._clearRecoveryTimer(state);
+
+		// Recovery attempts are error-correction work performed by the
+		// Autonomic (Security) membrane.
+		this.recordActivity('autonomic');
+
+		state.errorCount = Math.floor(state.errorCount / 2);
+		if (state.errors.length > state.errorCount) {
+			state.errors = state.errors.slice(state.errors.length - state.errorCount);
+		}
+
+		const healthy = state.errorCount < ERROR_THRESHOLD;
+		this.logService.info(`CognitiveMembraneService: recovery attempt for ${triad} - errorCount now ${state.errorCount}, healthy=${healthy}`);
+		this._fireStatus(triad);
+
+		// Still unhealthy: keep the autonomic recovery loop running.
+		if (!healthy) {
+			this._scheduleAutoRecovery(triad);
+		}
+		return healthy;
+	}
+
+	override dispose(): void {
+		for (const state of this._membranes.values()) {
+			this._clearRecoveryTimer(state);
+		}
+		super.dispose();
+	}
+
 	// -- Private helpers -----------------------------------------------------
+
+	private _scheduleAutoRecovery(triad: MembraneTriad): void {
+		const state = this._getState(triad);
+		if (state.recoveryTimer !== undefined) {
+			return;
+		}
+		this.logService.warn(`CognitiveMembraneService: ${triad} membrane unhealthy - scheduling auto-recovery in ${AUTO_RECOVERY_DELAY_MS}ms`);
+		state.recoveryTimer = setTimeout(() => {
+			state.recoveryTimer = undefined;
+			this.attemptRecovery(triad);
+		}, AUTO_RECOVERY_DELAY_MS);
+	}
+
+	private _clearRecoveryTimer(state: MembraneState): void {
+		if (state.recoveryTimer !== undefined) {
+			clearTimeout(state.recoveryTimer);
+			state.recoveryTimer = undefined;
+		}
+	}
 
 	private _getState(triad: MembraneTriad): MembraneState {
 		const state = this._membranes.get(triad);

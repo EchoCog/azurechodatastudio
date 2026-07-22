@@ -408,3 +408,76 @@ export interface DataAnomaly {
 	/** Affected rows (indices) */
 	affectedRows?: number[];
 }
+
+export const INaturalLanguageAgent = createDecorator<INaturalLanguageAgent>('naturalLanguageAgent');
+
+/**
+ * Natural Language Agent - NL-to-SQL translation via LLM.
+ */
+export interface INaturalLanguageAgent extends CognitiveAgent {
+	/**
+	 * Translate a natural language description into a SQL query.
+	 */
+	translateToSQL(description: string, schemaContext?: string): Promise<NLTranslationResult>;
+
+	/**
+	 * Explain a SQL query in plain natural language.
+	 */
+	explainSQL(query: string): Promise<string>;
+
+	/**
+	 * Classify the intent of a natural language utterance.
+	 */
+	classifyIntent(utterance: string): NLIntentClassification;
+
+	/**
+	 * Extract database entity references (tables, columns, values) from a
+	 * natural language utterance.
+	 */
+	extractEntities(utterance: string, knownTables?: string[]): NLEntityReference[];
+}
+
+/**
+ * Intent categories recognized in natural language utterances.
+ */
+export type NLIntent = 'data_query' | 'data_mutation' | 'schema_definition' | 'explanation' | 'optimization' | 'other';
+
+/**
+ * Result of classifying a natural language utterance.
+ */
+export interface NLIntentClassification {
+	/** The recognized intent */
+	intent: NLIntent;
+	/** Confidence in [0, 1] */
+	confidence: number;
+	/** Keywords that triggered the classification */
+	signals: string[];
+}
+
+/**
+ * A database entity referenced in a natural language utterance.
+ */
+export interface NLEntityReference {
+	/** Entity kind */
+	kind: 'table' | 'column' | 'value';
+	/** The surface text as it appeared in the utterance */
+	text: string;
+	/** Normalized identifier form */
+	normalized: string;
+	/** Confidence in [0, 1] */
+	confidence: number;
+}
+
+/**
+ * Result of translating natural language to SQL.
+ */
+export interface NLTranslationResult {
+	/** Generated SQL query */
+	sql: string;
+	/** Classified intent of the request */
+	intent: NLIntentClassification;
+	/** Entities extracted from the description */
+	entities: NLEntityReference[];
+	/** Whether schema context was used in the translation */
+	usedSchemaContext: boolean;
+}

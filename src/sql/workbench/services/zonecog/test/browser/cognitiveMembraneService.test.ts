@@ -20,6 +20,10 @@ suite('Cognitive Membrane Service Tests', () => {
 		membraneService = instantiationService.createInstance(CognitiveMembraneService);
 	});
 
+	teardown(() => {
+		(membraneService as CognitiveMembraneService).dispose();
+	});
+
 	// --- Initial State Tests ---
 
 	test('should initialize with three triads', () => {
@@ -271,5 +275,78 @@ suite('Cognitive Membrane Service Tests', () => {
 
 		assert.strictEqual(status.triad, 'autonomic');
 		assert.ok(status.activeProcesses >= 1);
+	});
+
+	// --- Auto-Recovery Tests (Phase 7.2 error correction) ---
+
+	test('should halve error count on recovery attempt', () => {
+		for (let i = 0; i < 8; i++) {
+			membraneService.recordError('cerebral', `Error ${i}`);
+		}
+
+		const healthy = membraneService.attemptRecovery('cerebral');
+
+		assert.strictEqual(healthy, true);
+		assert.strictEqual(membraneService.getStatus('cerebral').errorCount, 4);
+	});
+
+	test('should restore health of an unhealthy membrane through recovery', () => {
+		for (let i = 0; i < 12; i++) {
+			membraneService.recordError('somatic', `Error ${i}`);
+		}
+		assert.strictEqual(membraneService.getStatus('somatic').healthy, false);
+
+		const healthy = membraneService.attemptRecovery('somatic');
+
+		assert.strictEqual(healthy, true);
+		assert.strictEqual(membraneService.getStatus('somatic').errorCount, 6);
+		assert.strictEqual(membraneService.getStatus('somatic').healthy, true);
+	});
+
+	test('should report unhealthy when recovery is insufficient', () => {
+		for (let i = 0; i < 40; i++) {
+			membraneService.recordError('cerebral', `Error ${i}`);
+		}
+
+		const healthy = membraneService.attemptRecovery('cerebral');
+
+		assert.strictEqual(healthy, false);
+		assert.strictEqual(membraneService.getStatus('cerebral').errorCount, 20);
+		assert.strictEqual(membraneService.getStatus('cerebral').healthy, false);
+	});
+
+	test('should record autonomic activity during recovery', () => {
+		const before = membraneService.getActivity('autonomic');
+		membraneService.recordError('cerebral', 'Error');
+		membraneService.attemptRecovery('cerebral');
+
+		assert.strictEqual(membraneService.getActivity('autonomic'), before + 1);
+	});
+
+	test('should fire status change event on recovery', () => {
+		let fired: MembraneStatus | undefined;
+		membraneService.recordError('cerebral', 'Error');
+		membraneService.recordError('cerebral', 'Error');
+		const disposable = membraneService.onDidChangeMembraneStatus(status => {
+			if (status.triad === 'cerebral') {
+				fired = status;
+			}
+		});
+
+		membraneService.attemptRecovery('cerebral');
+		disposable.dispose();
+
+		assert.ok(fired);
+		assert.strictEqual(fired!.errorCount, 1);
+	});
+
+	test('should clear errors and pending recovery on reset', () => {
+		for (let i = 0; i < 15; i++) {
+			membraneService.recordError('autonomic', `Error ${i}`);
+		}
+		membraneService.resetErrors('autonomic');
+
+		assert.strictEqual(membraneService.getStatus('autonomic').errorCount, 0);
+		assert.strictEqual(membraneService.getStatus('autonomic').healthy, true);
 	});
 });
