@@ -60,6 +60,8 @@ import { IFederatedQueryService } from 'sql/workbench/services/zonecog/common/fe
 import { FederatedQueryService } from 'sql/workbench/services/zonecog/browser/federatedQueryService';
 import { IHypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/common/hypergraphSemanticSearch';
 import { HypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/browser/hypergraphSemanticSearchService';
+import { ICollaborativeReasoningService } from 'sql/workbench/services/zonecog/common/collaborativeReasoning';
+import { CollaborativeReasoningService } from 'sql/workbench/services/zonecog/browser/collaborativeReasoningService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -178,3 +180,8 @@ registerSingleton(IFederatedQueryService, FederatedQueryService, InstantiationTy
 // similarity search over hypergraph nodes, with a deterministic local
 // hashing-trick fallback when no Aphrodite engine is connected)
 registerSingleton(IHypergraphSemanticSearchService, HypergraphSemanticSearchService, InstantiationType.Eager);
+
+// Register the Collaborative Reasoning service (same-machine multi-window
+// live thinking-phase broadcast and shared annotation transcript over a
+// BroadcastChannel; Phase 4.4 "Collaborative reasoning sessions")
+registerSingleton(ICollaborativeReasoningService, CollaborativeReasoningService, InstantiationType.Eager);

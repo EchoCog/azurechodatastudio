@@ -330,6 +330,9 @@ Available through Command Palette (`Ctrl+Shift+P`):
 - `Zone-Cog: Toggle Shared Cognition Session` — Sync hypergraph node/link upserts with other workbench windows on this machine
 - `Zone-Cog: Toggle Federated Query Session` — Join same-machine query federation so hypergraph queries also search other windows
 - `Zone-Cog: Run Federated Hypergraph Query` — Search this window (and any joined peer windows) by keyword/type/salience
+- `Zone-Cog: Toggle Collaborative Reasoning Session` — Stream this window's thinking phases live to other workbench windows on this machine and merge peer phases into a unified transcript
+- `Zone-Cog: Show Collaborative Session Log` — View the merged transcript of own and peer thinking phases and annotations
+- `Zone-Cog: Annotate Latest Collaborative Phase` — Attach a shared remark to the most recent phase in the transcript (own or a peer's)
 
 ## Panel Views
 
