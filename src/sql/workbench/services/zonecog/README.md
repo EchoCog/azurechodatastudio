@@ -29,7 +29,7 @@ The system implements the P-System Membrane Architecture:
 | **Somatic** | Extension & UI interaction | Command Palette, bridge extension, LLM calls |
 | **Autonomic** | Health monitoring & validation | `CognitiveMembraneService`, ECAN rent, error tracking |
 
-### Services (11 total)
+### Services (12 total)
 
 | Service | Interface | Implementation |
 |---|---|---|
@@ -44,6 +44,7 @@ The system implements the P-System Membrane Architecture:
 | AGI Studio | `IAgiStudioService` | `AgiStudioService` |
 | Interaction Learning | `IUserInteractionLearningService` | `UserInteractionLearningService` |
 | Cognitive Analytics | `ICognitiveAnalyticsService` | `CognitiveAnalyticsService` |
+| AtomSpace Transport | `IAtomSpaceTransportService` | `AtomSpaceTransportService` |
 
 ### Cognitive Analytics & Telemetry (Phase 6.3)
 
@@ -131,6 +132,45 @@ external API keys.
 | `zonecog.agiStudio.startRun` | Prompt for goal and start autonomous run |
 | `zonecog.agiStudio.showStatus` | Show run status and agent-tree summary |
 | `zonecog.agiStudio.stopRun` | Stop the currently active run |
+
+### Real AtomSpace Transport (Phase 3.2)
+
+`IAtomSpaceTransportService` / `AtomSpaceTransportService` closes the "real
+AtomSpace transport" roadmap gap: it pushes the in-memory hypergraph store's
+nodes and links to the ZoneCog Python bridge
+(`azure_integration/data_studio_bridge.py`) as an AtomSpace-shaped Node/Link
+atom batch over HTTP (`POST /ingest/atoms`).
+
+The bridge's `AtomSpaceAdapter` decides what happens to that batch based on
+`ATOMSPACE_MODE`:
+
+- `mock` (default) — counts atoms in-process, no external dependency.
+- `http` with `ATOMSPACE_URL` set — forwards the batch over real HTTP to an
+  AtomSpace REST backend via `HttpAtomSpaceTransport`
+  (`azure_integration/atomspace_transport.py`), which speaks the
+  `POST /api/v1.5/atoms` / `POST /api/v1.5/reason` / `GET /api/v1.5/status`
+  convention.
+
+```typescript
+atomSpaceTransportService.configure({ baseUrl: 'http://127.0.0.1:7807' });
+const result = await atomSpaceTransportService.syncHypergraph(
+  hypergraphStore.getAllNodes(),
+  hypergraphStore.getAllNodes().flatMap(n => hypergraphStore.getLinksForNode(n.id)),
+);
+console.log(result.success, result.nodeCount, result.linkCount);
+```
+
+Every sync attempt (success or failure) is recorded as an
+`AtomSpaceSyncRecord` hypergraph node and reported via `onDidSync`; bridge
+reachability changes fire `onDidChangeConnectionStatus`.
+
+#### Command Palette Actions
+
+| Command ID | Description |
+|---|---|
+| `zonecog.atomSpaceTransport.configure` | Set the ZoneCog bridge base URL |
+| `zonecog.atomSpaceTransport.syncNow` | Push the current hypergraph to the bridge |
+| `zonecog.atomSpaceTransport.showStatus` | Show bridge reachability and last sync outcome |
 
 ### Thinking Protocol Phases
 

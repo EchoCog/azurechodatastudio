@@ -2,7 +2,7 @@
 
 **Ticket**: ECH-4  
 **Status**: Active  
-**Last Updated**: 2026-07-21
+**Last Updated**: 2026-07-22
 
 ## Phase Overview
 
@@ -12,7 +12,7 @@
 | 2 | Cognitive Core | **Complete** (ECH-1/5/61) | Full protocol, hypergraph store, membrane architecture |
 | 2.5 | Embodied Workbench | **Complete** (ECH-62) | Sensorimotor grounding, workspace memory, workbench actions |
 | 2.6 | Test Suite | **Complete** (ECH-27) | Comprehensive tests for all agents and services |
-| 3 | Intelligence Layer | **In Progress** (ECH-61) | AI/LLM integration, pattern mining, reasoning |
+| 3 | Intelligence Layer | **Complete** (ECH-61) | AI/LLM integration, pattern mining, reasoning, real AtomSpace transport |
 | 4 | Workbench UX | **Near-Complete** | Visual cognitive maps, interactive exploration |
 | 5 | Post-ADS Migration | Planned | VS Code standalone, portable cognitive workbench |
 
@@ -159,7 +159,7 @@
 - [x] Streaming response generation with thinking tokens (real-time LLM output) — `ILLMProviderService.completeStream()` + `IZoneCogService.onDidStreamResponseToken`
 
 ### 3.2 AtomSpace Reasoning
-- [ ] Real AtomSpace transport (there is no mock adapter to replace — `HypergraphStore` is a from-scratch in-memory store; a real transport is new work)
+- [x] Real AtomSpace transport — `IAtomSpaceTransportService`/`AtomSpaceTransportService` pushes the hypergraph store's nodes/links to the Python bridge's new `POST /ingest/atoms` endpoint as an AtomSpace Node/Link atom batch; the bridge's `AtomSpaceAdapter` forwards it over real HTTP via `HttpAtomSpaceTransport` (`azure_integration/atomspace_transport.py`) when `ATOMSPACE_MODE=http`/`ATOMSPACE_URL` point at a real AtomSpace REST backend, or counts in-process in the default `mock` mode
 - [x] PLN (Probabilistic Logic Networks) integration for rule-based reasoning — `IPLNReasoningService`/`PLNReasoningService` (strength/confidence truth values on hypergraph links, PLN deduction formula using node salience as a prior)
 - [x] URE (Unified Rule Engine) for inference chains — `PLNReasoningService.infer()` (forward-chaining deduction/inversion/similarity rules over binary directed links, iterated to a fixed point or `maxIterations`, conclusions persisted as `Inferred` hypergraph links that feed later chaining rounds)
 - [x] ECAN (Economic Attention Networks) for salience-based focus — `IECANAttentionService`/`ECANAttentionService` (spreading activation, rent collection, attentional focus)

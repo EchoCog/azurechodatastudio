@@ -62,6 +62,8 @@ import { IHypergraphSemanticSearchService } from 'sql/workbench/services/zonecog
 import { HypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/browser/hypergraphSemanticSearchService';
 import { ICollaborativeReasoningService } from 'sql/workbench/services/zonecog/common/collaborativeReasoning';
 import { CollaborativeReasoningService } from 'sql/workbench/services/zonecog/browser/collaborativeReasoningService';
+import { IAtomSpaceTransportService } from 'sql/workbench/services/zonecog/common/atomSpaceTransport';
+import { AtomSpaceTransportService } from 'sql/workbench/services/zonecog/browser/atomSpaceTransportService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -185,3 +187,8 @@ registerSingleton(IHypergraphSemanticSearchService, HypergraphSemanticSearchServ
 // live thinking-phase broadcast and shared annotation transcript over a
 // BroadcastChannel; Phase 4.4 "Collaborative reasoning sessions")
 registerSingleton(ICollaborativeReasoningService, CollaborativeReasoningService, InstantiationType.Eager);
+
+// Register the AtomSpace Transport service (real HTTP transport pushing the
+// hypergraph store to the ZoneCog Python bridge's /ingest/atoms endpoint;
+// closes Phase 3.2 "Real AtomSpace transport")
+registerSingleton(IAtomSpaceTransportService, AtomSpaceTransportService, InstantiationType.Eager);

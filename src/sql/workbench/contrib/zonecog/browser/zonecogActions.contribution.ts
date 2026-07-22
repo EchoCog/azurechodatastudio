@@ -40,6 +40,7 @@ import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/commo
 import { IFederatedQueryService } from 'sql/workbench/services/zonecog/common/federatedQuery';
 import { IHypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/common/hypergraphSemanticSearch';
 import { ICollaborativeReasoningService, CollaborativePhaseEvent } from 'sql/workbench/services/zonecog/common/collaborativeReasoning';
+import { IAtomSpaceTransportService } from 'sql/workbench/services/zonecog/common/atomSpaceTransport';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
 
@@ -2778,6 +2779,127 @@ registerAction2(ZoneCogSensorimotorStatusAction);
 registerAction2(ZoneCogToggleCollaborativeReasoningAction);
 registerAction2(ZoneCogShowCollaborativeSessionLogAction);
 registerAction2(ZoneCogAnnotateCollaborativePhaseAction);
+
+/**
+ * Action to configure the AtomSpace bridge base URL (Phase 3.2 real
+ * AtomSpace transport).
+ */
+class ZoneCogConfigureAtomSpaceTransportAction extends Action2 {
+
+	static ID = 'zonecog.atomSpaceTransport.configure';
+	constructor() {
+		super({
+			id: ZoneCogConfigureAtomSpaceTransportAction.ID,
+			title: { value: localize('zonecog.configureAtomSpaceTransport', 'Configure AtomSpace Bridge URL'), original: 'Configure AtomSpace Bridge URL' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.plug,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const transportService = accessor.get(IAtomSpaceTransportService);
+		const quickInputService = accessor.get(IQuickInputService);
+		const notificationService = accessor.get(INotificationService);
+
+		const current = transportService.getConfig();
+		const baseUrl = await quickInputService.input({
+			prompt: localize('zonecog.atomSpaceTransportUrlPrompt', 'ZoneCog bridge base URL'),
+			value: current.baseUrl,
+		});
+		if (!baseUrl) {
+			return;
+		}
+
+		transportService.configure({ baseUrl });
+		notificationService.info(localize('zonecog.atomSpaceTransportConfigured',
+			'AtomSpace bridge configured: {0}', baseUrl));
+	}
+}
+
+/**
+ * Action to push the current hypergraph store to the AtomSpace bridge.
+ */
+class ZoneCogSyncAtomSpaceAction extends Action2 {
+
+	static ID = 'zonecog.atomSpaceTransport.syncNow';
+	constructor() {
+		super({
+			id: ZoneCogSyncAtomSpaceAction.ID,
+			title: { value: localize('zonecog.syncAtomSpace', 'Sync Hypergraph to AtomSpace Bridge'), original: 'Sync Hypergraph to AtomSpace Bridge' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.sync,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const transportService = accessor.get(IAtomSpaceTransportService);
+		const hypergraphStore = accessor.get(IHypergraphStore);
+		const notificationService = accessor.get(INotificationService);
+
+		const nodes = hypergraphStore.getAllNodes();
+		const links = nodes.flatMap(n => hypergraphStore.getLinksForNode(n.id));
+		const uniqueLinks = Array.from(new Map(links.map(l => [l.id, l])).values());
+
+		const result = await transportService.syncHypergraph(nodes, uniqueLinks);
+
+		if (result.success) {
+			notificationService.info(localize('zonecog.atomSpaceSyncOk',
+				'Synced {0} node(s) and {1} link(s) to the AtomSpace bridge in {2}ms.',
+				result.nodeCount, result.linkCount, result.durationMs));
+		} else {
+			notificationService.error(localize('zonecog.atomSpaceSyncFailed',
+				'AtomSpace sync failed: {0}', result.error));
+		}
+	}
+}
+
+/**
+ * Action to show AtomSpace bridge connectivity and recent sync history.
+ */
+class ZoneCogAtomSpaceStatusAction extends Action2 {
+
+	static ID = 'zonecog.atomSpaceTransport.showStatus';
+	constructor() {
+		super({
+			id: ZoneCogAtomSpaceStatusAction.ID,
+			title: { value: localize('zonecog.atomSpaceStatus', 'Show AtomSpace Bridge Status'), original: 'Show AtomSpace Bridge Status' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.plug,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const transportService = accessor.get(IAtomSpaceTransportService);
+		const notificationService = accessor.get(INotificationService);
+
+		const config = transportService.getConfig();
+		const healthy = await transportService.healthCheck();
+		const history = transportService.getSyncHistory();
+		const last = history[history.length - 1];
+
+		const lastSyncText = last
+			? localize('zonecog.atomSpaceLastSync', 'Last sync: {0} ({1} nodes / {2} links, {3}ms){4}',
+				last.success ? localize('zonecog.atomSpaceSyncSuccess', 'ok') : localize('zonecog.atomSpaceSyncFail', 'FAILED'),
+				last.nodeCount, last.linkCount, last.durationMs,
+				last.error ? ` - ${last.error}` : '')
+			: localize('zonecog.atomSpaceNoSync', 'No sync attempted yet.');
+
+		notificationService.info(localize('zonecog.atomSpaceStatusInfo',
+			'AtomSpace Bridge: {0} | URL: {1} | {2}',
+			healthy ? localize('zonecog.atomSpaceReachable', 'reachable') : localize('zonecog.atomSpaceUnreachable', 'unreachable'),
+			config.baseUrl, lastSyncText));
+	}
+}
+
+registerAction2(ZoneCogConfigureAtomSpaceTransportAction);
+registerAction2(ZoneCogSyncAtomSpaceAction);
+registerAction2(ZoneCogAtomSpaceStatusAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.
