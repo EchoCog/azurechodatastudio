@@ -1,0 +1,868 @@
+name: Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      quality:
+        description: 'Build quality (insider/stable)'
+        required: true
+        default: 'insider'
+        type: choice
+        options:
+          - insider
+          - stable
+      skip_tests:
+        description: 'Skip tests during build'
+        required: false
+        default: false
+        type: boolean
+  push:
+    tags:
+      - 'v*.*.*'
+
+# Default minimal permissions for all jobs
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20.17'
+  PYTHON_VERSION: '3.11.x'
+  VSCODE_QUALITY: ${{ github.event.inputs.quality || 'insider' }}
+
+jobs:
+  # ============================================================
+  # Stage 1: Compile and Build Core
+  # ============================================================
+  compile:
+    name: Compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev libsecret-1-dev libx11-dev libxkbfile-dev
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          COMMIT=$(git rev-parse --short HEAD)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "Building version $VERSION (commit $COMMIT)"
+
+      - name: Compute node modules cache key
+        id: nodeModulesCacheKey
+        run: echo "value=$(node build/azure-pipelines/common/sql-computeNodeModulesCacheKey.js)" >> $GITHUB_OUTPUT
+
+      - name: Cache node modules
+        id: cacheNodeModules
+        uses: actions/cache@v4
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-release-nodeModules-${{ steps.nodeModulesCacheKey.outputs.value }}
+          restore-keys: ${{ runner.os }}-release-nodeModules-
+
+      - name: Install dependencies
+        if: steps.cacheNodeModules.outputs.cache-hit != 'true'
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+        run: yarn --frozen-lockfile --network-timeout 180000
+
+      - name: Compile TypeScript
+        run: yarn compile-build
+
+      - name: Compile Extensions
+        run: yarn compile-extensions-build
+
+      - name: Create compiled artifacts archive
+        run: |
+          mkdir -p .build/artifacts
+          tar -czf .build/artifacts/compiled-${{ steps.version.outputs.commit }}.tar.gz out-build extensions/*/out
+
+      - name: Upload compiled artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-artifacts
+          path: .build/artifacts/compiled-*.tar.gz
+          retention-days: 7
+
+  # ============================================================
+  # Stage 2: Windows Builds
+  # ============================================================
+  windows-x64:
+    name: Windows x64
+    needs: compile
+    runs-on: windows-2022
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VSCODE_ARCH: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download compiled artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-artifacts
+          path: .build/artifacts
+
+      - name: Extract compiled artifacts
+        run: |
+          tar -xzf .build/artifacts/compiled-${{ needs.compile.outputs.commit }}.tar.gz
+
+      - name: Compute node modules cache key
+        id: nodeModulesCacheKey
+        run: echo "value=$(node build/azure-pipelines/common/sql-computeNodeModulesCacheKey.js)" >> $ENV:GITHUB_OUTPUT
+
+      - name: Cache node modules
+        id: cacheNodeModules
+        uses: actions/cache@v4
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-release-nodeModules-${{ steps.nodeModulesCacheKey.outputs.value }}
+          restore-keys: ${{ runner.os }}-release-nodeModules-
+
+      - name: Install dependencies
+        if: steps.cacheNodeModules.outputs.cache-hit != 'true'
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+        run: yarn --frozen-lockfile --network-timeout 180000
+
+      - name: Download Electron
+        run: yarn electron x64
+
+      - name: Build Windows x64 Archive
+        run: yarn gulp vscode-win32-x64-min
+
+      - name: Run Unit Tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        run: .\scripts\test.bat
+
+      - name: Create Windows x64 ZIP
+        run: |
+          cd ..
+          7z a -tzip azuredatastudio-win32-x64-${{ needs.compile.outputs.version }}.zip azuredatastudio-win32-x64
+
+      - name: Upload Windows x64 ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-win32-x64
+          path: ../azuredatastudio-win32-x64-${{ needs.compile.outputs.version }}.zip
+          retention-days: 30
+
+  windows-arm64:
+    name: Windows ARM64
+    needs: compile
+    runs-on: windows-2022
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VSCODE_ARCH: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download compiled artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-artifacts
+          path: .build/artifacts
+
+      - name: Extract compiled artifacts
+        run: |
+          tar -xzf .build/artifacts/compiled-${{ needs.compile.outputs.commit }}.tar.gz
+
+      - name: Compute node modules cache key
+        id: nodeModulesCacheKey
+        run: echo "value=$(node build/azure-pipelines/common/sql-computeNodeModulesCacheKey.js)" >> $ENV:GITHUB_OUTPUT
+
+      - name: Cache node modules
+        id: cacheNodeModules
+        uses: actions/cache@v4
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-release-arm64-nodeModules-${{ steps.nodeModulesCacheKey.outputs.value }}
+          restore-keys: ${{ runner.os }}-release-arm64-nodeModules-
+
+      - name: Install dependencies
+        if: steps.cacheNodeModules.outputs.cache-hit != 'true'
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          npm_config_arch: arm64
+        run: yarn --frozen-lockfile --network-timeout 180000
+
+      - name: Download Electron
+        run: yarn electron arm64
+
+      - name: Build Windows ARM64 Archive
+        run: yarn gulp vscode-win32-arm64-min
+
+      - name: Create Windows ARM64 ZIP
+        run: |
+          cd ..
+          7z a -tzip azuredatastudio-win32-arm64-${{ needs.compile.outputs.version }}.zip azuredatastudio-win32-arm64
+
+      - name: Upload Windows ARM64 ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-win32-arm64
+          path: ../azuredatastudio-win32-arm64-${{ needs.compile.outputs.version }}.zip
+          retention-days: 30
+
+  # ============================================================
+  # Stage 3: Linux Builds
+  # ============================================================
+  linux-x64:
+    name: Linux x64
+    needs: compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VSCODE_ARCH: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbfile-dev pkg-config libsecret-1-dev libkrb5-dev libxss1 dbus xvfb libgtk-3-0 libgbm1 rpm fakeroot
+
+      - name: Download compiled artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-artifacts
+          path: .build/artifacts
+
+      - name: Extract compiled artifacts
+        run: |
+          tar -xzf .build/artifacts/compiled-${{ needs.compile.outputs.commit }}.tar.gz
+
+      - name: Compute node modules cache key
+        id: nodeModulesCacheKey
+        run: echo "value=$(node build/azure-pipelines/common/sql-computeNodeModulesCacheKey.js)" >> $GITHUB_OUTPUT
+
+      - name: Cache node modules
+        id: cacheNodeModules
+        uses: actions/cache@v4
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-release-nodeModules-${{ steps.nodeModulesCacheKey.outputs.value }}
+          restore-keys: ${{ runner.os }}-release-nodeModules-
+
+      - name: Install dependencies
+        if: steps.cacheNodeModules.outputs.cache-hit != 'true'
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+        run: yarn --frozen-lockfile --network-timeout 180000
+
+      - name: Download Electron
+        run: yarn electron x64
+
+      - name: Build Linux x64 Archive
+        run: yarn gulp vscode-linux-x64-min
+
+      - name: Run Unit Tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        run: |
+          sudo cp build/azure-pipelines/linux/xvfb.init /etc/init.d/xvfb
+          sudo chmod +x /etc/init.d/xvfb
+          sudo update-rc.d xvfb defaults
+          sudo service xvfb start
+          DISPLAY=:10 ./scripts/test.sh
+
+      - name: Create Linux x64 tarball
+        run: |
+          cd ..
+          tar -czf azuredatastudio-linux-x64-${{ needs.compile.outputs.version }}.tar.gz azuredatastudio-linux-x64
+
+      - name: Build DEB Package
+        run: |
+          yarn gulp vscode-linux-x64-prepare-deb
+          yarn gulp vscode-linux-x64-build-deb
+
+      - name: Build RPM Package
+        run: |
+          yarn gulp vscode-linux-x64-prepare-rpm
+          yarn gulp vscode-linux-x64-build-rpm
+
+      - name: Upload Linux x64 tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-linux-x64-tar
+          path: ../azuredatastudio-linux-x64-${{ needs.compile.outputs.version }}.tar.gz
+          retention-days: 30
+
+      - name: Upload Linux x64 DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-linux-x64-deb
+          path: .build/linux/deb/amd64/deb/*.deb
+          retention-days: 30
+
+      - name: Upload Linux x64 RPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-linux-x64-rpm
+          path: .build/linux/rpm/x86_64/*.rpm
+          retention-days: 30
+
+  linux-arm64:
+    name: Linux ARM64
+    needs: compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VSCODE_ARCH: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbfile-dev pkg-config libsecret-1-dev libkrb5-dev rpm fakeroot
+
+      - name: Download compiled artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-artifacts
+          path: .build/artifacts
+
+      - name: Extract compiled artifacts
+        run: |
+          tar -xzf .build/artifacts/compiled-${{ needs.compile.outputs.commit }}.tar.gz
+
+      - name: Compute node modules cache key
+        id: nodeModulesCacheKey
+        run: echo "value=$(node build/azure-pipelines/common/sql-computeNodeModulesCacheKey.js)" >> $GITHUB_OUTPUT
+
+      - name: Cache node modules
+        id: cacheNodeModules
+        uses: actions/cache@v4
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-release-arm64-nodeModules-${{ steps.nodeModulesCacheKey.outputs.value }}
+          restore-keys: ${{ runner.os }}-release-arm64-nodeModules-
+
+      - name: Install dependencies
+        if: steps.cacheNodeModules.outputs.cache-hit != 'true'
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          npm_config_arch: arm64
+        run: yarn --frozen-lockfile --network-timeout 180000
+
+      - name: Download Electron
+        run: yarn electron arm64
+
+      - name: Build Linux ARM64 Archive
+        run: yarn gulp vscode-linux-arm64-min
+
+      - name: Create Linux ARM64 tarball
+        run: |
+          cd ..
+          tar -czf azuredatastudio-linux-arm64-${{ needs.compile.outputs.version }}.tar.gz azuredatastudio-linux-arm64
+
+      - name: Build DEB Package
+        run: |
+          yarn gulp vscode-linux-arm64-prepare-deb
+          yarn gulp vscode-linux-arm64-build-deb
+
+      - name: Build RPM Package
+        run: |
+          yarn gulp vscode-linux-arm64-prepare-rpm
+          yarn gulp vscode-linux-arm64-build-rpm
+
+      - name: Upload Linux ARM64 tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-linux-arm64-tar
+          path: ../azuredatastudio-linux-arm64-${{ needs.compile.outputs.version }}.tar.gz
+          retention-days: 30
+
+      - name: Upload Linux ARM64 DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-linux-arm64-deb
+          path: .build/linux/deb/arm64/deb/*.deb
+          retention-days: 30
+
+      - name: Upload Linux ARM64 RPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-linux-arm64-rpm
+          path: .build/linux/rpm/aarch64/*.rpm
+          retention-days: 30
+
+  # ============================================================
+  # Stage 4: macOS Builds
+  # ============================================================
+  darwin-x64:
+    name: macOS x64
+    needs: compile
+    runs-on: macos-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VSCODE_ARCH: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download compiled artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-artifacts
+          path: .build/artifacts
+
+      - name: Extract compiled artifacts
+        run: |
+          tar -xzf .build/artifacts/compiled-${{ needs.compile.outputs.commit }}.tar.gz
+
+      - name: Compute node modules cache key
+        id: nodeModulesCacheKey
+        run: echo "value=$(node build/azure-pipelines/common/sql-computeNodeModulesCacheKey.js)" >> $GITHUB_OUTPUT
+
+      - name: Cache node modules
+        id: cacheNodeModules
+        uses: actions/cache@v4
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-release-nodeModules-${{ steps.nodeModulesCacheKey.outputs.value }}
+          restore-keys: ${{ runner.os }}-release-nodeModules-
+
+      - name: Install dependencies
+        if: steps.cacheNodeModules.outputs.cache-hit != 'true'
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+        run: yarn --frozen-lockfile --network-timeout 180000
+
+      - name: Download Electron
+        run: yarn electron x64
+
+      - name: Build macOS x64 Archive
+        run: yarn gulp vscode-darwin-x64-min
+
+      - name: Run Unit Tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        run: |
+          security create-keychain -p pwd $RUNNER_TEMP/buildagent.keychain
+          security default-keychain -s $RUNNER_TEMP/buildagent.keychain
+          security unlock-keychain -p pwd $RUNNER_TEMP/buildagent.keychain
+          DISPLAY=:10 ./scripts/test.sh
+
+      - name: Create macOS x64 ZIP
+        run: |
+          cd ..
+          zip -r -y azuredatastudio-darwin-x64-${{ needs.compile.outputs.version }}.zip "Azure Data Studio.app"
+
+      - name: Upload macOS x64 ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-darwin-x64
+          path: ../azuredatastudio-darwin-x64-${{ needs.compile.outputs.version }}.zip
+          retention-days: 30
+
+  darwin-arm64:
+    name: macOS ARM64
+    needs: compile
+    runs-on: macos-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VSCODE_ARCH: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download compiled artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-artifacts
+          path: .build/artifacts
+
+      - name: Extract compiled artifacts
+        run: |
+          tar -xzf .build/artifacts/compiled-${{ needs.compile.outputs.commit }}.tar.gz
+
+      - name: Compute node modules cache key
+        id: nodeModulesCacheKey
+        run: echo "value=$(node build/azure-pipelines/common/sql-computeNodeModulesCacheKey.js)" >> $GITHUB_OUTPUT
+
+      - name: Cache node modules
+        id: cacheNodeModules
+        uses: actions/cache@v4
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-release-arm64-nodeModules-${{ steps.nodeModulesCacheKey.outputs.value }}
+          restore-keys: ${{ runner.os }}-release-arm64-nodeModules-
+
+      - name: Install dependencies
+        if: steps.cacheNodeModules.outputs.cache-hit != 'true'
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          npm_config_arch: arm64
+        run: yarn --frozen-lockfile --network-timeout 180000
+
+      - name: Download Electron
+        run: yarn electron arm64
+
+      - name: Build macOS ARM64 Archive
+        run: yarn gulp vscode-darwin-arm64-min
+
+      - name: Create macOS ARM64 ZIP
+        run: |
+          cd ..
+          zip -r -y azuredatastudio-darwin-arm64-${{ needs.compile.outputs.version }}.zip "Azure Data Studio.app"
+
+      - name: Upload macOS ARM64 ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-darwin-arm64
+          path: ../azuredatastudio-darwin-arm64-${{ needs.compile.outputs.version }}.zip
+          retention-days: 30
+
+  darwin-universal:
+    name: macOS Universal
+    needs: [compile, darwin-x64, darwin-arm64]
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VSCODE_ARCH: universal
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download macOS x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: azuredatastudio-darwin-x64
+          path: .build/darwin-x64
+
+      - name: Download macOS ARM64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: azuredatastudio-darwin-arm64
+          path: .build/darwin-arm64
+
+      - name: Extract artifacts
+        run: |
+          cd .build/darwin-x64
+          unzip -q *.zip -d x64
+          cd ../darwin-arm64
+          unzip -q *.zip -d arm64
+
+      - name: Compute node modules cache key
+        id: nodeModulesCacheKey
+        run: echo "value=$(node build/azure-pipelines/common/sql-computeNodeModulesCacheKey.js)" >> $GITHUB_OUTPUT
+
+      - name: Cache node modules
+        id: cacheNodeModules
+        uses: actions/cache@v4
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-release-universal-nodeModules-${{ steps.nodeModulesCacheKey.outputs.value }}
+          restore-keys: ${{ runner.os }}-release-universal-nodeModules-
+
+      - name: Install dependencies
+        if: steps.cacheNodeModules.outputs.cache-hit != 'true'
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+        run: yarn --frozen-lockfile --network-timeout 180000
+
+      - name: Create Universal Binary
+        run: |
+          node build/darwin/create-universal-app.js \
+            .build/darwin-x64/x64 \
+            .build/darwin-arm64/arm64 \
+            .build/darwin-universal
+
+      - name: Create macOS Universal ZIP
+        run: |
+          cd .build/darwin-universal
+          zip -r -y ../../azuredatastudio-darwin-universal-${{ needs.compile.outputs.version }}.zip "Azure Data Studio.app"
+
+      - name: Upload macOS Universal ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuredatastudio-darwin-universal
+          path: azuredatastudio-darwin-universal-${{ needs.compile.outputs.version }}.zip
+          retention-days: 30
+
+  # ============================================================
+  # Stage 5: CLI Builds (Rust)
+  # ============================================================
+  cli-linux:
+    name: CLI Linux
+    needs: compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Build CLI
+        working-directory: cli
+        run: |
+          cargo build --release
+          mkdir -p ../dist
+          cp target/release/code ../dist/azuredatastudio-cli-linux-x64
+
+      - name: Upload CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-linux-x64
+          path: dist/azuredatastudio-cli-linux-x64
+          retention-days: 30
+
+  cli-darwin:
+    name: CLI macOS
+    needs: compile
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Build CLI
+        working-directory: cli
+        run: |
+          cargo build --release
+          mkdir -p ../dist
+          cp target/release/code ../dist/azuredatastudio-cli-darwin-x64
+
+      - name: Upload CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-darwin-x64
+          path: dist/azuredatastudio-cli-darwin-x64
+          retention-days: 30
+
+  cli-windows:
+    name: CLI Windows
+    needs: compile
+    runs-on: windows-2022
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Build CLI
+        working-directory: cli
+        run: |
+          cargo build --release
+          mkdir -Force ../dist
+          cp target/release/code.exe ../dist/azuredatastudio-cli-win32-x64.exe
+
+      - name: Upload CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-win32-x64
+          path: dist/azuredatastudio-cli-win32-x64.exe
+          retention-days: 30
+
+  # ============================================================
+  # Stage 6: Checksums and Release
+  # ============================================================
+  checksums:
+    name: Generate Checksums
+    permissions:
+      contents: read
+    needs:
+      - windows-x64
+      - windows-arm64
+      - linux-x64
+      - linux-arm64
+      - darwin-x64
+      - darwin-arm64
+      - darwin-universal
+      - cli-linux
+      - cli-darwin
+      - cli-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate SHA256 checksums
+        run: |
+          mkdir -p checksums
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.deb" -o -name "*.rpm" -o -name "azuredatastudio-cli-*" \) | while read file; do
+            filename=$(basename "$file")
+            sha256sum "$file" | awk '{print $1}' > "checksums/${filename}.sha256"
+            echo "Generated checksum for $filename"
+          done
+          cat checksums/*.sha256
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: checksums/
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs:
+      - compile
+      - checksums
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.deb" -o -name "*.rpm" -o -name "azuredatastudio-cli-*" -o -name "*.sha256" \) -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Azure Data Studio - Zone-Cog Edition v${{ needs.compile.outputs.version }}
+          body: |
+            ## Azure Data Studio - Zone-Cog Edition v${{ needs.compile.outputs.version }}
+            
+            ### Release Notes
+            
+            This release includes:
+            - Full Zone-Cog cognitive protocol integration
+            - 8 cognitive services (ZoneCog, Hypergraph, Membrane, LLM, Embodied, Workspace, ECAN, Loop)
+            - Cross-platform support (Windows, Linux, macOS)
+            
+            ### Downloads
+            
+            | Platform | Architecture | Format |
+            |----------|--------------|--------|
+            | Windows | x64 | ZIP |
+            | Windows | ARM64 | ZIP |
+            | Linux | x64 | tar.gz, DEB, RPM |
+            | Linux | ARM64 | tar.gz, DEB, RPM |
+            | macOS | x64 | ZIP |
+            | macOS | ARM64 | ZIP |
+            | macOS | Universal | ZIP |
+            
+            ### Checksums
+            
+            SHA256 checksums are provided for all artifacts.
+            
+            ### Installation
+            
+            See [documentation](https://github.com/EchoCog/azurechodatastudio/blob/main/README.md) for installation instructions.
+          files: release-assets/*
+          draft: false
+          prerelease: ${{ env.VSCODE_QUALITY == 'insider' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
