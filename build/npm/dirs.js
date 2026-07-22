@@ -56,6 +56,7 @@ const dirs = [
 	'extensions/sql-migration',
 	'extensions/vscode-test-resolver',
 	'extensions/xml-language-features',
+	'extensions/zonecog-bridge',
 	// {{SQL CARBON EDIT}} - End
 	'test/automation',
 	'test/integration/browser',
