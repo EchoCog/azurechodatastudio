@@ -2,7 +2,7 @@
 
 **Ticket**: ECH-4  
 **Status**: Active  
-**Last Updated**: 2026-07-22
+**Last Updated**: 2026-07-27
 
 ## Phase Overview
 
@@ -13,7 +13,8 @@
 | 2.5 | Embodied Workbench | **Complete** (ECH-62) | Sensorimotor grounding, workspace memory, workbench actions |
 | 2.6 | Test Suite | **Complete** (ECH-27) | Comprehensive tests for all agents and services |
 | 3 | Intelligence Layer | **Complete** (ECH-61) | AI/LLM integration, pattern mining, reasoning, real AtomSpace transport |
-| 4 | Workbench UX | **Near-Complete** | Visual cognitive maps, interactive exploration |
+| 4 | Workbench UX | **Complete** | Visual cognitive maps, interactive exploration |
+| 4.5 | Release Infrastructure | **Complete** (ECH-61) | Multi-platform builds, CI/CD, quality gates |
 | 5 | Post-ADS Migration | Planned | VS Code standalone, portable cognitive workbench |
 
 ---
@@ -179,7 +180,7 @@
 
 ---
 
-## Phase 4: Workbench UX (In Progress)
+## Phase 4: Workbench UX (Complete)
 
 **Goal**: Transform the UI into an immersive cognitive workbench.
 
@@ -206,6 +207,41 @@
 - [x] Shared hypergraph state — `ISharedCognitionService`/`SharedCognitionService` (BroadcastChannel sync of hypergraph node/link upserts across workbench windows with hello handshake and echo suppression; cross-machine sharing remains future work)
 - [x] Collaborative reasoning sessions — `ICollaborativeReasoningService`/`CollaborativeReasoningService` (same-machine multi-window live broadcast of this window's `onDidCompleteThinkingPhase` stream over a BroadcastChannel, merged into a unified transcript alongside peer phases, plus shareable annotations attached to any phase; "Toggle Collaborative Reasoning Session", "Show Collaborative Session Log", and "Annotate Latest Collaborative Phase" commands); true multi-user co-reasoning across machines requires a sync backend (future work)
 - [x] Cognitive trace sharing and replay — `ICognitiveTraceService`/`CognitiveTraceService` (session trace recording, versioned JSON export/import via clipboard, phase-by-phase replay rendered in the Thinking Process view)
+
+---
+
+## Phase 4.5: Release Infrastructure (Complete)
+
+**Ticket**: ECH-61  
+**Goal**: Establish comprehensive release pipeline for multi-platform binaries.
+
+### 4.5.1 GitHub Actions Release Pipeline
+- [x] Multi-stage release workflow — `.github/workflows/release.yml`
+- [x] Compile stage with TypeScript and extension builds
+- [x] Windows builds (x64, ARM64)
+- [x] Linux builds (x64, ARM64) with DEB/RPM packages
+- [x] macOS builds (x64, ARM64, Universal)
+- [x] CLI builds (Rust) for all platforms
+- [x] Checksum generation with SHA256
+- [x] Automatic GitHub Release creation
+
+### 4.5.2 Quality Gates
+- [x] ZoneCog smoke tests — `scripts/test-zonecog-smoke.sh` (verifies 34 registered services, core files, interfaces, actions, product config)
+- [x] Unit test integration in release pipeline
+- [x] Hygiene and linting checks in CI
+- [x] Checksum verification script — `build/checksums/generate-checksums.js`
+
+### 4.5.3 Release Documentation
+- [x] Release guide — `docs/RELEASE_GUIDE.md` (local builds, production builds, quality gates, artifact verification)
+- [x] Version management documentation
+- [x] Platform-specific build instructions
+- [x] Troubleshooting guide
+
+### 4.5.4 Product Configuration
+- [x] Zone-Cog Edition branding in `product.json`
+- [x] `zoneCogConfig` with cognitive services list
+- [x] Membrane triad configuration
+- [x] Platform identifiers for all targets
 
 ---
 

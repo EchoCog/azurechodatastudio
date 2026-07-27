@@ -71,6 +71,9 @@ jobs:
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
           echo "Building version $VERSION (commit $COMMIT)"
 
+      - name: Run ZoneCog Smoke Tests
+        run: ./scripts/test-zonecog-smoke.sh
+
       - name: Compute node modules cache key
         id: nodeModulesCacheKey
         run: echo "value=$(node build/azure-pipelines/common/sql-computeNodeModulesCacheKey.js)" >> $GITHUB_OUTPUT
