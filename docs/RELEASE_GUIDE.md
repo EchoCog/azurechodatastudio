@@ -259,6 +259,7 @@ VSCODE_QUALITY=stable
 - [ ] ESLint validation passes
 - [ ] TypeScript strict compilation succeeds
 - [ ] ZoneCog services registered correctly
+- [ ] ZoneCog smoke tests pass
 - [ ] Code signing successful (if applicable)
 - [ ] Smoke tests pass on each platform
 
@@ -270,6 +271,9 @@ VSCODE_QUALITY=stable
 
 # Run extension tests
 ./scripts/test-extensions-unit.sh
+
+# Run ZoneCog smoke tests (verifies 34 services, core files, actions, config)
+./scripts/test-zonecog-smoke.sh
 
 # Run hygiene checks
 yarn gulp hygiene
