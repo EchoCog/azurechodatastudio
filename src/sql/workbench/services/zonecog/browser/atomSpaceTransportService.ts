@@ -72,7 +72,7 @@ export class AtomSpaceTransportService extends Disposable implements IAtomSpaceT
 	declare readonly _serviceBrand: undefined;
 
 	private _config: AtomSpaceTransportConfig = { ...DEFAULT_CONFIG };
-	private _connected = false;
+	private _connected: boolean | undefined = undefined;
 	private _requestCounter = 0;
 	private readonly _history: AtomSpaceSyncResult[] = [];
 
@@ -100,7 +100,7 @@ export class AtomSpaceTransportService extends Disposable implements IAtomSpaceT
 	}
 
 	isConnected(): boolean {
-		return this._connected;
+		return this._connected === true;
 	}
 
 	async healthCheck(): Promise<boolean> {
