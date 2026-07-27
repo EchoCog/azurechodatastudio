@@ -99,7 +99,10 @@ jobs:
       - name: Create compiled artifacts archive
         run: |
           mkdir -p .build/artifacts
-          tar -czf .build/artifacts/compiled-${{ steps.version.outputs.commit }}.tar.gz out-build extensions/*/out
+          {
+            echo out-build
+            find extensions -type d -name out
+          } | tar -czf .build/artifacts/compiled-${{ steps.version.outputs.commit }}.tar.gz -T -
 
       - name: Upload compiled artifacts
         uses: actions/upload-artifact@v4
