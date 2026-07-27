@@ -15,7 +15,7 @@
 | 3 | Intelligence Layer | **Complete** (ECH-61) | AI/LLM integration, pattern mining, reasoning, real AtomSpace transport |
 | 4 | Workbench UX | **Complete** | Visual cognitive maps, interactive exploration |
 | 4.5 | Release Infrastructure | **Complete** (ECH-61) | Multi-platform builds, CI/CD, quality gates |
-| 5 | Post-ADS Migration | Planned | VS Code standalone, portable cognitive workbench |
+| 5 | Post-ADS Migration | **In Progress** | VS Code standalone, portable cognitive workbench |
 
 ---
 
@@ -245,7 +245,7 @@
 
 ---
 
-## Phase 5: Post-ADS Migration (Planned)
+## Phase 5: Post-ADS Migration (In Progress)
 
 **Goal**: Ensure ZoneCog survives ADS retirement as a standalone tool.
 
@@ -256,10 +256,10 @@
 - [ ] Maintain backward compatibility with ADS installations
 
 ### 5.2 Portable Cognitive Engine
-- [ ] Standalone Python cognitive service (no ADS dependency)
-- [ ] Docker container for cognitive services
-- [ ] API-first design for integration with other tools
-- [ ] CLI interface for headless cognitive processing
+- [x] Standalone Python cognitive service (no ADS dependency) — `azure_integration/` depends only on `fastapi`/`uvicorn`/`pydantic`, no ADS or Node.js runtime dependency
+- [x] API-first design for integration with other tools — `data_studio_bridge.py` FastAPI HTTP surface (`/health`, `/status`, `/ingest/schema`, `/ingest/table`, `/ingest/atoms`, `/reason`)
+- [x] CLI interface for headless cognitive processing — `azure_integration/cli.py` (`zonecog-bridge` console script via the top-level `pyproject.toml`): `health`/`status`/`ingest-schema`/`ingest-table`/`ingest-atoms`/`reason`/`serve`, file or stdin JSON in, JSON out, non-zero exit + `error:` on stderr on bad input
+- [x] Docker container for cognitive services — `azure_integration/Dockerfile` (standalone `python:3.11-slim` image, `HEALTHCHECK` via `azure_integration/healthcheck.py`), documented in `azure_integration/README.md`
 
 ### 5.3 EchoCog Integration
 - [ ] Deep integration with Aphrodite Engine for LLM inference
