@@ -2,7 +2,7 @@
 
 **Ticket**: ECH-4  
 **Status**: Active  
-**Last Updated**: 2026-07-27
+**Last Updated**: 2026-07-28
 
 ## Phase Overview
 
@@ -265,7 +265,7 @@
 - [ ] Deep integration with Aphrodite Engine for LLM inference
 - [ ] OpenCog Hyperon AtomSpace backend
 - [ ] FlareCog distributed cognitive processing
-- [ ] Autognosis self-monitoring capabilities
+- [x] Autognosis self-monitoring capabilities — `IAutognosisService`/`AutognosisService` (meta-cognitive layer that synthesizes membrane triad health, embodiment proprioception, and cognitive analytics into a first-person `SelfAssessment` with a verdict, self-confidence score, and detected anomalies; self-wires to `IZoneCogService.onDidProcessQuery` so every processed query triggers a fresh assessment, persisted as `SelfAssessment` hypergraph nodes; `Zone-Cog: Perform Self-Assessment` and `Zone-Cog: Show Self-Assessment History` Command Palette actions)
 
 ---
 

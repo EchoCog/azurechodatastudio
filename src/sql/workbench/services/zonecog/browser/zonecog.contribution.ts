@@ -64,6 +64,8 @@ import { ICollaborativeReasoningService } from 'sql/workbench/services/zonecog/c
 import { CollaborativeReasoningService } from 'sql/workbench/services/zonecog/browser/collaborativeReasoningService';
 import { IAtomSpaceTransportService } from 'sql/workbench/services/zonecog/common/atomSpaceTransport';
 import { AtomSpaceTransportService } from 'sql/workbench/services/zonecog/browser/atomSpaceTransportService';
+import { IAutognosisService } from 'sql/workbench/services/zonecog/common/autognosis';
+import { AutognosisService } from 'sql/workbench/services/zonecog/browser/autognosisService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -192,3 +194,9 @@ registerSingleton(ICollaborativeReasoningService, CollaborativeReasoningService,
 // hypergraph store to the ZoneCog Python bridge's /ingest/atoms endpoint;
 // closes Phase 3.2 "Real AtomSpace transport")
 registerSingleton(IAtomSpaceTransportService, AtomSpaceTransportService, InstantiationType.Eager);
+
+// Register the Autognosis service (self-monitoring meta-cognition
+// synthesizing membrane, embodiment, and analytics state into first-person
+// self-assessments; closes Phase 5.3 "Autognosis self-monitoring
+// capabilities")
+registerSingleton(IAutognosisService, AutognosisService, InstantiationType.Eager);
