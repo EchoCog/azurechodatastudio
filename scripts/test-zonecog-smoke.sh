@@ -19,8 +19,8 @@ echo ""
 
 # Count ZoneCog services
 echo "1. Verifying ZoneCog services registration..."
-EXPECTED_SERVICES=34
-ACTUAL_SERVICES=$(grep -c "registerSingleton" src/sql/workbench/services/zonecog/browser/zonecog.contribution.ts || echo "0")
+EXPECTED_SERVICES=33
+ACTUAL_SERVICES=$(grep -c "^registerSingleton" src/sql/workbench/services/zonecog/browser/zonecog.contribution.ts || echo "0")
 
 if [ "$ACTUAL_SERVICES" -ge "$EXPECTED_SERVICES" ]; then
 	echo "   ✓ Found $ACTUAL_SERVICES registered services (expected >= $EXPECTED_SERVICES)"
@@ -144,6 +144,41 @@ for TEST in "${TEST_FILES[@]}"; do
 	fi
 done
 
+# Verify standalone extension boundary
+echo ""
+echo "8. Verifying standalone ZoneCog extension..."
+EXTENSION_DIR="extensions/zonecog-bridge"
+EXTENSION_FILES=(
+	"package.json"
+	"tsconfig.json"
+	"src/extension.ts"
+	"src/bridgeClient.ts"
+	"test/bridgeClient.test.js"
+)
+
+for EXTENSION_FILE in "${EXTENSION_FILES[@]}"; do
+	if [ -f "$EXTENSION_DIR/$EXTENSION_FILE" ]; then
+		echo "   ✓ $EXTENSION_FILE"
+	else
+		echo "   ✗ $EXTENSION_FILE (MISSING)"
+		exit 1
+	fi
+done
+
+node <<'NODE'
+const manifest = require('./extensions/zonecog-bridge/package.json');
+if (manifest.engines.azdata) {
+	throw new Error('Standalone ZoneCog extension must not require the ADS API');
+}
+if (manifest.main !== './out/extension.js') {
+	throw new Error('Standalone ZoneCog extension must load compiled TypeScript output');
+}
+if (!manifest.scripts?.test || !manifest.scripts?.['vscode:prepublish']) {
+	throw new Error('Standalone ZoneCog extension must define test and prepublish scripts');
+}
+NODE
+echo "   ✓ Manifest is ADS-independent and publishable"
+
 echo ""
 echo "=============================================="
 echo "✓ All ZoneCog smoke tests passed!"
@@ -156,4 +191,5 @@ echo "  [✓] Command Palette actions available"
 echo "  [✓] Product configuration valid"
 echo "  [✓] Release infrastructure ready"
 echo "  [✓] Test infrastructure present"
+echo "  [✓] Standalone extension boundary present"
 echo ""

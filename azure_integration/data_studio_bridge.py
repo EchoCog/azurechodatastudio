@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -19,10 +20,15 @@ except ImportError:  # pragma: no cover
 from azure_integration.atomspace_transport import AtomSpaceTransportError, HttpAtomSpaceTransport
 from azure_integration.sql_to_atomspace import AtomBatch, map_rows_to_atoms, map_schema_to_atoms, merge_batches
 
+PROTOCOL_VERSION = "1.0"
+
 
 class HealthResponse(BaseModel):  # type: ignore
     status: str
     time: str
+    protocol_version: str
+    backend: str
+    capabilities: List[str]
 
 
 class IngestSchemaRequest(BaseModel):  # type: ignore
@@ -55,39 +61,116 @@ class StatusResponse(BaseModel):  # type: ignore
     status: str
     processed_batches: int
     last_request_id: Optional[str]
+    protocol_version: str
+    backend: str
 
 
 class AtomSpaceAdapter:
     def __init__(self) -> None:
-        self.mode = os.environ.get("ATOMSPACE_MODE", "mock")
+        self.mode = os.environ.get("ATOMSPACE_MODE", "local")
         self.endpoint = os.environ.get("ATOMSPACE_URL")
         self._transport: Optional[HttpAtomSpaceTransport] = None
-        if self.mode == "http" and self.endpoint:
+        self._nodes: Dict[str, Dict[str, Any]] = {}
+        self._links: Dict[str, Dict[str, Any]] = {}
+        if self.mode == "http" and not self.endpoint:
+            raise RuntimeError("ATOMSPACE_URL is required when ATOMSPACE_MODE=http")
+        if self.mode == "http":
+            assert self.endpoint is not None
             self._transport = HttpAtomSpaceTransport(self.endpoint)
+        elif self.mode != "local":
+            raise ValueError(f"Unsupported ATOMSPACE_MODE: {self.mode}")
 
     def upsert(self, batch: AtomBatch) -> Dict[str, Any]:
-        if self.mode == "mock" or not self.endpoint:
-            nodes = len(batch.get("nodes", []))
-            links = len(batch.get("links", []))
-            return {"status": "ok", "nodes": nodes, "links": links}
+        if self.mode == "local":
+            nodes = batch.get("nodes", [])
+            links = batch.get("links", [])
+            self._store_atoms(self._nodes, nodes, "node")
+            self._store_atoms(self._links, links, "link")
+            return {
+                "status": "ok",
+                "backend": "local",
+                "nodes": len(nodes),
+                "links": len(links),
+                "total_nodes": len(self._nodes),
+                "total_links": len(self._links),
+            }
         if self.mode == "http":
             assert self._transport is not None
             try:
                 return self._transport.upsert(batch)
             except AtomSpaceTransportError as exc:
                 raise RuntimeError(str(exc)) from exc
-        raise NotImplementedError("Real AtomSpace transport not configured")
+        raise RuntimeError(f"Unsupported AtomSpace backend: {self.mode}")
 
     def reason(self, batch: AtomBatch, mode: Optional[str]) -> Dict[str, Any]:
-        if self.mode == "mock":
-            return {"status": "ok", "mode": mode or "default", "insight": "noop", "atoms": len(batch.get("links", []))}
+        if self.mode == "local":
+            self.upsert(batch)
+            nodes = list(self._nodes.values())
+            links = list(self._links.values())
+            node_types = Counter(str(node.get("node_type", "Unknown")) for node in nodes)
+            link_types = Counter(str(link.get("link_type", "Unknown")) for link in links)
+            known_nodes = set(self._nodes)
+            referenced_nodes = {
+                str(node_id)
+                for link in links
+                for node_id in link.get("out", [])
+            }
+            dangling = sorted(referenced_nodes - known_nodes)
+            isolated = sorted(known_nodes - referenced_nodes)
+            insights = self._derive_insights(node_types, link_types, isolated, dangling)
+            return {
+                "status": "ok",
+                "backend": "local",
+                "mode": mode or "default",
+                "atoms": {"nodes": len(nodes), "links": len(links)},
+                "node_types": dict(sorted(node_types.items())),
+                "link_types": dict(sorted(link_types.items())),
+                "isolated_nodes": isolated,
+                "dangling_references": dangling,
+                "insights": insights,
+            }
         if self.mode == "http" and self.endpoint:
             assert self._transport is not None
             try:
                 return self._transport.reason(batch, mode)
             except AtomSpaceTransportError as exc:
                 raise RuntimeError(str(exc)) from exc
-        raise NotImplementedError("Real AtomSpace reasoning not configured")
+        raise RuntimeError(f"Unsupported AtomSpace backend: {self.mode}")
+
+    @staticmethod
+    def _store_atoms(target: Dict[str, Dict[str, Any]], atoms: List[Dict[str, Any]], kind: str) -> None:
+        for atom in atoms:
+            atom_id = atom.get("uuid")
+            if not isinstance(atom_id, str) or not atom_id:
+                raise ValueError(f"Every {kind} atom must contain a non-empty uuid")
+            target[atom_id] = dict(atom)
+
+    @staticmethod
+    def _derive_insights(
+        node_types: Counter[str],
+        link_types: Counter[str],
+        isolated: List[str],
+        dangling: List[str],
+    ) -> List[str]:
+        total_nodes = sum(node_types.values())
+        total_links = sum(link_types.values())
+        if total_nodes == 0 and total_links == 0:
+            return ["The cognitive graph is empty; ingest schema or table atoms before analysis."]
+
+        insights = [
+            f"The graph contains {total_nodes} nodes and {total_links} links across "
+            f"{len(node_types)} node types and {len(link_types)} relation types."
+        ]
+        foreign_keys = link_types.get("ForeignKeyLink", 0)
+        if foreign_keys:
+            insights.append(f"Detected {foreign_keys} schema relationship{'s' if foreign_keys != 1 else ''}.")
+        if dangling:
+            insights.append(f"Detected {len(dangling)} references to atoms not present in the local graph.")
+        if isolated:
+            insights.append(f"Detected {len(isolated)} nodes with no recorded relationships.")
+        if not dangling and total_links:
+            insights.append("All relation endpoints resolve to atoms in the local graph.")
+        return insights
 
 
 class FourE:
@@ -96,8 +179,24 @@ class FourE:
 
     def process(self, batch: AtomBatch, mode: Optional[str], context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         m = mode or self.default_mode
-        size = len(batch.get("nodes", [])) + len(batch.get("links", []))
-        return {"mode": m, "summary": f"processed {size} atoms", "context": context or {}}
+        nodes = batch.get("nodes", [])
+        links = batch.get("links", [])
+        size = len(nodes) + len(links)
+        relation_density = len(links) / max(1, len(nodes))
+        node_types = sorted({str(node.get("node_type", "Unknown")) for node in nodes})
+        link_types = sorted({str(link.get("link_type", "Unknown")) for link in links})
+        cognitive_context = context or {}
+        return {
+            "mode": m,
+            "summary": f"processed {size} atoms with relation density {relation_density:.3f}",
+            "context": cognitive_context,
+            "four_e": {
+                "embodied": {"node_count": len(nodes), "link_count": len(links)},
+                "embedded": {"node_types": node_types, "link_types": link_types},
+                "enacted": {"available_relations": link_types},
+                "extended": {"context_keys": sorted(cognitive_context)},
+            },
+        }
 
 
 class BridgeApp:
@@ -108,7 +207,13 @@ class BridgeApp:
         self.last_request_id: Optional[str] = None
 
     def health(self) -> Dict[str, Any]:
-        return {"status": "ok", "time": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")}
+        return {
+            "status": "ok",
+            "time": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "protocol_version": PROTOCOL_VERSION,
+            "backend": self.adapter.mode,
+            "capabilities": ["ingest-schema", "ingest-table", "ingest-atoms", "reason"],
+        }
 
     def ingest_schema(self, req: IngestSchemaRequest) -> Dict[str, Any]:
         batch = map_schema_to_atoms(req.tables, req.foreign_keys)
@@ -143,6 +248,8 @@ class BridgeApp:
             "status": "ok",
             "processed_batches": self.processed_batches,
             "last_request_id": self.last_request_id,
+            "protocol_version": PROTOCOL_VERSION,
+            "backend": self.adapter.mode,
         }
 
 
