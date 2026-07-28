@@ -123,7 +123,10 @@ suite('Autognosis Service Tests', () => {
 
 		const assessment = autognosisService.performSelfAssessment();
 		assert.strictEqual(assessment.verdict, 'critical');
-		assert.ok(assessment.selfConfidence < 1);
+		// Exactly one unhealthy triad should cost exactly one 0.2 penalty: the
+		// embodiment observation mirrors membrane health and must not be
+		// double-counted (see AutognosisService._computeSelfConfidence).
+		assert.strictEqual(assessment.selfConfidence, 0.8);
 		const somaticObservation = assessment.observations.find(o => o.subsystem === 'somatic');
 		assert.ok(somaticObservation);
 		assert.strictEqual(somaticObservation!.healthy, false);

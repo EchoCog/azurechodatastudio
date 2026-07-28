@@ -199,7 +199,12 @@ export class AutognosisService extends Disposable implements IAutognosisService 
 	}
 
 	private _computeSelfConfidence(observations: SubsystemObservation[], anomalies: string[]): number {
-		const unhealthyCount = observations.filter(o => !o.healthy).length;
+		// The embodiment observation's `healthy` flag is itself derived from
+		// overall membrane health (see EmbodiedCognitionService.getProprioceptiveState),
+		// so it carries no information beyond the membrane triads already in
+		// `observations` -- counting it here would double-penalize the same
+		// root cause (one unhealthy triad would otherwise cost 0.4, not 0.2).
+		const unhealthyCount = observations.filter(o => o.subsystem !== 'embodiment' && !o.healthy).length;
 		const confidence = 1 - (unhealthyCount * 0.2) - (anomalies.length * 0.1);
 		return Math.max(0, Math.min(1, confidence));
 	}

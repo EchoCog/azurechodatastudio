@@ -25,6 +25,7 @@ ACTUAL_SERVICES=$(grep -c "registerSingleton" src/sql/workbench/services/zonecog
 if [ "$ACTUAL_SERVICES" -ge "$EXPECTED_SERVICES" ]; then
 	echo "   ✓ Found $ACTUAL_SERVICES registered services (expected >= $EXPECTED_SERVICES)"
 else
+	# allow-any-unicode-next-line
 	echo "   ✗ Found $ACTUAL_SERVICES registered services (expected >= $EXPECTED_SERVICES)"
 	exit 1
 fi
@@ -49,6 +50,7 @@ for SERVICE in "${CORE_SERVICES[@]}"; do
 	if [ -f "src/sql/workbench/services/zonecog/browser/$SERVICE" ]; then
 		echo "   ✓ $SERVICE"
 	else
+		# allow-any-unicode-next-line
 		echo "   ✗ $SERVICE (MISSING)"
 		MISSING=$((MISSING + 1))
 	fi
@@ -77,6 +79,7 @@ for IFACE in "${INTERFACE_FILES[@]}"; do
 	if [ -f "src/sql/workbench/services/zonecog/common/$IFACE" ]; then
 		echo "   ✓ $IFACE"
 	else
+		# allow-any-unicode-next-line
 		echo "   ✗ $IFACE (MISSING)"
 		exit 1
 	fi
@@ -90,6 +93,7 @@ if [ -f "$ACTIONS_FILE" ]; then
 	ACTION_COUNT=$(grep -c "registerAction2" "$ACTIONS_FILE" || echo "0")
 	echo "   ✓ $ACTION_COUNT actions registered"
 else
+	# allow-any-unicode-next-line
 	echo "   ✗ Actions contribution file missing"
 	exit 1
 fi
@@ -100,6 +104,7 @@ echo "5. Verifying product.json Zone-Cog configuration..."
 if grep -q "zoneCogConfig" product.json; then
 	echo "   ✓ zoneCogConfig present in product.json"
 else
+	# allow-any-unicode-next-line
 	echo "   ✗ zoneCogConfig missing from product.json"
 	exit 1
 fi
@@ -110,6 +115,7 @@ echo "6. Verifying release infrastructure..."
 if [ -f ".github/workflows/release.yml" ]; then
 	echo "   ✓ release.yml workflow present"
 else
+	# allow-any-unicode-next-line
 	echo "   ✗ release.yml workflow missing"
 	exit 1
 fi
@@ -117,6 +123,7 @@ fi
 if [ -f "build/checksums/generate-checksums.js" ]; then
 	echo "   ✓ Checksum generator present"
 else
+	# allow-any-unicode-next-line
 	echo "   ✗ Checksum generator missing"
 	exit 1
 fi
@@ -124,6 +131,7 @@ fi
 if [ -f "docs/RELEASE_GUIDE.md" ]; then
 	echo "   ✓ Release guide present"
 else
+	# allow-any-unicode-next-line
 	echo "   ✗ Release guide missing"
 	exit 1
 fi
@@ -139,6 +147,7 @@ for TEST in "${TEST_FILES[@]}"; do
 	if [ -f "src/sql/workbench/services/zonecog/test/browser/$TEST" ]; then
 		echo "   ✓ $TEST"
 	else
+		# allow-any-unicode-next-line
 		echo "   ✗ $TEST (MISSING)"
 		exit 1
 	fi
