@@ -172,6 +172,49 @@ reachability changes fire `onDidChangeConnectionStatus`.
 | `zonecog.atomSpaceTransport.syncNow` | Push the current hypergraph to the bridge |
 | `zonecog.atomSpaceTransport.showStatus` | Show bridge reachability and last sync outcome |
 
+### Autognosis (Phase 5.3)
+
+`IAutognosisService` / `AutognosisService` closes the "Autognosis
+self-monitoring capabilities" roadmap gap: a meta-cognitive layer that
+reflects on the cognitive system's *own* state rather than measuring
+anything directly. It synthesizes signals already reported by the
+Cognitive Membrane (triad health), Embodied Cognition (proprioceptive
+load/focus/health), and Cognitive Analytics (LLM fallback ratio, DTESN
+convergence) services into a single first-person `SelfAssessment`:
+
+- **Verdict** — `nominal` / `degraded` / `critical`, driven by unhealthy
+  membrane/embodiment observations and detected anomalies
+- **Self-confidence** — a `[0, 1]` score that discounts for each unhealthy
+  subsystem and each anomaly
+- **Narrative** — a human-readable, first-person reflective summary
+- **Anomalies** — e.g. sustained high cognitive load, a high LLM fallback
+  ratio, or non-converging DTESN training
+
+The service self-wires to `IZoneCogService.onDidProcessQuery`, so every
+completed query triggers a fresh self-assessment automatically; each
+assessment is persisted as a `SelfAssessment` hypergraph node for
+longitudinal introspection, and the bounded history exposes a
+`getTrend()` read (`improving` / `stable` / `degrading`) over recent
+self-confidence scores.
+
+```typescript
+const assessment = autognosisService.performSelfAssessment();
+console.log(assessment.verdict, assessment.selfConfidence, assessment.narrative);
+
+autognosisService.onDidCompleteSelfAssessment(a => {
+  if (a.verdict !== 'nominal') {
+    console.warn('Self-assessment:', a.narrative);
+  }
+});
+```
+
+#### Command Palette Actions
+
+| Command ID | Description |
+|---|---|
+| `zonecog.autognosis.selfAssess` | Perform a self-assessment now and show the verdict and narrative |
+| `zonecog.autognosis.showHistory` | Show recent self-assessments and the confidence trend |
+
 ### Thinking Protocol Phases
 
 The full Zone-Cog cognitive sequence (depth-adaptive):

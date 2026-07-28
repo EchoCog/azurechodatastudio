@@ -41,6 +41,7 @@ import { IFederatedQueryService } from 'sql/workbench/services/zonecog/common/fe
 import { IHypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/common/hypergraphSemanticSearch';
 import { ICollaborativeReasoningService, CollaborativePhaseEvent } from 'sql/workbench/services/zonecog/common/collaborativeReasoning';
 import { IAtomSpaceTransportService } from 'sql/workbench/services/zonecog/common/atomSpaceTransport';
+import { IAutognosisService } from 'sql/workbench/services/zonecog/common/autognosis';
 
 const ZONECOG_CATEGORY = { value: localize('zonecog.category', 'Zone-Cog'), original: 'Zone-Cog' };
 
@@ -2900,6 +2901,78 @@ class ZoneCogAtomSpaceStatusAction extends Action2 {
 registerAction2(ZoneCogConfigureAtomSpaceTransportAction);
 registerAction2(ZoneCogSyncAtomSpaceAction);
 registerAction2(ZoneCogAtomSpaceStatusAction);
+
+/**
+ * Action to perform a self-assessment (Phase 5.3 autognosis) and show the
+ * resulting first-person narrative and verdict.
+ */
+class ZoneCogSelfAssessAction extends Action2 {
+
+	static ID = 'zonecog.autognosis.selfAssess';
+	constructor() {
+		super({
+			id: ZoneCogSelfAssessAction.ID,
+			title: { value: localize('zonecog.selfAssess', 'Perform Self-Assessment'), original: 'Perform Self-Assessment' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.eye,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const autognosisService = accessor.get(IAutognosisService);
+		const notificationService = accessor.get(INotificationService);
+
+		const assessment = autognosisService.performSelfAssessment();
+		const verdictNotifier = assessment.verdict === 'critical'
+			? notificationService.error.bind(notificationService)
+			: assessment.verdict === 'degraded'
+				? notificationService.warn.bind(notificationService)
+				: notificationService.info.bind(notificationService);
+
+		verdictNotifier(localize('zonecog.selfAssessResult',
+			'[{0}] (confidence {1}%) {2}',
+			assessment.verdict, Math.round(assessment.selfConfidence * 100), assessment.narrative));
+	}
+}
+
+/**
+ * Action to show the retained self-assessment history and confidence trend.
+ */
+class ZoneCogSelfAssessHistoryAction extends Action2 {
+
+	static ID = 'zonecog.autognosis.showHistory';
+	constructor() {
+		super({
+			id: ZoneCogSelfAssessHistoryAction.ID,
+			title: { value: localize('zonecog.selfAssessHistory', 'Show Self-Assessment History'), original: 'Show Self-Assessment History' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.history,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const autognosisService = accessor.get(IAutognosisService);
+		const notificationService = accessor.get(INotificationService);
+
+		const history = autognosisService.getAssessmentHistory(10);
+		if (history.length === 0) {
+			notificationService.info(localize('zonecog.selfAssessHistoryEmpty', 'No self-assessments have been performed yet.'));
+			return;
+		}
+
+		const trend = autognosisService.getTrend();
+		const lines = history.map(a => `[${new Date(a.timestamp).toLocaleTimeString()}] ${a.verdict} (confidence ${Math.round(a.selfConfidence * 100)}%)`);
+		notificationService.info(localize('zonecog.selfAssessHistoryResult',
+			'Self-assessment trend: {0}\n{1}', trend, lines.join('\n')));
+	}
+}
+
+registerAction2(ZoneCogSelfAssessAction);
+registerAction2(ZoneCogSelfAssessHistoryAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.
