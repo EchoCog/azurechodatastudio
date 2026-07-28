@@ -16,7 +16,7 @@ COPY azure_integration azure_integration
 
 ENV HOST=0.0.0.0 \
     PORT=7807 \
-    ATOMSPACE_MODE=mock
+    ATOMSPACE_MODE=local
 
 EXPOSE 7807
 

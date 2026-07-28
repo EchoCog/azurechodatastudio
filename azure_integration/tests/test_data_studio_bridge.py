@@ -7,7 +7,7 @@ Covers:
 - Reasoning endpoint (4E cognitive pipeline)
 - Status tracking across multiple requests
 - BridgeApp business logic in isolation (no HTTP layer)
-- AtomSpaceAdapter mock / NotImplementedError paths
+- AtomSpaceAdapter local graph and invalid configuration paths
 - FourE processor
 - Error handling
 """
@@ -47,6 +47,13 @@ class TestBridgeAppHealth:
         result = bridge.health()
         assert "time" in result
         assert result["time"].endswith("Z")
+
+    def test_health_advertises_protocol_and_capabilities(self) -> None:
+        bridge = BridgeApp()
+        result = bridge.health()
+        assert result["protocol_version"] == "1.0"
+        assert result["backend"] == "local"
+        assert "reason" in result["capabilities"]
 
 
 class TestBridgeAppStatus:
@@ -240,18 +247,20 @@ class TestBridgeAppReason:
 # ---------------------------------------------------------------------------
 
 
-class TestAtomSpaceAdapterMock:
+class TestAtomSpaceAdapterLocal:
     def setup_method(self) -> None:
         os.environ.pop("ATOMSPACE_URL", None)
-        os.environ["ATOMSPACE_MODE"] = "mock"
+        os.environ["ATOMSPACE_MODE"] = "local"
 
     def test_upsert_counts_nodes_and_links(self) -> None:
         adapter = AtomSpaceAdapter()
         batch = map_rows_to_atoms("dbo", "t", [{"id": 1, "x": 10}], primary_key="id")
         result = adapter.upsert(batch)
         assert result["status"] == "ok"
+        assert result["backend"] == "local"
         assert result["nodes"] == len(batch["nodes"])
         assert result["links"] == len(batch["links"])
+        assert result["total_nodes"] == len(batch["nodes"])
 
     def test_upsert_empty_batch(self) -> None:
         adapter = AtomSpaceAdapter()
@@ -260,12 +269,14 @@ class TestAtomSpaceAdapterMock:
         assert result["nodes"] == 0
         assert result["links"] == 0
 
-    def test_reason_returns_insight(self) -> None:
+    def test_reason_returns_structural_insights(self) -> None:
         adapter = AtomSpaceAdapter()
         batch = map_schema_to_atoms([{"table": "t", "columns": []}], [])
         result = adapter.reason(batch, mode="default")
         assert result["status"] == "ok"
-        assert "insight" in result
+        assert result["node_types"] == {"TableNode": 1}
+        assert result["atoms"] == {"nodes": 1, "links": 0}
+        assert result["insights"]
 
     def test_reason_without_mode(self) -> None:
         adapter = AtomSpaceAdapter()
@@ -274,7 +285,7 @@ class TestAtomSpaceAdapterMock:
         assert result["mode"] == "default"
 
 
-class TestAtomSpaceAdapterNotImplemented:
+class TestAtomSpaceAdapterInvalidConfiguration:
     def setup_method(self) -> None:
         os.environ["ATOMSPACE_MODE"] = "real"
         os.environ["ATOMSPACE_URL"] = "http://localhost:17001"
@@ -283,17 +294,9 @@ class TestAtomSpaceAdapterNotImplemented:
         os.environ.pop("ATOMSPACE_MODE", None)
         os.environ.pop("ATOMSPACE_URL", None)
 
-    def test_upsert_raises_not_implemented(self) -> None:
-        adapter = AtomSpaceAdapter()
-        batch = map_rows_to_atoms("dbo", "t", [{"id": 1}], primary_key="id")
-        with pytest.raises(NotImplementedError):
-            adapter.upsert(batch)
-
-    def test_reason_raises_not_implemented(self) -> None:
-        adapter = AtomSpaceAdapter()
-        batch: Dict[str, Any] = {"nodes": [], "links": []}
-        with pytest.raises(NotImplementedError):
-            adapter.reason(batch, mode=None)
+    def test_constructor_rejects_unknown_backend(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported ATOMSPACE_MODE"):
+            AtomSpaceAdapter()
 
 
 class TestAtomSpaceAdapterHttpMode:
@@ -392,6 +395,7 @@ class TestFourEProcessor:
         batch: Dict[str, Any] = {"nodes": [], "links": []}
         result = foure.process(batch, mode=None, context=ctx)
         assert result["context"]["tenant"] == "zone-cog"
+        assert result["four_e"]["extended"]["context_keys"] == ["session", "tenant"]
 
     def test_process_empty_context_defaults_to_empty_dict(self) -> None:
         foure = FourE()
@@ -409,6 +413,7 @@ class TestFourEProcessor:
         result = foure.process(batch, mode=None, context=None)
         total_atoms = len(batch["nodes"]) + len(batch["links"])
         assert str(total_atoms) in result["summary"]
+        assert result["four_e"]["embodied"]["node_count"] == len(batch["nodes"])
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,8 @@
 """Real AtomSpace HTTP transport for the ZoneCog Python bridge.
 
-`AtomSpaceAdapter` in `data_studio_bridge.py` falls back to counting atoms
-in-process ("mock" mode) when no real AtomSpace backend is configured. This
-module implements the "real" side: a thin HTTP client that speaks the
+`AtomSpaceAdapter` in `data_studio_bridge.py` maintains an in-process graph
+when no remote AtomSpace backend is configured. This module implements the
+remote side: a thin HTTP client that speaks the
 OpenCog REST API atom-batch convention (POST a list of Node/Link atom dicts,
 as already produced by `sql_to_atomspace.py`) against a running AtomSpace
 REST endpoint reachable at `ATOMSPACE_URL`.

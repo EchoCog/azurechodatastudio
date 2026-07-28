@@ -250,10 +250,10 @@
 **Goal**: Ensure ZoneCog survives ADS retirement as a standalone tool.
 
 ### 5.1 VS Code Standalone
-- [ ] Extract ZoneCog as standalone VS Code extension
-- [ ] Remove ADS-specific dependencies
-- [ ] Publish to VS Code marketplace
-- [ ] Maintain backward compatibility with ADS installations
+- [x] Extract ZoneCog as standalone VS Code extension — `extensions/zonecog-bridge` provides typed, bounded HTTP transport and editor-driven schema/table/AtomSpace workflows
+- [x] Remove ADS-specific dependencies — extension runtime uses only the public `vscode` API and Node.js HTTP modules, with no `azdata` dependency
+- [ ] Publish to VS Code marketplace — extension manifest, isolated build, package exclusions, changelog, license, and prepublish command are ready; publisher release remains an external operation
+- [x] Maintain backward compatibility with ADS installations — the shared VS Code extension API and stable `zonecog.*` command IDs work in both extension hosts
 
 ### 5.2 Portable Cognitive Engine
 - [x] Standalone Python cognitive service (no ADS dependency) — `azure_integration/` depends only on `fastapi`/`uvicorn`/`pydantic`, no ADS or Node.js runtime dependency

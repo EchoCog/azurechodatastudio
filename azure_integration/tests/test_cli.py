@@ -55,7 +55,13 @@ class TestCommandHandlers:
     def test_status_starts_at_zero(self) -> None:
         app = BridgeApp()
         result = cli.cmd_status(app, argparse_namespace())
-        assert result == {"status": "ok", "processed_batches": 0, "last_request_id": None}
+        assert result == {
+            "status": "ok",
+            "processed_batches": 0,
+            "last_request_id": None,
+            "protocol_version": "1.0",
+            "backend": "local",
+        }
 
     def test_ingest_schema_from_file(self, tmp_path: Path) -> None:
         app = BridgeApp()

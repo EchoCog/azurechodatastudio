@@ -15,8 +15,10 @@ python -m azure_integration.cli serve   # or: python -m azure_integration.data_s
 ```
 
 Reads `HOST` (default `0.0.0.0` in Docker, `127.0.0.1` otherwise), `PORT`
-(default `7807`), `ATOMSPACE_MODE` (`mock` or `http`), and `ATOMSPACE_URL`
-from the environment. Endpoints: `GET /health`, `GET /status`,
+(default `7807`), `ATOMSPACE_MODE` (`local` or `http`), and `ATOMSPACE_URL`
+from the environment. The default `local` backend keeps a real in-process atom
+graph and performs deterministic structural reasoning; `http` forwards to the
+configured AtomSpace service. Endpoints: `GET /health`, `GET /status`,
 `POST /ingest/schema`, `POST /ingest/table`, `POST /ingest/atoms`,
 `POST /reason`.
 
