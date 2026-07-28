@@ -36,6 +36,9 @@ export class BridgeClient {
 		if (this.baseUrl.search || this.baseUrl.hash) {
 			throw new BridgeClientError('Bridge URL must not contain a query string or fragment.');
 		}
+		if (options.token && this.baseUrl.protocol === 'http:' && !isLoopbackHost(this.baseUrl.hostname)) {
+			throw new BridgeClientError('HTTPS is required when sending a bridge token to a non-loopback host.');
+		}
 		if (!this.baseUrl.pathname.endsWith('/')) {
 			this.baseUrl.pathname += '/';
 		}
@@ -162,4 +165,11 @@ function normalizeError(error: Error): BridgeClientError {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isLoopbackHost(hostname: string): boolean {
+	return hostname === 'localhost'
+		|| hostname.endsWith('.localhost')
+		|| hostname === '[::1]'
+		|| /^127(?:\.\d{1,3}){3}$/.test(hostname);
 }

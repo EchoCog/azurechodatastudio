@@ -97,6 +97,7 @@ test('rejects unsafe or unsupported bridge URLs', () => {
 	const urlWithCredentials = 'http://' + ['user', 'pass'].join(':') + '@example.test';
 	assert.throws(() => new BridgeClient({ baseUrl: urlWithCredentials }), /must not be embedded/);
 	assert.throws(() => new BridgeClient({ baseUrl: 'https://example.test?token=value' }), /query string or fragment/);
+	assert.throws(() => new BridgeClient({ baseUrl: 'http://example.test', token: 'test-token' }), /HTTPS is required/);
 });
 
 async function listen(handler) {
