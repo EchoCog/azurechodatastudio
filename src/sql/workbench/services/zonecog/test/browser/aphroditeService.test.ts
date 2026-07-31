@@ -222,4 +222,129 @@ suite('AphroditeService', () => {
 		assert.strictEqual(typeof config.maxBatchSize, 'number');
 		assert.ok(config.maxBatchSize > 0);
 	});
+
+	// --- Adapters ---
+
+	test('should start with no active adapter', () => {
+		assert.strictEqual(aphroditeService.getActiveAdapter(), undefined);
+	});
+
+	test('listAdapters should start empty', async () => {
+		const adapters = await aphroditeService.listAdapters();
+		assert.deepStrictEqual(adapters, []);
+	});
+
+	test('loadAdapter should throw when server unavailable', async () => {
+		try {
+			await aphroditeService.loadAdapter({ id: 'my-adapter', path: '/models/adapters/my-adapter' });
+			assert.fail('Should have thrown');
+		} catch (error) {
+			assert.ok(error);
+		}
+
+		// A failed load should not register the adapter locally.
+		assert.strictEqual(aphroditeService.getActiveAdapter(), undefined);
+		assert.deepStrictEqual(await aphroditeService.listAdapters(), []);
+	});
+
+	test('unloadAdapter should clear local state even when the network call fails', async () => {
+		// Should not throw even though there is no server and nothing was loaded.
+		await aphroditeService.unloadAdapter('non-existent-adapter');
+		assert.strictEqual(aphroditeService.getActiveAdapter(), undefined);
+	});
+
+	// --- Telemetry ---
+
+	test('should start with zeroed telemetry', () => {
+		const telemetry = aphroditeService.getTelemetry();
+		assert.strictEqual(telemetry.requestCount, 0);
+		assert.strictEqual(telemetry.errorCount, 0);
+		assert.strictEqual(telemetry.averageLatencyMs, 0);
+		assert.strictEqual(telemetry.tokensPerSecond, 0);
+		assert.strictEqual(telemetry.errorRate, 0);
+		assert.deepStrictEqual(aphroditeService.getTelemetrySamples(), []);
+	});
+
+	test('should have onDidUpdateTelemetry event', () => {
+		assert.ok(aphroditeService.onDidUpdateTelemetry);
+
+		const disposable = aphroditeService.onDidUpdateTelemetry(() => { });
+
+		disposable.dispose();
+	});
+
+	test('complete should record a telemetry sample and fire onDidUpdateTelemetry on failure', async () => {
+		let fired: ReturnType<typeof aphroditeService.getTelemetry> | undefined;
+		aphroditeService.onDidUpdateTelemetry(summary => fired = summary);
+
+		try {
+			await aphroditeService.complete({ prompt: 'Hello, world!' });
+		} catch {
+			// Expected: no server available.
+		}
+
+		const telemetry = aphroditeService.getTelemetry();
+		assert.strictEqual(telemetry.requestCount, 1);
+		assert.strictEqual(telemetry.errorCount, 1);
+		assert.strictEqual(telemetry.errorRate, 1);
+		assert.ok(fired);
+		assert.strictEqual(fired!.requestCount, 1);
+
+		const samples = aphroditeService.getTelemetrySamples();
+		assert.strictEqual(samples.length, 1);
+		assert.strictEqual(samples[0].success, false);
+		assert.strictEqual(samples[0].model, 'default');
+	});
+
+	test('complete should try each fallback model and throw an error mentioning all attempted models', async () => {
+		aphroditeService.updateConfig({ model: 'primary-model', fallbackModels: ['fallback-a', 'fallback-b'] });
+
+		try {
+			await aphroditeService.complete({ prompt: 'Hello, world!' });
+			assert.fail('Should have thrown');
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			assert.ok(message.includes('primary-model'));
+			assert.ok(message.includes('fallback-a'));
+			assert.ok(message.includes('fallback-b'));
+		}
+
+		// One telemetry sample should have been recorded per attempted model.
+		const samples = aphroditeService.getTelemetrySamples();
+		assert.strictEqual(samples.length, 3);
+		assert.deepStrictEqual(samples.map(s => s.model), ['primary-model', 'fallback-a', 'fallback-b']);
+		assert.ok(samples.every(s => s.success === false));
+
+		const telemetry = aphroditeService.getTelemetry();
+		assert.strictEqual(telemetry.requestCount, 3);
+		assert.strictEqual(telemetry.errorCount, 3);
+	});
+
+	test('embed should not record completion telemetry', async () => {
+		try {
+			await aphroditeService.complete({ prompt: 'first' });
+		} catch { /* expected: offline */ }
+		try {
+			await aphroditeService.embed({ texts: ['second'] });
+		} catch { /* expected: offline, embed does not record telemetry */ }
+
+		// Only the complete() call above should have produced a sample.
+		const telemetry = aphroditeService.getTelemetry();
+		assert.strictEqual(telemetry.requestCount, 1);
+		assert.strictEqual(telemetry.errorCount, 1);
+	});
+
+	test('streamComplete should record a telemetry sample on failure', async () => {
+		try {
+			for await (const _token of aphroditeService.streamComplete({ prompt: 'Hello, world!' })) {
+				// no-op: no server available, so this should never yield
+			}
+		} catch {
+			// Expected: no server available.
+		}
+
+		const telemetry = aphroditeService.getTelemetry();
+		assert.strictEqual(telemetry.requestCount, 1);
+		assert.strictEqual(telemetry.errorCount, 1);
+	});
 });

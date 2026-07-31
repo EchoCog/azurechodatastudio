@@ -17,6 +17,12 @@ import { IHypergraphStore, HypergraphNode, ICognitiveMembraneService } from 'sql
 /** Dimensionality of the deterministic local fallback embedding. */
 const LOCAL_EMBEDDING_DIM = 128;
 
+/** Maximum number of entries retained in the in-memory embedding index (LRU-evicted beyond this). */
+const MAX_INDEX_SIZE = 5000;
+
+/** Fallback batch size used when the Aphrodite service's configured `maxBatchSize` is unavailable. */
+const DEFAULT_EMBED_BATCH_SIZE = 16;
+
 interface IndexEntry {
 	vector: number[];
 	contentHash: string;
@@ -142,14 +148,7 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 			? nodeTypes.flatMap(type => this.hypergraphStore.getNodesByType(type))
 			: this.hypergraphStore.getAllNodes();
 
-		let indexed = 0;
-		for (const node of nodes) {
-			const before = this._index.get(node.id);
-			await this._ensureIndexed(node);
-			if (!before || before !== this._index.get(node.id)) {
-				indexed++;
-			}
-		}
+		const indexed = await this._ensureIndexedBatch(nodes);
 		this.logService.info(`HypergraphSemanticSearchService: indexed ${indexed}/${nodes.length} node(s)`);
 		return indexed;
 	}
@@ -167,14 +166,12 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 			return [];
 		}
 
-		for (const node of candidates) {
-			await this._ensureIndexed(node);
-		}
+		await this._ensureIndexedBatch(candidates);
 
 		const queryVector = await this._embed(query);
 		const results: SemanticSearchResult[] = [];
 		for (const node of candidates) {
-			const entry = this._index.get(node.id);
+			const entry = this._touch(node.id);
 			if (!entry) {
 				continue;
 			}
@@ -208,15 +205,50 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 	private async _ensureIndexed(node: HypergraphNode): Promise<void> {
 		const contentHash = this._contentHash(node);
 		const source = this._currentSource();
-		const existing = this._index.get(node.id);
+		const existing = this._touch(node.id);
 		if (existing && existing.contentHash === contentHash && existing.source === source) {
 			return;
 		}
 
 		this.membraneService.recordActivity('cerebral');
 		const vector = await this._embed(nodeEmbeddingText(node));
-		this._index.set(node.id, { vector, contentHash, source });
+		this._setIndexEntry(node.id, { vector, contentHash, source });
 		this._onDidIndexNode.fire(node.id);
+	}
+
+	/**
+	 * Ensures every node in `nodes` has an up-to-date index entry, batching
+	 * the underlying `embed()` calls to Aphrodite when connected so that N
+	 * uncached nodes cost `ceil(N / maxBatchSize)` requests instead of N.
+	 * Returns the number of nodes that were (re-)indexed.
+	 */
+	private async _ensureIndexedBatch(nodes: HypergraphNode[]): Promise<number> {
+		const source = this._currentSource();
+		const pending: { node: HypergraphNode; contentHash: string }[] = [];
+
+		for (const node of nodes) {
+			const contentHash = this._contentHash(node);
+			const existing = this._touch(node.id);
+			if (existing && existing.contentHash === contentHash && existing.source === source) {
+				continue;
+			}
+			pending.push({ node, contentHash });
+		}
+
+		if (pending.length === 0) {
+			return 0;
+		}
+
+		this.membraneService.recordActivity('cerebral');
+		const vectors = await this._embedBatch(pending.map(p => nodeEmbeddingText(p.node)));
+
+		for (let i = 0; i < pending.length; i++) {
+			const { node, contentHash } = pending[i];
+			this._setIndexEntry(node.id, { vector: vectors[i], contentHash, source });
+			this._onDidIndexNode.fire(node.id);
+		}
+
+		return pending.length;
 	}
 
 	private _currentSource(): SemanticEmbeddingSource {
@@ -236,6 +268,73 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 			}
 		}
 		return localEmbed(text);
+	}
+
+	/**
+	 * Embeds a batch of texts, chunking calls to `aphroditeService.embed()`
+	 * by its configured `maxBatchSize` when connected. Falls back to the
+	 * local hashing-trick embedding per-text when not connected, or per-item
+	 * within a chunk if the Aphrodite call for that chunk fails.
+	 */
+	private async _embedBatch(texts: string[]): Promise<number[][]> {
+		if (texts.length === 0) {
+			return [];
+		}
+
+		if (!this.aphroditeService.isConnected()) {
+			return texts.map(text => localEmbed(text));
+		}
+
+		const batchSize = this.aphroditeService.getConfig().maxBatchSize || DEFAULT_EMBED_BATCH_SIZE;
+		const results: number[][] = new Array(texts.length);
+
+		for (let start = 0; start < texts.length; start += batchSize) {
+			const chunk = texts.slice(start, start + batchSize);
+			try {
+				const response = await this.aphroditeService.embed({ texts: chunk });
+				for (let i = 0; i < chunk.length; i++) {
+					const vector = response.embeddings[i];
+					results[start + i] = vector && vector.length > 0 ? vector : localEmbed(chunk[i]);
+				}
+			} catch (err) {
+				this.logService.warn(`HypergraphSemanticSearchService: Aphrodite embed() failed for batch, falling back to local embedding: ${err instanceof Error ? err.message : String(err)}`);
+				for (let i = 0; i < chunk.length; i++) {
+					results[start + i] = localEmbed(chunk[i]);
+				}
+			}
+		}
+
+		return results;
+	}
+
+	/**
+	 * Reinserts a key at the end of `_index` (Map preserves insertion order)
+	 * so the first key is always the least-recently-used entry, and returns
+	 * the entry if present. Used to mark both reads and writes as "recent".
+	 */
+	private _touch(nodeId: string): IndexEntry | undefined {
+		const entry = this._index.get(nodeId);
+		if (entry) {
+			this._index.delete(nodeId);
+			this._index.set(nodeId, entry);
+		}
+		return entry;
+	}
+
+	/**
+	 * Sets an index entry (marking it most-recently-used) and evicts the
+	 * least-recently-used entries if the index would exceed `MAX_INDEX_SIZE`.
+	 */
+	private _setIndexEntry(nodeId: string, entry: IndexEntry): void {
+		this._index.delete(nodeId);
+		this._index.set(nodeId, entry);
+		while (this._index.size > MAX_INDEX_SIZE) {
+			const oldestKey = this._index.keys().next().value;
+			if (oldestKey === undefined) {
+				break;
+			}
+			this._index.delete(oldestKey);
+		}
 	}
 
 	private _contentHash(node: HypergraphNode): string {

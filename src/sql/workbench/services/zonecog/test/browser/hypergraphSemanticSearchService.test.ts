@@ -19,6 +19,7 @@ suite('Hypergraph Semantic Search Service Tests', () => {
 	let instantiationService: TestInstantiationService;
 	let searchService: IHypergraphSemanticSearchService;
 	let hypergraphStore: IHypergraphStore;
+	let aphroditeService: AphroditeService;
 
 	setup(() => {
 		instantiationService = new TestInstantiationService();
@@ -30,7 +31,7 @@ suite('Hypergraph Semantic Search Service Tests', () => {
 		const membraneService = instantiationService.createInstance(CognitiveMembraneService);
 		instantiationService.stub(ICognitiveMembraneService, membraneService);
 
-		const aphroditeService = instantiationService.createInstance(AphroditeService);
+		aphroditeService = instantiationService.createInstance(AphroditeService);
 		instantiationService.stub(IAphroditeService, aphroditeService);
 
 		searchService = instantiationService.createInstance(HypergraphSemanticSearchService);
@@ -174,5 +175,102 @@ suite('Hypergraph Semantic Search Service Tests', () => {
 		searchService.clear();
 		assert.strictEqual(searchService.getIndexedCount(), 0);
 		assert.strictEqual(searchService.isIndexed('n1'), false);
+	});
+
+	// --- Batched embedding (connected to Aphrodite) ---
+
+	function stubConnectedAphrodite(): { embedCallCount: () => number } {
+		// Constrained test double: the real AphroditeService is always
+		// offline in tests (no server running), so we override its
+		// isConnected()/embed() to exercise the batched-embedding path.
+		let embedCallCount = 0;
+		(aphroditeService as any).isConnected = () => true;
+		(aphroditeService as any).embed = async (request: { texts: string[] }) => {
+			embedCallCount++;
+			return {
+				embeddings: request.texts.map(() => [1, 0, 0]),
+				dimension: 3,
+				model: 'test-model',
+			};
+		};
+		return { embedCallCount: () => embedCallCount };
+	}
+
+	test('indexAll should batch embed() calls for multiple uncached nodes when connected', async () => {
+		const stub = stubConnectedAphrodite();
+
+		addNode('n1', 'TableNode', 'Customer orders table');
+		addNode('n2', 'TableNode', 'Product inventory table');
+		addNode('n3', 'TableNode', 'Employee payroll table');
+
+		const count = await searchService.indexAll();
+
+		assert.strictEqual(count, 3);
+		assert.strictEqual(searchService.getIndexedCount(), 3);
+		// All 3 nodes fit within the default maxBatchSize (16), so they
+		// should be embedded in a single batched call, not one per node.
+		assert.strictEqual(stub.embedCallCount(), 1);
+	});
+
+	test('search should batch embed() calls for uncached candidate nodes when connected', async () => {
+		const stub = stubConnectedAphrodite();
+
+		addNode('n1', 'TableNode', 'Customer orders table');
+		addNode('n2', 'TableNode', 'Product inventory table');
+		addNode('n3', 'TableNode', 'Employee payroll table');
+
+		await searchService.search('orders');
+
+		assert.strictEqual(searchService.getIndexedCount(), 3);
+		// One batched call embeds all 3 uncached nodes, plus one more call
+		// to embed the query text itself (via the single-text _embed() path).
+		assert.strictEqual(stub.embedCallCount(), 2);
+	});
+
+	test('indexAll should not re-batch-embed already-indexed nodes on a second pass', async () => {
+		const stub = stubConnectedAphrodite();
+
+		addNode('n1', 'TableNode', 'Customer orders table');
+		addNode('n2', 'TableNode', 'Product inventory table');
+
+		assert.strictEqual(await searchService.indexAll(), 2);
+		assert.strictEqual(stub.embedCallCount(), 1);
+
+		assert.strictEqual(await searchService.indexAll(), 0);
+		// No new embed() calls for the unchanged, already-indexed nodes.
+		assert.strictEqual(stub.embedCallCount(), 1);
+	});
+
+	test('batched embedding should chunk by the configured maxBatchSize', async () => {
+		const stub = stubConnectedAphrodite();
+		aphroditeService.updateConfig({ maxBatchSize: 2 });
+
+		addNode('n1', 'TableNode', 'Customer orders table');
+		addNode('n2', 'TableNode', 'Product inventory table');
+		addNode('n3', 'TableNode', 'Employee payroll table');
+
+		const count = await searchService.indexAll();
+
+		assert.strictEqual(count, 3);
+		// 3 nodes with a batch size of 2 should require 2 embed() calls (2 + 1).
+		assert.strictEqual(stub.embedCallCount(), 2);
+	});
+
+	test('LRU bookkeeping should not affect isIndexed/getIndexedCount for a small node set', async () => {
+		// MAX_INDEX_SIZE is a large hardcoded constant, so eviction itself
+		// isn't practical to exercise directly; this verifies the touch/evict
+		// wiring is a no-op for realistic small-scale usage.
+		addNode('n1', 'TableNode', 'Customer orders table');
+		addNode('n2', 'TableNode', 'Product inventory table');
+
+		await searchService.indexAll();
+		assert.strictEqual(searchService.getIndexedCount(), 2);
+
+		await searchService.search('orders');
+		await searchService.search('inventory');
+
+		assert.strictEqual(searchService.getIndexedCount(), 2);
+		assert.strictEqual(searchService.isIndexed('n1'), true);
+		assert.strictEqual(searchService.isIndexed('n2'), true);
 	});
 });

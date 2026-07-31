@@ -262,9 +262,9 @@
 - [x] Docker container for cognitive services — `azure_integration/Dockerfile` (standalone `python:3.11-slim` image, `HEALTHCHECK` via `azure_integration/healthcheck.py`), documented in `azure_integration/README.md`
 
 ### 5.3 EchoCog Integration
-- [ ] Deep integration with Aphrodite Engine for LLM inference
-- [ ] OpenCog Hyperon AtomSpace backend
-- [ ] FlareCog distributed cognitive processing
+- [x] Deep integration with Aphrodite Engine for LLM inference (issue #77) — `AphroditeService` LoRA adapter loading/unloading/listing (`loadAdapter`/`unloadAdapter`/`listAdapters`/`getActiveAdapter`), per-request telemetry ring buffer with `getTelemetry()`/`onDidUpdateTelemetry` (latency, tokens/sec, error rate), automatic multi-model fallback chain on `complete()` failure (`AphroditeConfig.fallbackModels`), structured JSON-schema output passthrough (`AphroditeCompletionRequest.responseFormat` → `guided_json`), batched + LRU-bounded embedding indexing in `HypergraphSemanticSearchService` (`indexAll()`/`search()` now chunk uncached-node embedding requests by `maxBatchSize` instead of one call per node), and `Zone-Cog: Load LoRA Adapter` / `Swap Active Model` / `Show Aphrodite Performance Telemetry` Command Palette actions; A/B model-variant comparison framework remains future work
+- [ ] OpenCog Hyperon AtomSpace backend (issue #78)
+- [ ] FlareCog distributed cognitive processing (issue #79)
 - [x] Autognosis self-monitoring capabilities — `IAutognosisService`/`AutognosisService` (meta-cognitive layer that synthesizes membrane triad health, embodiment proprioception, and cognitive analytics into a first-person `SelfAssessment` with a verdict, self-confidence score, and detected anomalies; self-wires to `IZoneCogService.onDidProcessQuery` so every processed query triggers a fresh assessment, persisted as `SelfAssessment` hypergraph nodes; `Zone-Cog: Perform Self-Assessment` and `Zone-Cog: Show Self-Assessment History` Command Palette actions)
 
 ---

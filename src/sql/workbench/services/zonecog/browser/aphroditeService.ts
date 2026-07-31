@@ -19,6 +19,9 @@ import {
 	AphroditeEmbeddingResponse,
 	AphroditeModelInfo,
 	AphroditeEngineStats,
+	AphroditeAdapterInfo,
+	AphroditeRequestTelemetry,
+	AphroditeTelemetrySummary,
 } from 'sql/workbench/services/zonecog/common/aphrodite';
 import { ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 
@@ -38,6 +41,8 @@ const DEFAULT_CONFIG: AphroditeConfig = {
 	timeoutMs: 60000,
 	batchingEnabled: true,
 	maxBatchSize: 16,
+	fallbackModels: [],
+	maxTelemetrySamples: 200,
 };
 
 /**
@@ -52,6 +57,11 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	private _pendingRequests: Map<string, AbortController> = new Map();
 	private _requestIdCounter: number = 0;
 
+	private readonly _adapters: Map<string, AphroditeAdapterInfo> = new Map();
+	private _activeAdapterId: string | undefined;
+
+	private readonly _telemetry: AphroditeRequestTelemetry[] = [];
+
 	private readonly _onDidReceiveStreamToken = this._register(new Emitter<AphroditeStreamToken>());
 	readonly onDidReceiveStreamToken: Event<AphroditeStreamToken> = this._onDidReceiveStreamToken.event;
 
@@ -60,6 +70,9 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	private readonly _onDidUpdateStats = this._register(new Emitter<AphroditeEngineStats>());
 	readonly onDidUpdateStats: Event<AphroditeEngineStats> = this._onDidUpdateStats.event;
+
+	private readonly _onDidUpdateTelemetry = this._register(new Emitter<AphroditeTelemetrySummary>());
+	readonly onDidUpdateTelemetry: Event<AphroditeTelemetrySummary> = this._onDidUpdateTelemetry.event;
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
@@ -108,54 +121,20 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	async complete(request: AphroditeCompletionRequest): Promise<AphroditeCompletionResponse> {
 		this.membraneService.recordActivity('cerebral');
-		const requestId = request.requestId ?? this._generateRequestId();
-		const abortController = new AbortController();
-		this._pendingRequests.set(requestId, abortController);
 
-		const startTime = Date.now();
+		const modelsToTry = this._buildModelAttemptList();
+		let lastError: unknown;
 
-		try {
-			const response = await this._makeRequest('/v1/completions', {
-				prompt: request.prompt,
-				max_tokens: request.maxTokens ?? this._config.maxTokens,
-				temperature: request.temperature ?? this._config.temperature,
-				top_p: this._config.topP,
-				top_k: this._config.topK,
-				frequency_penalty: this._config.frequencyPenalty,
-				presence_penalty: this._config.presencePenalty,
-				stop: request.stopSequences,
-				stream: false,
-			}, abortController.signal);
+		for (const model of modelsToTry) {
+			const requestId = request.requestId ?? this._generateRequestId();
+			const abortController = new AbortController();
+			this._pendingRequests.set(requestId, abortController);
 
-			const generationTimeMs = Date.now() - startTime;
-			this._pendingRequests.delete(requestId);
+			const startTime = Date.now();
 
-			return {
-				text: response.choices[0]?.text ?? '',
-				promptTokens: response.usage?.prompt_tokens ?? 0,
-				completionTokens: response.usage?.completion_tokens ?? 0,
-				totalTokens: response.usage?.total_tokens ?? 0,
-				finishReason: response.choices[0]?.finish_reason ?? 'stop',
-				generationTimeMs,
-				model: response.model ?? this._config.model,
-			};
-		} catch (error) {
-			this._pendingRequests.delete(requestId);
-			throw error;
-		}
-	}
-
-	async *streamComplete(request: AphroditeCompletionRequest): AsyncIterable<AphroditeStreamToken> {
-		this.membraneService.recordActivity('cerebral');
-		const requestId = request.requestId ?? this._generateRequestId();
-		const abortController = new AbortController();
-		this._pendingRequests.set(requestId, abortController);
-
-		try {
-			const response = await fetch(`${this._config.baseUrl}/v1/completions`, {
-				method: 'POST',
-				headers: this._getHeaders(),
-				body: JSON.stringify({
+			try {
+				const body: Record<string, unknown> = {
+					model,
 					prompt: request.prompt,
 					max_tokens: request.maxTokens ?? this._config.maxTokens,
 					temperature: request.temperature ?? this._config.temperature,
@@ -164,8 +143,88 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 					frequency_penalty: this._config.frequencyPenalty,
 					presence_penalty: this._config.presencePenalty,
 					stop: request.stopSequences,
-					stream: true,
-				}),
+					stream: false,
+				};
+				if (request.responseFormat?.type === 'json_schema') {
+					body['guided_json'] = request.responseFormat.schema;
+				}
+
+				const response = await this._makeRequest('/v1/completions', body, abortController.signal);
+
+				const generationTimeMs = Date.now() - startTime;
+				this._pendingRequests.delete(requestId);
+
+				const completionResponse: AphroditeCompletionResponse = {
+					text: response.choices[0]?.text ?? '',
+					promptTokens: response.usage?.prompt_tokens ?? 0,
+					completionTokens: response.usage?.completion_tokens ?? 0,
+					totalTokens: response.usage?.total_tokens ?? 0,
+					finishReason: response.choices[0]?.finish_reason ?? 'stop',
+					generationTimeMs,
+					model: response.model ?? model,
+				};
+
+				this._recordTelemetry({
+					requestId,
+					model,
+					latencyMs: generationTimeMs,
+					promptTokens: completionResponse.promptTokens,
+					completionTokens: completionResponse.completionTokens,
+					success: true,
+					timestamp: Date.now(),
+				});
+
+				return completionResponse;
+			} catch (error) {
+				this._pendingRequests.delete(requestId);
+				this._recordTelemetry({
+					requestId,
+					model,
+					latencyMs: Date.now() - startTime,
+					promptTokens: 0,
+					completionTokens: 0,
+					success: false,
+					timestamp: Date.now(),
+				});
+				lastError = error;
+			}
+		}
+
+		const lastErrorMessage = lastError instanceof Error ? lastError.message : String(lastError);
+		throw new Error(`Aphrodite completion failed for model(s) [${modelsToTry.join(', ')}]: ${lastErrorMessage}`);
+	}
+
+	async *streamComplete(request: AphroditeCompletionRequest): AsyncIterable<AphroditeStreamToken> {
+		this.membraneService.recordActivity('cerebral');
+		const requestId = request.requestId ?? this._generateRequestId();
+		const abortController = new AbortController();
+		this._pendingRequests.set(requestId, abortController);
+
+		const startTime = Date.now();
+		const model = this._config.model;
+		let completionTokens = 0;
+		let success = false;
+
+		try {
+			const body: Record<string, unknown> = {
+				prompt: request.prompt,
+				max_tokens: request.maxTokens ?? this._config.maxTokens,
+				temperature: request.temperature ?? this._config.temperature,
+				top_p: this._config.topP,
+				top_k: this._config.topK,
+				frequency_penalty: this._config.frequencyPenalty,
+				presence_penalty: this._config.presencePenalty,
+				stop: request.stopSequences,
+				stream: true,
+			};
+			if (request.responseFormat?.type === 'json_schema') {
+				body['guided_json'] = request.responseFormat.schema;
+			}
+
+			const response = await fetch(`${this._config.baseUrl}/v1/completions`, {
+				method: 'POST',
+				headers: this._getHeaders(),
+				body: JSON.stringify(body),
 				signal: abortController.signal,
 			});
 
@@ -201,6 +260,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 								finishReason: 'stop',
 							};
 							this._onDidReceiveStreamToken.fire(token);
+							success = true;
 							yield token;
 							return;
 						}
@@ -216,6 +276,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 									finished: choice.finish_reason !== null,
 									finishReason: choice.finish_reason,
 								};
+								completionTokens++;
 								this._onDidReceiveStreamToken.fire(token);
 								yield token;
 							}
@@ -225,8 +286,18 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 					}
 				}
 			}
+			success = true;
 		} finally {
 			this._pendingRequests.delete(requestId);
+			this._recordTelemetry({
+				requestId,
+				model,
+				latencyMs: Date.now() - startTime,
+				promptTokens: 0,
+				completionTokens,
+				success,
+				timestamp: Date.now(),
+			});
 		}
 	}
 
@@ -364,6 +435,92 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 			this._pendingRequests.delete(requestId);
 		}
 		this.logService.info('[AphroditeService] Cancelled all requests');
+	}
+
+	async loadAdapter(adapter: { id: string; path: string; name?: string; baseModel?: string }): Promise<AphroditeAdapterInfo> {
+		this.membraneService.recordActivity('cerebral');
+
+		await this._makeRequest('/v1/lora_adapters', {
+			lora_name: adapter.id,
+			lora_path: adapter.path,
+		});
+
+		const info: AphroditeAdapterInfo = {
+			id: adapter.id,
+			name: adapter.name ?? adapter.id,
+			path: adapter.path,
+			loaded: true,
+			baseModel: adapter.baseModel,
+		};
+		this._adapters.set(adapter.id, info);
+		this._activeAdapterId = adapter.id;
+		this.logService.info(`[AphroditeService] Loaded adapter: ${adapter.id}`);
+		return info;
+	}
+
+	async unloadAdapter(adapterId: string): Promise<void> {
+		try {
+			await this._makeRequest(`/v1/lora_adapters/${encodeURIComponent(adapterId)}`, undefined, undefined, 'DELETE');
+		} catch (error) {
+			// Unloading is a local-state operation first; log but do not
+			// propagate a failed best-effort network call.
+			this.logService.warn(`[AphroditeService] Failed to unload adapter '${adapterId}' on the engine: ${error instanceof Error ? error.message : String(error)}`);
+		} finally {
+			this._adapters.delete(adapterId);
+			if (this._activeAdapterId === adapterId) {
+				this._activeAdapterId = undefined;
+			}
+		}
+	}
+
+	async listAdapters(): Promise<AphroditeAdapterInfo[]> {
+		return Array.from(this._adapters.values());
+	}
+
+	getActiveAdapter(): AphroditeAdapterInfo | undefined {
+		return this._activeAdapterId ? this._adapters.get(this._activeAdapterId) : undefined;
+	}
+
+	getTelemetry(): AphroditeTelemetrySummary {
+		const samples = this._telemetry;
+		const requestCount = samples.length;
+		const errorCount = samples.filter(s => !s.success).length;
+		const averageLatencyMs = requestCount > 0
+			? samples.reduce((sum, s) => sum + s.latencyMs, 0) / requestCount
+			: 0;
+
+		const successfulSamples = samples.filter(s => s.success);
+		const totalCompletionTokens = successfulSamples.reduce((sum, s) => sum + s.completionTokens, 0);
+		const totalSuccessLatencySeconds = successfulSamples.reduce((sum, s) => sum + s.latencyMs, 0) / 1000;
+		const tokensPerSecond = totalSuccessLatencySeconds > 0 ? totalCompletionTokens / totalSuccessLatencySeconds : 0;
+
+		const errorRate = requestCount > 0 ? errorCount / requestCount : 0;
+
+		return { requestCount, errorCount, averageLatencyMs, tokensPerSecond, errorRate };
+	}
+
+	getTelemetrySamples(): AphroditeRequestTelemetry[] {
+		return [...this._telemetry];
+	}
+
+	private _buildModelAttemptList(): string[] {
+		const raw = [this._config.model, ...(this._config.fallbackModels ?? [])];
+		const models: string[] = [];
+		for (const model of raw) {
+			if (models.length === 0 || models[models.length - 1] !== model) {
+				models.push(model);
+			}
+		}
+		return models;
+	}
+
+	private _recordTelemetry(sample: AphroditeRequestTelemetry): void {
+		this._telemetry.push(sample);
+		const maxSamples = this._config.maxTelemetrySamples ?? 200;
+		while (this._telemetry.length > maxSamples) {
+			this._telemetry.shift();
+		}
+		this._onDidUpdateTelemetry.fire(this.getTelemetry());
 	}
 
 	private _generateRequestId(): string {
