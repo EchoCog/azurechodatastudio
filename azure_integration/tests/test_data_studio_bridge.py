@@ -343,6 +343,55 @@ class TestAtomSpaceAdapterPersistence:
         third = AtomSpaceAdapter()
         assert len(third._nodes) == len(batch1["nodes"]) + len(batch2["nodes"])
 
+    def test_upsert_from_worker_thread_does_not_raise(self, tmp_path: Any) -> None:
+        # Regression test: FastAPI's sync route handlers run each request in
+        # a worker threadpool, distinct from the thread that constructed the
+        # adapter/store. sqlite3's default check_same_thread=True would raise
+        # ProgrammingError here.
+        import concurrent.futures
+
+        db_path = str(tmp_path / "atoms.db")
+        os.environ["ATOMSPACE_PERSIST_PATH"] = db_path
+        adapter = AtomSpaceAdapter()
+        batch = map_rows_to_atoms("dbo", "t", [{"id": 1}], primary_key="id")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            result = pool.submit(adapter.upsert, batch).result()
+
+        assert result["persisted"] is True
+        assert len(adapter._nodes) == len(batch["nodes"])
+
+    def test_concurrent_upserts_from_multiple_threads_all_persist(self, tmp_path: Any) -> None:
+        import concurrent.futures
+
+        db_path = str(tmp_path / "atoms.db")
+        os.environ["ATOMSPACE_PERSIST_PATH"] = db_path
+        adapter = AtomSpaceAdapter()
+        batches = [
+            map_rows_to_atoms("dbo", "t", [{"id": i}], primary_key="id") for i in range(8)
+        ]
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(adapter.upsert, batches))
+
+        assert all(r["status"] == "ok" for r in results)
+        reloaded = AtomSpaceAdapter()
+        assert len(reloaded._nodes) == sum(len(b["nodes"]) for b in batches)
+
+    def test_http_mode_with_persist_path_set_reports_not_persisted(self, tmp_path: Any) -> None:
+        # ATOMSPACE_PERSIST_PATH only takes effect in `local` mode; in `http`
+        # mode no SqliteAtomStore is ever created, so `persisted` must be
+        # False even though the env var happens to be set.
+        os.environ["ATOMSPACE_MODE"] = "http"
+        os.environ["ATOMSPACE_URL"] = "http://127.0.0.1:1"
+        os.environ["ATOMSPACE_PERSIST_PATH"] = str(tmp_path / "atoms.db")
+        try:
+            adapter = AtomSpaceAdapter()
+            assert adapter.persisted is False
+        finally:
+            os.environ.pop("ATOMSPACE_URL", None)
+            os.environ["ATOMSPACE_MODE"] = "local"
+
 
 class TestAtomSpaceAdapterListAtoms:
     def setup_method(self) -> None:
@@ -623,3 +672,41 @@ class TestFastAPIEndpoints:
 
         status = self.client.get("/status").json()
         assert status["processed_batches"] == 2
+
+
+class TestFastAPIEndpointsWithPersistence:
+    """Regression coverage for the exact scenario Cursor Bugbot flagged: FastAPI's
+    sync route handlers execute each request in a worker threadpool, distinct
+    from the thread that constructs `app_impl`/`AtomSpaceAdapter`/`SqliteAtomStore`
+    at import time. Real HTTP requests (not direct in-process calls) must
+    round-trip through persistence without raising."""
+
+    def setup_method(self) -> None:
+        import azure_integration.data_studio_bridge as bridge_module
+
+        self.bridge_module = bridge_module
+        self._original_app_impl = bridge_module.app_impl
+
+    def teardown_method(self) -> None:
+        self.bridge_module.app_impl = self._original_app_impl
+        os.environ.pop("ATOMSPACE_PERSIST_PATH", None)
+
+    def test_ingest_and_list_atoms_over_http_with_persistence_enabled(self, tmp_path: Any) -> None:
+        os.environ["ATOMSPACE_PERSIST_PATH"] = str(tmp_path / "atoms.db")
+        self.bridge_module.app_impl = self.bridge_module.BridgeApp()
+        client = TestClient(self.bridge_module.app)  # type: ignore[arg-type]
+
+        batch = map_rows_to_atoms("dbo", "orders", [{"id": 1, "amount": 10}], primary_key="id")
+        ingest_response = client.post("/ingest/atoms", json={"atoms": batch})
+        assert ingest_response.status_code == 200
+        assert ingest_response.json()["upsert"]["persisted"] is True
+
+        atoms_response = client.get("/atoms")
+        assert atoms_response.status_code == 200
+        assert atoms_response.json()["persisted"] is True
+
+        status_response = client.get("/status")
+        assert status_response.json()["persisted"] is True
+
+        health_response = client.get("/health")
+        assert "persist" in health_response.json()["capabilities"]

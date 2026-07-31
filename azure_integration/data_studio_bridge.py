@@ -87,6 +87,13 @@ class AtomSpaceAdapter:
             self._store = SqliteAtomStore(self.persist_path)
             self._nodes, self._links = self._store.load_all()
 
+    @property
+    def persisted(self) -> bool:
+        """Whether upserts are actually being written through to a durable
+        store — not just whether ATOMSPACE_PERSIST_PATH happens to be set,
+        since persistence only applies in `local` mode."""
+        return self._store is not None
+
     def upsert(self, batch: AtomBatch) -> Dict[str, Any]:
         if self.mode == "local":
             nodes = batch.get("nodes", [])
@@ -99,7 +106,7 @@ class AtomSpaceAdapter:
             return {
                 "status": "ok",
                 "backend": "local",
-                "persisted": self._store is not None,
+                "persisted": self.persisted,
                 "nodes": len(nodes),
                 "links": len(links),
                 "total_nodes": len(self._nodes),
@@ -152,7 +159,7 @@ class AtomSpaceAdapter:
         return {
             "status": "ok",
             "backend": self.mode,
-            "persisted": self._store is not None,
+            "persisted": self.persisted,
             "nodes": list(self._nodes.values()),
             "links": list(self._links.values()),
         }
@@ -228,7 +235,7 @@ class BridgeApp:
 
     def health(self) -> Dict[str, Any]:
         capabilities = ["ingest-schema", "ingest-table", "ingest-atoms", "reason", "list-atoms"]
-        if self.adapter.persist_path:
+        if self.adapter.persisted:
             capabilities.append("persist")
         return {
             "status": "ok",
@@ -276,7 +283,7 @@ class BridgeApp:
             "last_request_id": self.last_request_id,
             "protocol_version": PROTOCOL_VERSION,
             "backend": self.adapter.mode,
-            "persisted": self.adapter.persist_path is not None,
+            "persisted": self.adapter.persisted,
         }
 
 

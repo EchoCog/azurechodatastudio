@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from typing import Any, Dict, Iterable, Tuple
 
 _SCHEMA = """
@@ -36,18 +37,26 @@ class SqliteAtomStore:
 
     def __init__(self, path: str) -> None:
         self.path = path
-        self._conn = sqlite3.connect(self.path, isolation_level=None)
-        self._conn.executescript(_SCHEMA)
+        # FastAPI's sync `def` route handlers run each request in a worker
+        # threadpool, not the thread the store was constructed on, so the
+        # sqlite3 default of `check_same_thread=True` would raise
+        # `ProgrammingError` on every HTTP request once persistence is
+        # enabled. Allow cross-thread use and serialize access ourselves.
+        self._lock = threading.Lock()
+        self._conn = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False)
+        with self._lock:
+            self._conn.executescript(_SCHEMA)
 
     def load_all(self) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
-        nodes = {
-            row[0]: json.loads(row[1])
-            for row in self._conn.execute("SELECT uuid, data FROM atomspace_nodes")
-        }
-        links = {
-            row[0]: json.loads(row[1])
-            for row in self._conn.execute("SELECT uuid, data FROM atomspace_links")
-        }
+        with self._lock:
+            nodes = {
+                row[0]: json.loads(row[1])
+                for row in self._conn.execute("SELECT uuid, data FROM atomspace_nodes")
+            }
+            links = {
+                row[0]: json.loads(row[1])
+                for row in self._conn.execute("SELECT uuid, data FROM atomspace_links")
+            }
         return nodes, links
 
     def upsert_nodes(self, atoms: Iterable[Dict[str, Any]]) -> None:
@@ -60,11 +69,13 @@ class SqliteAtomStore:
         rows = [(atom["uuid"], json.dumps(atom)) for atom in atoms]
         if not rows:
             return
-        self._conn.executemany(
-            f"INSERT INTO {table} (uuid, data) VALUES (?, ?) "
-            "ON CONFLICT(uuid) DO UPDATE SET data = excluded.data",
-            rows,
-        )
+        with self._lock:
+            self._conn.executemany(
+                f"INSERT INTO {table} (uuid, data) VALUES (?, ?) "
+                "ON CONFLICT(uuid) DO UPDATE SET data = excluded.data",
+                rows,
+            )
 
     def close(self) -> None:
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
