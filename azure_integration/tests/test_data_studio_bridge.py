@@ -674,6 +674,7 @@ class TestFastAPIEndpoints:
         assert status["processed_batches"] == 2
 
 
+@pytest.mark.skipif(not _has_fastapi, reason="FastAPI not available")
 class TestFastAPIEndpointsWithPersistence:
     """Regression coverage for the exact scenario Cursor Bugbot flagged: FastAPI's
     sync route handlers execute each request in a worker threadpool, distinct
