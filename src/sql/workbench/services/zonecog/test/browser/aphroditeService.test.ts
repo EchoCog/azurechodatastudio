@@ -222,4 +222,130 @@ suite('AphroditeService', () => {
 		assert.strictEqual(typeof config.maxBatchSize, 'number');
 		assert.ok(config.maxBatchSize > 0);
 	});
+
+	test('config should have promptCachingEnabled option enabled by default', () => {
+		const config = aphroditeService.getConfig();
+		assert.strictEqual(config.promptCachingEnabled, true);
+	});
+
+	// --- LoRA adapter management ---
+
+	test('listAdapters should start empty', () => {
+		assert.deepStrictEqual(aphroditeService.listAdapters(), []);
+	});
+
+	test('getActiveAdapter should be undefined initially', () => {
+		assert.strictEqual(aphroditeService.getActiveAdapter(), undefined);
+	});
+
+	test('loadAdapter should throw when server unavailable', async () => {
+		try {
+			await aphroditeService.loadAdapter('my-adapter', '/models/my-adapter');
+			assert.fail('Should have thrown');
+		} catch (error) {
+			assert.ok(error);
+		}
+		// A failed load must not register the adapter as loaded.
+		assert.deepStrictEqual(aphroditeService.listAdapters(), []);
+		assert.strictEqual(aphroditeService.getActiveAdapter(), undefined);
+	});
+
+	test('unloadAdapter should throw when server unavailable', async () => {
+		try {
+			await aphroditeService.unloadAdapter('my-adapter');
+			assert.fail('Should have thrown');
+		} catch (error) {
+			assert.ok(error);
+		}
+	});
+
+	test('should have onDidChangeAdapters event', () => {
+		assert.ok(aphroditeService.onDidChangeAdapters);
+		const disposable = aphroditeService.onDidChangeAdapters(() => { });
+		disposable.dispose();
+	});
+
+	// --- Telemetry ---
+
+	test('getTelemetry should start empty', () => {
+		assert.deepStrictEqual(aphroditeService.getTelemetry(), []);
+	});
+
+	test('a failed complete() should record an error in telemetry for the attempted model', async () => {
+		try {
+			await aphroditeService.complete({ prompt: 'test', model: 'model-a' });
+		} catch {
+			// expected: no server available
+		}
+
+		const telemetry = aphroditeService.getTelemetry('model-a');
+		assert.strictEqual(telemetry.length, 1);
+		assert.strictEqual(telemetry[0].modelId, 'model-a');
+		assert.strictEqual(telemetry[0].requestCount, 1);
+		assert.strictEqual(telemetry[0].errorCount, 1);
+		assert.strictEqual(telemetry[0].averageLatencyMs, 0);
+	});
+
+	test('getTelemetry(modelId) should return an empty array for an unknown model', async () => {
+		await aphroditeService.complete({ prompt: 'test', model: 'model-a' }).catch(() => { });
+		assert.deepStrictEqual(aphroditeService.getTelemetry('model-unused'), []);
+	});
+
+	test('resetTelemetry should clear accumulated telemetry', async () => {
+		await aphroditeService.complete({ prompt: 'test', model: 'model-a' }).catch(() => { });
+		assert.ok(aphroditeService.getTelemetry().length > 0);
+
+		aphroditeService.resetTelemetry();
+		assert.deepStrictEqual(aphroditeService.getTelemetry(), []);
+	});
+
+	test('a fallback chain attempt should record telemetry for every model tried', async () => {
+		aphroditeService.setFallbackChain(['model-b', 'model-c']);
+		try {
+			await aphroditeService.complete({ prompt: 'test', model: 'model-a' });
+		} catch {
+			// expected: no server available for any model in the chain
+		}
+
+		const telemetry = aphroditeService.getTelemetry();
+		const modelIds = telemetry.map(t => t.modelId).sort();
+		assert.deepStrictEqual(modelIds, ['model-a', 'model-b', 'model-c']);
+	});
+
+	// --- Fallback chain ---
+
+	test('getFallbackChain should start empty', () => {
+		assert.deepStrictEqual(aphroditeService.getFallbackChain(), []);
+	});
+
+	test('setFallbackChain should update the configured chain', () => {
+		aphroditeService.setFallbackChain(['model-b', 'model-c']);
+		assert.deepStrictEqual(aphroditeService.getFallbackChain(), ['model-b', 'model-c']);
+	});
+
+	test('setFallbackChain should not mutate the array passed in', () => {
+		const chain = ['model-b'];
+		aphroditeService.setFallbackChain(chain);
+		chain.push('model-c');
+		assert.deepStrictEqual(aphroditeService.getFallbackChain(), ['model-b']);
+	});
+
+	// --- Model comparison ---
+
+	test('compareModels should return one result per requested model', async () => {
+		const results = await aphroditeService.compareModels({ prompt: 'test' }, ['model-a', 'model-b']);
+
+		assert.strictEqual(results.length, 2);
+		assert.deepStrictEqual(results.map(r => r.modelId), ['model-a', 'model-b']);
+	});
+
+	test('compareModels results should report an error since no server is available', async () => {
+		const results = await aphroditeService.compareModels({ prompt: 'test' }, ['model-a', 'model-b']);
+
+		for (const result of results) {
+			assert.ok(result.error);
+			assert.strictEqual(result.response, undefined);
+			assert.ok(result.latencyMs >= 0);
+		}
+	});
 });

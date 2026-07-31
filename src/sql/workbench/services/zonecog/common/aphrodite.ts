@@ -34,6 +34,8 @@ export interface AphroditeConfig {
 	batchingEnabled: boolean;
 	/** Max batch size */
 	maxBatchSize: number;
+	/** Cache identical non-streaming completion requests for a short TTL */
+	promptCachingEnabled: boolean;
 }
 
 /**
@@ -72,6 +74,58 @@ export interface AphroditeCompletionRequest {
 	priority?: number;
 	/** Request ID for tracking */
 	requestId?: string;
+	/** Override the configured model for this request (used by fallback chains and model comparison). */
+	model?: string;
+	/** JSON schema used to constrain output via the backend's guided decoding support. */
+	responseSchema?: Record<string, unknown>;
+}
+
+/**
+ * A LoRA adapter that can be dynamically loaded onto the running Aphrodite engine.
+ */
+export interface AphroditeAdapterInfo {
+	/** Adapter identifier, used to reference it in requests. */
+	id: string;
+	/** Filesystem path or registry name the adapter weights were loaded from. */
+	path: string;
+	/** Base model the adapter was trained against, if known. */
+	baseModel?: string;
+	/** Whether the adapter is currently loaded on the engine. */
+	loaded: boolean;
+}
+
+/**
+ * Rolling performance telemetry for a single model, accumulated from
+ * `complete()`/`streamComplete()` calls made through that model.
+ */
+export interface AphroditeModelTelemetry {
+	/** Model this telemetry applies to. */
+	modelId: string;
+	/** Total requests attempted against this model. */
+	requestCount: number;
+	/** Requests that ended in an error. */
+	errorCount: number;
+	/** Mean latency in milliseconds across successful requests. */
+	averageLatencyMs: number;
+	/** Mean completion throughput in tokens/second across successful requests. */
+	averageTokensPerSecond: number;
+	/** Timestamp (ms since epoch) of the most recent request. */
+	lastUsed: number;
+}
+
+/**
+ * The outcome of running one prompt against one model variant as part of
+ * `compareModels()`.
+ */
+export interface AphroditeModelComparisonResult {
+	/** Model variant this result is for. */
+	modelId: string;
+	/** Successful completion, if the request succeeded. */
+	response?: AphroditeCompletionResponse;
+	/** Error message, if the request failed. */
+	error?: string;
+	/** Wall-clock time for this variant's request, in milliseconds. */
+	latencyMs: number;
 }
 
 /**
@@ -207,6 +261,11 @@ export interface IAphroditeService {
 	readonly onDidUpdateStats: Event<AphroditeEngineStats>;
 
 	/**
+	 * Event fired when the set of loaded LoRA adapters changes.
+	 */
+	readonly onDidChangeAdapters: Event<AphroditeAdapterInfo[]>;
+
+	/**
 	 * Initialize the service and connect to Aphrodite.
 	 */
 	initialize(config: Partial<AphroditeConfig>): Promise<void>;
@@ -282,4 +341,51 @@ export interface IAphroditeService {
 	 * Cancel all pending requests.
 	 */
 	cancelAllRequests(): void;
+
+	/**
+	 * Dynamically load a LoRA adapter onto the running engine and make it active.
+	 */
+	loadAdapter(adapterId: string, path: string, baseModel?: string): Promise<AphroditeAdapterInfo>;
+
+	/**
+	 * Unload a previously loaded LoRA adapter.
+	 */
+	unloadAdapter(adapterId: string): Promise<void>;
+
+	/**
+	 * List LoRA adapters currently loaded on the engine.
+	 */
+	listAdapters(): AphroditeAdapterInfo[];
+
+	/**
+	 * Get the currently active LoRA adapter, if any.
+	 */
+	getActiveAdapter(): AphroditeAdapterInfo | undefined;
+
+	/**
+	 * Get accumulated performance telemetry, optionally scoped to one model.
+	 */
+	getTelemetry(modelId?: string): AphroditeModelTelemetry[];
+
+	/**
+	 * Clear all accumulated telemetry.
+	 */
+	resetTelemetry(): void;
+
+	/**
+	 * Run the same request against multiple model variants for A/B comparison.
+	 * Requests run concurrently; failures for one variant do not affect others.
+	 */
+	compareModels(request: AphroditeCompletionRequest, modelIds: string[]): Promise<AphroditeModelComparisonResult[]>;
+
+	/**
+	 * Configure the ordered list of models to fall back to when the primary
+	 * model (the request's `model` or the configured default) fails.
+	 */
+	setFallbackChain(modelIds: string[]): void;
+
+	/**
+	 * Get the currently configured fallback chain.
+	 */
+	getFallbackChain(): string[];
 }

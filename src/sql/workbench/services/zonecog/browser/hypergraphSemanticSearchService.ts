@@ -17,6 +17,12 @@ import { IHypergraphStore, HypergraphNode, ICognitiveMembraneService } from 'sql
 /** Dimensionality of the deterministic local fallback embedding. */
 const LOCAL_EMBEDDING_DIM = 128;
 
+/** Maximum number of texts sent to `IAphroditeService.embed()` per batch request. */
+const EMBED_BATCH_SIZE = 32;
+
+/** Upper bound on the number of embeddings retained in memory; least-recently-used entries are evicted past this. */
+const MAX_INDEX_ENTRIES = 5000;
+
 interface IndexEntry {
 	vector: number[];
 	contentHash: string;
@@ -142,16 +148,15 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 			? nodeTypes.flatMap(type => this.hypergraphStore.getNodesByType(type))
 			: this.hypergraphStore.getAllNodes();
 
-		let indexed = 0;
-		for (const node of nodes) {
-			const before = this._index.get(node.id);
-			await this._ensureIndexed(node);
-			if (!before || before !== this._index.get(node.id)) {
-				indexed++;
-			}
+		const stale = nodes.filter(node => this._isStale(node));
+		if (stale.length === 0) {
+			return 0;
 		}
-		this.logService.info(`HypergraphSemanticSearchService: indexed ${indexed}/${nodes.length} node(s)`);
-		return indexed;
+
+		this.membraneService.recordActivity('cerebral');
+		await this._indexNodes(stale);
+		this.logService.info(`HypergraphSemanticSearchService: indexed ${stale.length}/${nodes.length} node(s)`);
+		return stale.length;
 	}
 
 	// -- Search --------------------------------------------------------------
@@ -167,8 +172,9 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 			return [];
 		}
 
-		for (const node of candidates) {
-			await this._ensureIndexed(node);
+		const stale = candidates.filter(node => this._isStale(node));
+		if (stale.length > 0) {
+			await this._indexNodes(stale);
 		}
 
 		const queryVector = await this._embed(query);
@@ -178,6 +184,7 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 			if (!entry) {
 				continue;
 			}
+			this._touch(node.id, entry);
 			const score = cosineSimilarity(queryVector, entry.vector);
 			results.push({ node, score });
 		}
@@ -205,18 +212,76 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 
 	// -- Internals ------------------------------------------------------------
 
+	private _isStale(node: HypergraphNode): boolean {
+		const entry = this._index.get(node.id);
+		return !entry || entry.contentHash !== this._contentHash(node) || entry.source !== this._currentSource();
+	}
+
 	private async _ensureIndexed(node: HypergraphNode): Promise<void> {
-		const contentHash = this._contentHash(node);
+		if (!this._isStale(node)) {
+			return;
+		}
+		this.membraneService.recordActivity('cerebral');
+		await this._indexNodes([node]);
+	}
+
+	/**
+	 * Embed and index a set of stale nodes. When connected to Aphrodite, texts
+	 * are sent in batches of `EMBED_BATCH_SIZE` per `embed()` call instead of
+	 * one request per node, cutting round trips for large re-index runs.
+	 */
+	private async _indexNodes(nodes: HypergraphNode[]): Promise<void> {
 		const source = this._currentSource();
-		const existing = this._index.get(node.id);
-		if (existing && existing.contentHash === contentHash && existing.source === source) {
+
+		if (source === 'local') {
+			for (const node of nodes) {
+				this._setIndexEntry(node.id, { vector: localEmbed(nodeEmbeddingText(node)), contentHash: this._contentHash(node), source: 'local' });
+			}
 			return;
 		}
 
-		this.membraneService.recordActivity('cerebral');
-		const vector = await this._embed(nodeEmbeddingText(node));
-		this._index.set(node.id, { vector, contentHash, source });
-		this._onDidIndexNode.fire(node.id);
+		for (let i = 0; i < nodes.length; i += EMBED_BATCH_SIZE) {
+			const batch = nodes.slice(i, i + EMBED_BATCH_SIZE);
+			try {
+				const response = await this.aphroditeService.embed({ texts: batch.map(nodeEmbeddingText) });
+				batch.forEach((node, index) => {
+					const vector = response.embeddings[index];
+					if (vector && vector.length > 0) {
+						this._setIndexEntry(node.id, { vector, contentHash: this._contentHash(node), source: 'aphrodite' });
+					} else {
+						this._setIndexEntry(node.id, { vector: localEmbed(nodeEmbeddingText(node)), contentHash: this._contentHash(node), source: 'local' });
+					}
+				});
+			} catch (err) {
+				this.logService.warn(`HypergraphSemanticSearchService: batch embed() failed for ${batch.length} node(s), falling back to local embedding: ${err instanceof Error ? err.message : String(err)}`);
+				for (const node of batch) {
+					this._setIndexEntry(node.id, { vector: localEmbed(nodeEmbeddingText(node)), contentHash: this._contentHash(node), source: 'local' });
+				}
+			}
+		}
+	}
+
+	private _setIndexEntry(nodeId: string, entry: IndexEntry): void {
+		this._index.delete(nodeId); // re-insert to mark as most-recently-used
+		this._index.set(nodeId, entry);
+		this._evictIfNeeded();
+		this._onDidIndexNode.fire(nodeId);
+	}
+
+	/** Marks an entry as recently used by moving it to the end of the (LRU-ordered) index map. */
+	private _touch(nodeId: string, entry: IndexEntry): void {
+		this._index.delete(nodeId);
+		this._index.set(nodeId, entry);
+	}
+
+	private _evictIfNeeded(): void {
+		while (this._index.size > MAX_INDEX_ENTRIES) {
+			const oldestKey = this._index.keys().next().value;
+			if (oldestKey === undefined) {
+				break;
+			}
+			this._index.delete(oldestKey);
+		}
 	}
 
 	private _currentSource(): SemanticEmbeddingSource {
