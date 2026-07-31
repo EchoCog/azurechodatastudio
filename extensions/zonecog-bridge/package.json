@@ -116,7 +116,7 @@
     "test": "yarn compile && node --test test/*.test.js",
     "vscode:prepublish": "yarn compile",
     "package": "npx --yes @vscode/vsce package --no-dependencies",
-    "package:dry-run": "npx --yes @vscode/vsce package --no-dependencies --out /tmp/zonecog-bridge-dry-run.vsix"
+    "package:dry-run": "npx --yes @vscode/vsce package --no-dependencies --out zonecog-bridge-dry-run.vsix"
   },
   "devDependencies": {
     "@types/node": "20.14.10",
