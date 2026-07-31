@@ -1426,6 +1426,177 @@ class ZoneCogAphroditeCompleteAction extends Action2 {
 	}
 }
 
+/**
+ * Action to dynamically load a LoRA adapter into the running Aphrodite engine.
+ */
+class ZoneCogAphroditeLoadAdapterAction extends Action2 {
+
+	static ID = 'zonecog.aphrodite.loadAdapter';
+	constructor() {
+		super({
+			id: ZoneCogAphroditeLoadAdapterAction.ID,
+			title: { value: localize('zonecog.aphroditeLoadAdapter', 'Load LoRA Adapter'), original: 'Load LoRA Adapter' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.package_,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aphroditeService = accessor.get(IAphroditeService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		if (!aphroditeService.isConnected()) {
+			notificationService.warn(localize('zonecog.aphroditeNotConnectedWarnAdapter',
+				'Aphrodite Engine is not connected. Use "Connect to Aphrodite Engine" first.'));
+			return;
+		}
+
+		const adapterId = await quickInputService.input({
+			prompt: localize('zonecog.aphroditeAdapterIdPrompt', 'Enter a name for the LoRA adapter'),
+			placeHolder: 'my-domain-adapter',
+		});
+		if (!adapterId) { return; }
+
+		const adapterPath = await quickInputService.input({
+			prompt: localize('zonecog.aphroditeAdapterPathPrompt', 'Enter the LoRA adapter path (local path or hub ID)'),
+			placeHolder: '/models/adapters/my-domain-adapter',
+		});
+		if (!adapterPath) { return; }
+
+		try {
+			const info = await aphroditeService.loadAdapter(adapterId, adapterPath);
+			notificationService.info(localize('zonecog.aphroditeAdapterLoaded',
+				'Loaded LoRA adapter \'{0}\' from {1} (base model: {2})', info.id, info.path, info.baseModel));
+		} catch (err) {
+			notificationService.error(localize('zonecog.aphroditeAdapterLoadError',
+				'Failed to load LoRA adapter: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to hot-swap the active Aphrodite model, choosing from currently
+ * available models (or loaded LoRA adapters) reported by the engine.
+ */
+class ZoneCogAphroditeSwapModelAction extends Action2 {
+
+	static ID = 'zonecog.aphrodite.swapModel';
+	constructor() {
+		super({
+			id: ZoneCogAphroditeSwapModelAction.ID,
+			title: { value: localize('zonecog.aphroditeSwapModel', 'Hot-Swap Active Model'), original: 'Hot-Swap Active Model' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.arrowSwap,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aphroditeService = accessor.get(IAphroditeService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		if (!aphroditeService.isConnected()) {
+			notificationService.warn(localize('zonecog.aphroditeNotConnectedWarnSwap',
+				'Aphrodite Engine is not connected. Use "Connect to Aphrodite Engine" first.'));
+			return;
+		}
+
+		const currentModel = aphroditeService.getConfig().model;
+		const items: { label: string; description?: string }[] = [];
+		// The engine reports loaded LoRA adapters through /v1/models too, so
+		// track which IDs are already listed and skip them below.
+		const seenIds = new Set<string>();
+
+		try {
+			const models = await aphroditeService.listModels();
+			for (const model of models) {
+				seenIds.add(model.id);
+				items.push({ label: model.id, description: model.loaded ? localize('zonecog.aphroditeModelLoaded', 'currently loaded') : undefined });
+			}
+		} catch {
+			// Engine may not expose /v1/models; fall through to manual entry below.
+		}
+
+		for (const adapter of aphroditeService.listAdapters()) {
+			if (seenIds.has(adapter.id)) {
+				continue;
+			}
+			seenIds.add(adapter.id);
+			items.push({ label: adapter.id, description: localize('zonecog.aphroditeAdapterEntry', 'LoRA adapter over {0}', adapter.baseModel) });
+		}
+
+		const manualEntry = { label: localize('zonecog.aphroditeEnterManually', 'Enter model ID manually...') };
+		items.push(manualEntry);
+
+		const selected = await quickInputService.pick(items, {
+			placeHolder: localize('zonecog.aphroditeSwapModelPicker', 'Select a model to swap to (current: {0})', currentModel),
+		});
+		if (!selected) { return; }
+
+		let targetModel = selected.label;
+		if (selected === manualEntry) {
+			const manual = await quickInputService.input({
+				prompt: localize('zonecog.aphroditeManualModelPrompt', 'Enter model ID'),
+				value: currentModel,
+			});
+			if (!manual) { return; }
+			targetModel = manual;
+		}
+
+		await aphroditeService.switchModel(targetModel);
+		notificationService.info(localize('zonecog.aphroditeSwapped',
+			'Active model swapped: {0} -> {1}', currentModel, targetModel));
+	}
+}
+
+/**
+ * Action to display the Aphrodite inference telemetry dashboard: aggregate
+ * latency/throughput/error-rate stats and a per-model breakdown.
+ */
+class ZoneCogAphroditeShowPerformanceAction extends Action2 {
+
+	static ID = 'zonecog.aphrodite.showPerformance';
+	constructor() {
+		super({
+			id: ZoneCogAphroditeShowPerformanceAction.ID,
+			title: { value: localize('zonecog.aphroditeShowPerformance', 'Show Aphrodite Performance Telemetry'), original: 'Show Aphrodite Performance Telemetry' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.dashboard,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aphroditeService = accessor.get(IAphroditeService);
+		const notificationService = accessor.get(INotificationService);
+
+		const summary = aphroditeService.getTelemetrySummary();
+
+		if (summary.totalRequests === 0) {
+			notificationService.info(localize('zonecog.aphroditeNoTelemetry',
+				'No Aphrodite completion attempts recorded yet.'));
+			return;
+		}
+
+		const byModelLines = Object.entries(summary.byModel)
+			.map(([model, stats]) => `  ${model}: ${stats.requests} req, ${(stats.successRate * 100).toFixed(0)}% ok, ${stats.avgLatencyMs.toFixed(0)}ms avg`)
+			.join('\n');
+
+		notificationService.info(localize('zonecog.aphroditePerformanceInfo',
+			'Aphrodite Performance:\nRequests: {0} ({1} ok / {2} failed, {3}% success)\nAvg latency: {4}ms | p95: {5}ms\nTotal tokens: {6}\nBy model:\n{7}',
+			summary.totalRequests, summary.successCount, summary.errorCount, (summary.successRate * 100).toFixed(0),
+			summary.avgLatencyMs.toFixed(0), summary.p95LatencyMs.toFixed(0), summary.totalTokens,
+			byModelLines || '  (none)'
+		));
+	}
+}
+
 // =============================================================================
 // Phase 6 actions - Cognitive Workflow Automation
 // =============================================================================
@@ -1638,6 +1809,9 @@ registerAction2(ZoneCogRegisterSchemaInHypergraphAction);
 registerAction2(ZoneCogAphroditeConnectAction);
 registerAction2(ZoneCogAphroditeStatusAction);
 registerAction2(ZoneCogAphroditeCompleteAction);
+registerAction2(ZoneCogAphroditeLoadAdapterAction);
+registerAction2(ZoneCogAphroditeSwapModelAction);
+registerAction2(ZoneCogAphroditeShowPerformanceAction);
 
 // Phase 6 actions
 registerAction2(ZoneCogListWorkflowsAction);
@@ -2992,6 +3166,271 @@ class ZoneCogSelfAssessHistoryAction extends Action2 {
 
 registerAction2(ZoneCogSelfAssessAction);
 registerAction2(ZoneCogSelfAssessHistoryAction);
+
+// ============================================================================
+// A.4: Aphrodite Engine Actions
+// ============================================================================
+
+/**
+ * Action to load a LoRA adapter dynamically via Aphrodite Engine
+ */
+class ZoneCogAphroditeLoadAdapterAction extends Action2 {
+	constructor() {
+		super({
+			id: 'zonecog.aphrodite.loadAdapter',
+			title: { value: localize('zonecog.aphrodite.loadAdapter', 'Zone-Cog: Load LoRA Adapter'), original: 'Zone-Cog: Load LoRA Adapter' },
+			category: ZONECOG_CATEGORY,
+			f1: true,
+			icon: Codicon.extensions,
+			menu: { id: MenuId.CommandPalette }
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aphroditeService = accessor.get(IAphroditeService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		if (!aphroditeService.isConnected()) {
+			notificationService.warn(localize('zonecog.aphrodite.notConnected', 'Aphrodite Engine is not connected. Please connect first.'));
+			return;
+		}
+
+		// List available adapters
+		const adapters = await aphroditeService.listAdapters();
+		if (adapters.length === 0) {
+			notificationService.info(localize('zonecog.aphrodite.noAdapters', 'No LoRA adapters available on the server.'));
+			return;
+		}
+
+		const currentAdapter = aphroditeService.getCurrentAdapter();
+		const picks = adapters.map(adapter => ({
+			label: adapter.name,
+			description: adapter.id === currentAdapter?.id ? '(current)' : adapter.description,
+			detail: `Parameters: ${adapter.parameters.toLocaleString()} | Base: ${adapter.baseModel}`,
+			adapter
+		}));
+
+		const selected = await quickInputService.pick(picks, {
+			placeHolder: localize('zonecog.aphrodite.selectAdapter', 'Select a LoRA adapter to load'),
+			title: localize('zonecog.aphrodite.loadAdapterTitle', 'Load LoRA Adapter')
+		});
+
+		if (!selected) {
+			return;
+		}
+
+		try {
+			const success = await aphroditeService.loadAdapter(selected.adapter.id);
+			if (success) {
+				notificationService.info(localize('zonecog.aphrodite.adapterLoaded', 'LoRA adapter "{0}" loaded successfully.', selected.adapter.name));
+			} else {
+				notificationService.warn(localize('zonecog.aphrodite.adapterLoadFailed', 'Failed to load LoRA adapter "{0}".', selected.adapter.name));
+			}
+		} catch (err) {
+			notificationService.error(localize('zonecog.aphrodite.adapterLoadError', 'Error loading adapter: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to hot-swap the active model in Aphrodite Engine
+ */
+class ZoneCogAphroditeSwapModelAction extends Action2 {
+	constructor() {
+		super({
+			id: 'zonecog.aphrodite.swapModel',
+			title: { value: localize('zonecog.aphrodite.swapModel', 'Zone-Cog: Swap Active Model'), original: 'Zone-Cog: Swap Active Model' },
+			category: ZONECOG_CATEGORY,
+			f1: true,
+			icon: Codicon.symbolMethod,
+			menu: { id: MenuId.CommandPalette }
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aphroditeService = accessor.get(IAphroditeService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		if (!aphroditeService.isConnected()) {
+			notificationService.warn(localize('zonecog.aphrodite.notConnected', 'Aphrodite Engine is not connected. Please connect first.'));
+			return;
+		}
+
+		// Get available models
+		const models = await aphroditeService.getAvailableModels();
+		if (models.length === 0) {
+			notificationService.info(localize('zonecog.aphrodite.noModels', 'No alternative models available on the server.'));
+			return;
+		}
+
+		const picks = models.map(model => ({
+			label: model.id,
+			description: model.description,
+			detail: model.loaded ? '✓ Currently loaded' : 'Not loaded',
+			model
+		}));
+
+		const selected = await quickInputService.pick(picks, {
+			placeHolder: localize('zonecog.aphrodite.selectModel', 'Select a model to activate'),
+			title: localize('zonecog.aphrodite.swapModelTitle', 'Swap Active Model')
+		});
+
+		if (!selected) {
+			return;
+		}
+
+		// If model has adapters, optionally select one
+		let adapterToLoad: string | undefined;
+		const currentAdapter = aphroditeService.getCurrentAdapter();
+		if (currentAdapter) {
+			const keepAdapter = await quickInputService.pick([
+				{ label: 'Keep current adapter', description: currentAdapter.name, keep: true },
+				{ label: 'Unload adapter', description: 'Use base model only', keep: false }
+			], {
+				placeHolder: localize('zonecog.aphrodite.adapterChoice', 'Keep current LoRA adapter?')
+			});
+
+			if (keepAdapter?.keep) {
+				adapterToLoad = currentAdapter.id;
+			}
+		}
+
+		try {
+			// Swap adapter to simulate model swap (uses the fallback chain mechanism)
+			if (currentAdapter && !adapterToLoad) {
+				await aphroditeService.unloadAdapter();
+			}
+			if (adapterToLoad) {
+				await aphroditeService.loadAdapter(adapterToLoad);
+			}
+
+			notificationService.info(localize('zonecog.aphrodite.modelSwapped', 'Model configuration updated for "{0}".', selected.model.id));
+		} catch (err) {
+			notificationService.error(localize('zonecog.aphrodite.modelSwapError', 'Error swapping model: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to display the Aphrodite inference telemetry dashboard
+ */
+class ZoneCogAphroditeShowPerformanceAction extends Action2 {
+	constructor() {
+		super({
+			id: 'zonecog.aphrodite.showPerformance',
+			title: { value: localize('zonecog.aphrodite.showPerformance', 'Zone-Cog: Show Inference Telemetry'), original: 'Zone-Cog: Show Inference Telemetry' },
+			category: ZONECOG_CATEGORY,
+			f1: true,
+			icon: Codicon.dashboard,
+			menu: { id: MenuId.CommandPalette }
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const aphroditeService = accessor.get(IAphroditeService);
+		const notificationService = accessor.get(INotificationService);
+
+		// Get performance metrics
+		const metrics = aphroditeService.getPerformanceMetrics(300); // Last 5 minutes
+		const recentTelemetry = aphroditeService.getRecentTelemetry(10);
+		const cacheStats = aphroditeService.getPromptCacheStats();
+		const currentAdapter = aphroditeService.getCurrentAdapter();
+		const fallbackState = aphroditeService.getFallbackState();
+		const speculativeDecoding = await aphroditeService.isSpeculativeDecodingAvailable();
+
+		// Format performance summary
+		const lines: string[] = [
+			'═══════════════════════════════════════════',
+			'          APHRODITE INFERENCE TELEMETRY     ',
+			'═══════════════════════════════════════════',
+			'',
+			'📊 PERFORMANCE METRICS (Last 5 minutes)',
+			'───────────────────────────────────────────',
+			`  Total Requests:     ${metrics.totalRequests}`,
+			`  Success Rate:       ${(metrics.successRate * 100).toFixed(1)}%`,
+			`  Error Rate:         ${(metrics.errorRate * 100).toFixed(1)}%`,
+			`  Avg Latency:        ${metrics.avgLatencyMs.toFixed(0)}ms`,
+			`  P50 Latency:        ${metrics.p50LatencyMs.toFixed(0)}ms`,
+			`  P95 Latency:        ${metrics.p95LatencyMs.toFixed(0)}ms`,
+			`  P99 Latency:        ${metrics.p99LatencyMs.toFixed(0)}ms`,
+			`  Throughput:         ${metrics.throughputTokensPerSec.toFixed(1)} tokens/sec`,
+			'',
+			'💾 PROMPT CACHE',
+			'───────────────────────────────────────────',
+			`  Entries:            ${cacheStats.entryCount}/${cacheStats.maxEntries}`,
+			`  Total Tokens:       ${cacheStats.totalTokensCached}`,
+			`  Hit Rate:           ${(cacheStats.hitRate * 100).toFixed(1)}%`,
+			`  Cache Hits:         ${cacheStats.hitCount}`,
+			`  Cache Misses:       ${cacheStats.missCount}`,
+			''
+		];
+
+		// Add adapter info if loaded
+		if (currentAdapter) {
+			lines.push(
+				'🔌 ACTIVE LoRA ADAPTER',
+				'───────────────────────────────────────────',
+				`  Name:               ${currentAdapter.name}`,
+				`  ID:                 ${currentAdapter.id}`,
+				`  Parameters:         ${currentAdapter.parameters.toLocaleString()}`,
+				`  Base Model:         ${currentAdapter.baseModel}`,
+				''
+			);
+		}
+
+		// Add fallback state
+		lines.push(
+			'🔄 FALLBACK STATE',
+			'───────────────────────────────────────────',
+			`  Using Primary:      ${!fallbackState.isUsingFallback ? 'Yes' : 'No'}`,
+			`  Consecutive Fails:  ${fallbackState.consecutiveFailures}`,
+			`  Current Fallback:   ${fallbackState.currentFallbackIndex === 0 ? 'Primary' : `Fallback #${fallbackState.currentFallbackIndex}`}`
+		);
+
+		if (fallbackState.lastFailureTime) {
+			lines.push(`  Last Failure:       ${new Date(fallbackState.lastFailureTime).toLocaleTimeString()}`);
+		}
+		if (fallbackState.nextRetryTime) {
+			lines.push(`  Next Retry:         ${new Date(fallbackState.nextRetryTime).toLocaleTimeString()}`);
+		}
+
+		lines.push(
+			'',
+			'⚡ SPECULATIVE DECODING',
+			'───────────────────────────────────────────',
+			`  Available:          ${speculativeDecoding ? 'Yes' : 'No'}`,
+			''
+		);
+
+		// Add recent requests
+		if (recentTelemetry.length > 0) {
+			lines.push(
+				'📜 RECENT REQUESTS',
+				'───────────────────────────────────────────'
+			);
+
+			for (const t of recentTelemetry) {
+				const status = t.success ? '✓' : '✗';
+				const time = new Date(t.timestamp).toLocaleTimeString();
+				lines.push(`  ${status} [${time}] ${t.promptTokens}→${t.completionTokens} tokens, ${t.latencyMs.toFixed(0)}ms`);
+			}
+		}
+
+		lines.push(
+			'',
+			'═══════════════════════════════════════════'
+		);
+
+		notificationService.info(lines.join('\n'));
+	}
+}
+
+// Register Aphrodite Engine actions
+registerAction2(ZoneCogAphroditeLoadAdapterAction);
+registerAction2(ZoneCogAphroditeSwapModelAction);
+registerAction2(ZoneCogAphroditeShowPerformanceAction);
 
 // Register the cognitive loop status bar contribution so the loop state is
 // always visible in the workbench status bar.
