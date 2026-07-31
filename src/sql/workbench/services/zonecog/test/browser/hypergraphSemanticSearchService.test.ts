@@ -181,7 +181,7 @@ suite('Hypergraph Semantic Search Service Tests', () => {
 	test('indexAll should cap a single pass at the index budget instead of thrashing', async () => {
 		// One more than the internal MAX_INDEX_ENTRIES (5000) cap: without capping the batch,
 		// indexing all of them in one call would evict entries from within the same batch,
-		// so a second identical pass would find a different subset stale — an oscillation that
+		// so a second identical pass would find a different subset stale - an oscillation that
 		// never converges. Salience is set so node ordering (most-to-least salient) is stable.
 		const total = 5001;
 		for (let i = 0; i < total; i++) {

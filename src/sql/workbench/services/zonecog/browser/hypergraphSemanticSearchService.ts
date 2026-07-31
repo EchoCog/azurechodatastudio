@@ -31,8 +31,8 @@ interface IndexEntry {
 	 * Whether an Aphrodite embed was attempted for this content, whether it
 	 * succeeded (`source: 'aphrodite'`) or fell back to a local embedding after
 	 * failing (`source: 'local'`). Content is only re-flagged stale to retry
-	 * Aphrodite when this is false — e.g. it was embedded locally before
-	 * Aphrodite ever connected — so a persistently failing `embed()` call
+	 * Aphrodite when this is false - e.g. it was embedded locally before
+	 * Aphrodite ever connected - so a persistently failing `embed()` call
 	 * doesn't get retried on every subsequent `search()`/`indexAll()`.
 	 */
 	aphroditeAttempted: boolean;
@@ -187,14 +187,30 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 			await this._indexNodes(this._capToIndexBudget(stale));
 		}
 
-		const queryVector = await this._embed(query);
+		// Indexed entries can be a mix of 'aphrodite' and 'local' vectors (per-node embed
+		// failures fall back independently), and Aphrodite's connection status can also change
+		// between indexing and searching. Embed the query in whichever space(s) the candidate
+		// entries actually use, and score each entry against the matching query vector instead
+		// of a single one - comparing vectors from different embedding spaces makes cosine
+		// similarity meaningless.
+		const localQueryVector = localEmbed(query);
+		const needsAphroditeQueryVector = candidates.some(node => this._index.get(node.id)?.source === 'aphrodite');
+		const aphroditeQueryVector = needsAphroditeQueryVector ? await this._tryEmbedAphrodite(query) : undefined;
+
 		const results: SemanticSearchResult[] = [];
 		for (const node of candidates) {
 			const entry = this._index.get(node.id);
 			if (!entry) {
 				continue;
 			}
+			if (entry.source === 'aphrodite' && !aphroditeQueryVector) {
+				// Can't compare an Aphrodite-space document vector without a same-space query
+				// vector (Aphrodite just disconnected, or this embed() call failed); skip rather
+				// than score it against an incompatible local query vector.
+				continue;
+			}
 			this._touch(node.id, entry);
+			const queryVector = entry.source === 'aphrodite' ? aphroditeQueryVector! : localQueryVector;
 			const score = cosineSimilarity(queryVector, entry.vector);
 			results.push({ node, score });
 		}
@@ -237,7 +253,7 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 	 * Bound how many nodes a single indexing pass embeds so it never inserts more than
 	 * `MAX_INDEX_ENTRIES` entries in one call. Without this, indexing a stale set larger than
 	 * the cap would evict entries from within the very same batch, and a later pass would find
-	 * those evicted nodes stale again — an oscillation that never converges on graphs bigger than
+	 * those evicted nodes stale again - an oscillation that never converges on graphs bigger than
 	 * the cap. The most salient nodes are kept first so the resident set is deterministic and
 	 * stable across calls (matching the ECAN-style salience triage used elsewhere in ZoneCog).
 	 */
@@ -325,19 +341,18 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 		return this.aphroditeService.isConnected() ? 'aphrodite' : 'local';
 	}
 
-	private async _embed(text: string): Promise<number[]> {
-		if (this.aphroditeService.isConnected()) {
-			try {
-				const response = await this.aphroditeService.embed({ texts: [text] });
-				const vector = response.embeddings[0];
-				if (vector && vector.length > 0) {
-					return vector;
-				}
-			} catch (err) {
-				this.logService.warn(`HypergraphSemanticSearchService: Aphrodite embed() failed, falling back to local embedding: ${err instanceof Error ? err.message : String(err)}`);
+	/** Embeds `text` via Aphrodite; returns undefined (never falls back to a local vector) so callers can tell whether a same-space comparison is possible. */
+	private async _tryEmbedAphrodite(text: string): Promise<number[] | undefined> {
+		try {
+			const response = await this.aphroditeService.embed({ texts: [text] });
+			const vector = response.embeddings[0];
+			if (vector && vector.length > 0) {
+				return vector;
 			}
+		} catch (err) {
+			this.logService.warn(`HypergraphSemanticSearchService: Aphrodite embed() failed for query text: ${err instanceof Error ? err.message : String(err)}`);
 		}
-		return localEmbed(text);
+		return undefined;
 	}
 
 	private _contentHash(node: HypergraphNode): string {

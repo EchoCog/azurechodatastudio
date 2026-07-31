@@ -141,7 +141,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	}
 
 	/**
-	 * @param bypassFallback When true, only the resolved primary model is tried — used by
+	 * @param bypassFallback When true, only the resolved primary model is tried - used by
 	 * `compareModels()` so a failing variant is reported as failed instead of silently
 	 * succeeding via another model through the fallback chain.
 	 */
@@ -391,6 +391,13 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	async switchModel(modelId: string): Promise<void> {
 		this.membraneService.recordActivity('cerebral');
 		this._config.model = modelId;
+		if (this._activeAdapterId !== undefined) {
+			// A LoRA adapter is bound to a specific base model, so switching the base model
+			// deactivates it - otherwise complete()/streamComplete() would keep routing to the
+			// old adapter's id and this call would silently have no effect.
+			this._activeAdapterId = undefined;
+			this._onDidChangeAdapters.fire(this.listAdapters());
+		}
 		// In a real implementation, this would send a request to load the model
 		this.logService.info(`[AphroditeService] Switched to model: ${modelId}`);
 	}
