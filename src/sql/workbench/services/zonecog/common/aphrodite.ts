@@ -150,6 +150,8 @@ export interface AphroditeModelInfo {
 	id: string;
 	/** Human-readable name */
 	name: string;
+	/** Model description */
+	description: string;
 	/** Context window size */
 	contextLength: number;
 	/** Whether model supports embeddings */
@@ -182,11 +184,291 @@ export interface AphroditeEngineStats {
 	kvCacheSize: number;
 }
 
+/**
+ * LoRA adapter information.
+ */
+export interface LoRAAdapterInfo {
+	/** Adapter identifier */
+	id: string;
+	/** Human-readable name */
+	name: string;
+	/** Adapter description */
+	description: string;
+	/** Adapter file path or URL */
+	path: string;
+	/** Scaling factor (typically 0.0-2.0) */
+	scale: number;
+	/** Whether the adapter is currently loaded */
+	loaded: boolean;
+	/** Number of trainable parameters */
+	parameters: number;
+	/** Base model this adapter is compatible with */
+	baseModel: string;
+}
+
+/**
+ * Performance telemetry record for a single request.
+ */
+export interface AphroditeRequestTelemetry {
+	/** Request ID */
+	requestId: string;
+	/** Model used */
+	model: string;
+	/** LoRA adapter used (if any) */
+	adapterId?: string;
+	/** Time to first token in milliseconds */
+	timeToFirstTokenMs: number;
+	/** Total generation time in milliseconds */
+	totalTimeMs: number;
+	/** Total latency in milliseconds (alias for totalTimeMs) */
+	latencyMs: number;
+	/** Prompt tokens */
+	promptTokens: number;
+	/** Completion tokens */
+	completionTokens: number;
+	/** Tokens per second */
+	tokensPerSecond: number;
+	/** Whether speculative decoding was used */
+	speculativeDecodingUsed: boolean;
+	/** Speculative decoding acceptance rate */
+	speculativeAcceptanceRate?: number;
+	/** Whether prompt cache was hit */
+	promptCacheHit: boolean;
+	/** Timestamp */
+	timestamp: number;
+	/** Whether request succeeded */
+	success: boolean;
+	/** Error message if failed */
+	errorMessage?: string;
+}
+
+/**
+ * Aggregated performance metrics over a time window.
+ */
+export interface AphroditePerformanceMetrics {
+	/** Time window in seconds */
+	windowSeconds: number;
+	/** Total requests in window */
+	totalRequests: number;
+	/** Successful requests */
+	successfulRequests: number;
+	/** Failed requests */
+	failedRequests: number;
+	/** Success rate (0-1) */
+	successRate: number;
+	/** Error rate (0-1) */
+	errorRate: number;
+	/** Average latency in ms */
+	avgLatencyMs: number;
+	/** P50 latency in ms */
+	p50LatencyMs: number;
+	/** P95 latency in ms */
+	p95LatencyMs: number;
+	/** P99 latency in ms */
+	p99LatencyMs: number;
+	/** Average time to first token in ms */
+	avgTimeToFirstTokenMs: number;
+	/** Average tokens per second */
+	avgTokensPerSecond: number;
+	/** Throughput in tokens per second */
+	throughputTokensPerSec: number;
+	/** Total tokens generated */
+	totalTokensGenerated: number;
+	/** Prompt cache hit rate */
+	promptCacheHitRate: number;
+	/** Speculative decoding usage rate */
+	speculativeDecodingUsageRate: number;
+	/** Average speculative acceptance rate */
+	avgSpeculativeAcceptanceRate: number;
+}
+
+/**
+ * A/B test variant configuration.
+ */
+export interface ABTestVariant {
+	/** Variant identifier */
+	id: string;
+	/** Variant name */
+	name: string;
+	/** Model to use for this variant */
+	model: string;
+	/** LoRA adapter to use (optional) */
+	adapterId?: string;
+	/** Traffic weight (0-100) */
+	weight: number;
+	/** Variant-specific config overrides */
+	configOverrides?: Partial<AphroditeConfig>;
+}
+
+/**
+ * A/B test configuration.
+ */
+export interface ABTestConfig {
+	/** Test identifier */
+	testId: string;
+	/** Test name */
+	name: string;
+	/** Test description */
+	description: string;
+	/** Variants in this test */
+	variants: ABTestVariant[];
+	/** Whether the test is active */
+	active: boolean;
+	/** Test start time */
+	startTime: number;
+	/** Test end time (optional) */
+	endTime?: number;
+}
+
+/**
+ * A/B test results.
+ */
+export interface ABTestResults {
+	/** Test identifier */
+	testId: string;
+	/** Results per variant */
+	variantResults: Map<string, AphroditePerformanceMetrics>;
+	/** Statistical significance (p-value) for latency difference */
+	latencySignificance?: number;
+	/** Statistical significance for error rate difference */
+	errorRateSignificance?: number;
+	/** Recommended variant based on results */
+	recommendedVariant?: string;
+}
+
+/**
+ * Model fallback chain configuration.
+ */
+export interface ModelFallbackConfig {
+	/** Primary model */
+	primary: string;
+	/** Fallback models in priority order */
+	fallbacks: string[];
+	/** Number of retries before falling back */
+	retriesBeforeFallback: number;
+	/** Timeout before falling back (ms) */
+	timeoutBeforeFallbackMs: number;
+	/** Whether to automatically re-enable primary after success */
+	autoReenablePrimary: boolean;
+	/** Time to wait before retrying primary (ms) */
+	primaryReenableDelayMs: number;
+}
+
+/**
+ * Current model fallback state.
+ */
+export interface ModelFallbackState {
+	/** Currently active model */
+	activeModel: string;
+	/** Whether using a fallback model */
+	usingFallback: boolean;
+	/** Alias for usingFallback for compatibility */
+	isUsingFallback: boolean;
+	/** Number of consecutive failures on primary */
+	primaryFailureCount: number;
+	/** Alias for primaryFailureCount */
+	consecutiveFailures: number;
+	/** Current fallback index (0 = primary) */
+	currentFallbackIndex: number;
+	/** Time when primary was disabled */
+	primaryDisabledAt?: number;
+	/** Time when primary will be re-enabled */
+	primaryReenableAt?: number;
+	/** Last failure time */
+	lastFailureTime?: number;
+	/** Next retry time for primary */
+	nextRetryTime?: number;
+}
+
+/**
+ * Structured output (JSON schema) constraints for completions.
+ */
+export interface StructuredOutputConfig {
+	/** JSON schema for the expected output */
+	jsonSchema: object;
+	/** Whether to enforce strict schema validation */
+	strict: boolean;
+	/** Maximum retries on schema validation failure */
+	maxRetries: number;
+}
+
+/**
+ * Prompt cache entry.
+ */
+export interface PromptCacheEntry {
+	/** Cache key (hash of prompt prefix) */
+	key: string;
+	/** Cached KV state identifier */
+	kvStateId: string;
+	/** Number of tokens in the cached prefix */
+	tokenCount: number;
+	/** Last access time */
+	lastAccessTime: number;
+	/** Number of times this cache entry was used */
+	hitCount: number;
+}
+
+/**
+ * Prompt cache statistics.
+ */
+export interface PromptCacheStats {
+	/** Total entries in cache */
+	totalEntries: number;
+	/** Number of entries (alias for totalEntries) */
+	entryCount: number;
+	/** Maximum entries allowed */
+	maxEntries: number;
+	/** Total tokens cached */
+	totalTokensCached: number;
+	/** Cache hit rate (0-1) */
+	hitRate: number;
+	/** Total cache hits */
+	totalHits: number;
+	/** Alias for totalHits */
+	hitCount: number;
+	/** Total cache misses */
+	totalMisses: number;
+	/** Alias for totalMisses */
+	missCount: number;
+	/** Estimated memory usage in bytes */
+	memoryUsageBytes: number;
+}
+
+/**
+ * Speculative decoding configuration.
+ */
+export interface SpeculativeDecodingConfig {
+	/** Whether speculative decoding is enabled */
+	enabled: boolean;
+	/** Draft model for speculation */
+	draftModel: string;
+	/** Number of tokens to speculate */
+	speculationLength: number;
+	/** Minimum acceptance rate before disabling */
+	minAcceptanceRate: number;
+}
+
+/**
+ * Streaming token with timing telemetry.
+ */
+export interface AphroditeStreamTokenWithTiming extends AphroditeStreamToken {
+	/** Token index in the sequence */
+	tokenIndex: number;
+	/** Time since request start in ms */
+	elapsedMs: number;
+	/** Inter-token latency in ms */
+	interTokenLatencyMs: number;
+	/** Whether this token was from speculative decoding */
+	fromSpeculation: boolean;
+}
+
 export const IAphroditeService = createDecorator<IAphroditeService>('aphroditeService');
 
 /**
  * Service for interacting with the Aphrodite LLM inference engine.
- * Provides streaming completions, batch inference, and embeddings.
+ * Provides streaming completions, batch inference, embeddings, LoRA adapters,
+ * performance telemetry, A/B testing, model fallback chains, structured output,
+ * prompt caching, and speculative decoding.
  */
 export interface IAphroditeService {
 	readonly _serviceBrand: undefined;
@@ -197,6 +479,11 @@ export interface IAphroditeService {
 	readonly onDidReceiveStreamToken: Event<AphroditeStreamToken>;
 
 	/**
+	 * Event fired when a streaming token with timing telemetry is received.
+	 */
+	readonly onDidReceiveStreamTokenWithTiming: Event<AphroditeStreamTokenWithTiming>;
+
+	/**
 	 * Event fired when connection status changes.
 	 */
 	readonly onDidChangeConnectionStatus: Event<boolean>;
@@ -205,6 +492,21 @@ export interface IAphroditeService {
 	 * Event fired when engine stats update.
 	 */
 	readonly onDidUpdateStats: Event<AphroditeEngineStats>;
+
+	/**
+	 * Event fired when request telemetry is recorded.
+	 */
+	readonly onDidRecordTelemetry: Event<AphroditeRequestTelemetry>;
+
+	/**
+	 * Event fired when a LoRA adapter is loaded or unloaded.
+	 */
+	readonly onDidChangeAdapter: Event<LoRAAdapterInfo | undefined>;
+
+	/**
+	 * Event fired when the model fallback state changes.
+	 */
+	readonly onDidChangeFallbackState: Event<ModelFallbackState>;
 
 	/**
 	 * Initialize the service and connect to Aphrodite.
@@ -238,6 +540,12 @@ export interface IAphroditeService {
 	streamComplete(request: AphroditeCompletionRequest): AsyncIterable<AphroditeStreamToken>;
 
 	/**
+	 * Complete a prompt with streaming and token-level timing telemetry.
+	 * Returns an async iterator of tokens with timing information.
+	 */
+	streamCompleteWithTiming(request: AphroditeCompletionRequest): AsyncIterable<AphroditeStreamTokenWithTiming>;
+
+	/**
 	 * Execute batch inference.
 	 * More efficient for multiple requests.
 	 */
@@ -252,6 +560,11 @@ export interface IAphroditeService {
 	 * List available models.
 	 */
 	listModels(): Promise<AphroditeModelInfo[]>;
+
+	/**
+	 * Get all available models (alias for listModels).
+	 */
+	getAvailableModels(): Promise<AphroditeModelInfo[]>;
 
 	/**
 	 * Get current model info.
@@ -282,4 +595,133 @@ export interface IAphroditeService {
 	 * Cancel all pending requests.
 	 */
 	cancelAllRequests(): void;
+
+	// --- LoRA Adapter Management (A.1) ---
+
+	/**
+	 * List available LoRA adapters.
+	 */
+	listAdapters(): Promise<LoRAAdapterInfo[]>;
+
+	/**
+	 * Load a LoRA adapter by ID. Returns true if successful, false otherwise.
+	 */
+	loadAdapter(adapterId: string, scale?: number): Promise<boolean>;
+
+	/**
+	 * Unload the currently loaded LoRA adapter.
+	 */
+	unloadAdapter(): Promise<void>;
+
+	/**
+	 * Get the currently loaded adapter info.
+	 */
+	getCurrentAdapter(): LoRAAdapterInfo | undefined;
+
+	/**
+	 * Swap the current adapter with a new one atomically.
+	 */
+	swapAdapter(adapterId: string, scale?: number): Promise<void>;
+
+	// --- Performance Telemetry (A.1) ---
+
+	/**
+	 * Get performance metrics over a time window.
+	 */
+	getPerformanceMetrics(windowSeconds?: number): AphroditePerformanceMetrics;
+
+	/**
+	 * Get recent request telemetry records.
+	 */
+	getRecentTelemetry(limit?: number): AphroditeRequestTelemetry[];
+
+	/**
+	 * Clear telemetry history.
+	 */
+	clearTelemetry(): void;
+
+	// --- A/B Testing (A.1) ---
+
+	/**
+	 * Start an A/B test with the given configuration.
+	 */
+	startABTest(config: ABTestConfig): void;
+
+	/**
+	 * Stop the current A/B test.
+	 */
+	stopABTest(testId: string): void;
+
+	/**
+	 * Get the current A/B test configuration.
+	 */
+	getABTest(): ABTestConfig | undefined;
+
+	/**
+	 * Get A/B test results.
+	 */
+	getABTestResults(testId: string): ABTestResults | undefined;
+
+	// --- Model Fallback Chain (A.1) ---
+
+	/**
+	 * Configure the model fallback chain.
+	 */
+	setFallbackConfig(config: ModelFallbackConfig): void;
+
+	/**
+	 * Get the current fallback configuration.
+	 */
+	getFallbackConfig(): ModelFallbackConfig | undefined;
+
+	/**
+	 * Get the current fallback state.
+	 */
+	getFallbackState(): ModelFallbackState;
+
+	/**
+	 * Manually reset the fallback state to use the primary model.
+	 */
+	resetFallbackState(): void;
+
+	// --- Structured Output (A.3) ---
+
+	/**
+	 * Complete with structured output (JSON schema constraints).
+	 */
+	completeStructured(request: AphroditeCompletionRequest, outputConfig: StructuredOutputConfig): Promise<AphroditeCompletionResponse>;
+
+	// --- Prompt Caching (A.3) ---
+
+	/**
+	 * Get prompt cache statistics.
+	 */
+	getPromptCacheStats(): PromptCacheStats;
+
+	/**
+	 * Clear the prompt cache.
+	 */
+	clearPromptCache(): void;
+
+	/**
+	 * Pre-warm the prompt cache with a prompt prefix.
+	 */
+	preWarmPromptCache(promptPrefix: string): Promise<void>;
+
+	// --- Speculative Decoding (A.3) ---
+
+	/**
+	 * Configure speculative decoding.
+	 */
+	setSpeculativeDecodingConfig(config: SpeculativeDecodingConfig): void;
+
+	/**
+	 * Get the current speculative decoding configuration.
+	 */
+	getSpeculativeDecodingConfig(): SpeculativeDecodingConfig | undefined;
+
+	/**
+	 * Check if speculative decoding is available.
+	 */
+	isSpeculativeDecodingAvailable(): Promise<boolean>;
 }

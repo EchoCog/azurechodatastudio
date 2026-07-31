@@ -27,6 +27,92 @@ export interface SemanticSearchResult {
 }
 
 /**
+ * Embedding cache statistics.
+ */
+export interface EmbeddingCacheStats {
+	/** Total entries in cache */
+	totalEntries: number;
+	/** Cache size in bytes (estimated) */
+	sizeBytes: number;
+	/** Maximum cache size in bytes */
+	maxSizeBytes: number;
+	/** Cache hit count */
+	hitCount: number;
+	/** Cache miss count */
+	missCount: number;
+	/** Cache hit rate (0-1) */
+	hitRate: number;
+	/** Cache eviction count */
+	evictionCount: number;
+}
+
+/**
+ * Batch embedding request for efficient hypergraph indexing.
+ */
+export interface BatchEmbeddingRequest {
+	/** Node IDs to embed */
+	nodeIds: string[];
+	/** Maximum batch size for API calls */
+	batchSize?: number;
+	/** Progress callback */
+	onProgress?: (completed: number, total: number) => void;
+}
+
+/**
+ * Batch embedding result.
+ */
+export interface BatchEmbeddingResult {
+	/** Number of nodes successfully embedded */
+	successCount: number;
+	/** Number of nodes that failed to embed */
+	failureCount: number;
+	/** Node IDs that failed */
+	failedNodeIds: string[];
+	/** Total time in milliseconds */
+	totalTimeMs: number;
+}
+
+/**
+ * Dimension reduction configuration for visualization.
+ */
+export interface DimensionReductionConfig {
+	/** Target number of dimensions */
+	targetDimensions: number;
+	/** Reduction method */
+	method: 'pca';
+	/** Whether to preserve distances as much as possible */
+	preserveDistances: boolean;
+}
+
+/**
+ * Reduced-dimension embedding for visualization.
+ */
+export interface ReducedEmbedding {
+	/** Node ID */
+	nodeId: string;
+	/** Reduced coordinates */
+	coordinates: number[];
+	/** Original embedding dimension */
+	originalDimension: number;
+}
+
+/**
+ * Incremental re-indexing statistics.
+ */
+export interface IncrementalIndexStats {
+	/** Number of nodes pending re-indexing */
+	pendingCount: number;
+	/** Number of nodes re-indexed since last clear */
+	reIndexedCount: number;
+	/** Whether auto-reindexing is enabled */
+	autoReindexEnabled: boolean;
+	/** Auto-reindex batch size */
+	autoReindexBatchSize: number;
+	/** Last auto-reindex timestamp */
+	lastAutoReindexTime?: number;
+}
+
+/**
  * Hypergraph Semantic Search service.
  *
  * Closes the "Embedding Support - vector embeddings for hypergraph semantic
@@ -44,6 +130,12 @@ export interface IHypergraphSemanticSearchService {
 
 	/** Fired with the node id whenever a node is (re-)indexed. */
 	readonly onDidIndexNode: Event<string>;
+
+	/** Fired when the embedding cache is updated. */
+	readonly onDidUpdateCache: Event<EmbeddingCacheStats>;
+
+	/** Fired when batch embedding progress is made. */
+	readonly onDidBatchProgress: Event<{ completed: number; total: number }>;
 
 	/**
 	 * Embed and index a single hypergraph node. No-ops (returns false) if the
@@ -74,4 +166,84 @@ export interface IHypergraphSemanticSearchService {
 
 	/** Drop all indexed embeddings. */
 	clear(): void;
+
+	// --- Batch Embedding (A.2) ---
+
+	/**
+	 * Embed multiple nodes in batches for efficient hypergraph indexing.
+	 * More efficient than calling indexNode() repeatedly.
+	 */
+	batchEmbed(request: BatchEmbeddingRequest): Promise<BatchEmbeddingResult>;
+
+	// --- Embedding Cache (A.2) ---
+
+	/**
+	 * Get embedding cache statistics.
+	 */
+	getCacheStats(): EmbeddingCacheStats;
+
+	/**
+	 * Set the maximum cache size in bytes.
+	 */
+	setMaxCacheSize(sizeBytes: number): void;
+
+	/**
+	 * Clear the embedding cache.
+	 */
+	clearCache(): void;
+
+	/**
+	 * Persist the embedding cache to IndexedDB.
+	 */
+	persistCache(): Promise<void>;
+
+	/**
+	 * Load the embedding cache from IndexedDB.
+	 */
+	loadCache(): Promise<boolean>;
+
+	// --- Incremental Re-indexing (A.2) ---
+
+	/**
+	 * Get incremental indexing statistics.
+	 */
+	getIncrementalIndexStats(): IncrementalIndexStats;
+
+	/**
+	 * Enable or disable automatic incremental re-indexing.
+	 */
+	setAutoReindex(enabled: boolean, batchSize?: number): void;
+
+	/**
+	 * Manually trigger incremental re-indexing of stale nodes.
+	 */
+	reindexStale(limit?: number): Promise<number>;
+
+	/**
+	 * Mark a node as needing re-indexing (e.g., after content update).
+	 */
+	markStale(nodeId: string): void;
+
+	/**
+	 * Get the list of node IDs pending re-indexing.
+	 */
+	getPendingReindex(): string[];
+
+	// --- Dimension Reduction (A.2) ---
+
+	/**
+	 * Get embeddings reduced to lower dimensions for visualization.
+	 * Uses PCA for dimension reduction.
+	 */
+	getReducedEmbeddings(config: DimensionReductionConfig, nodeIds?: string[]): Promise<ReducedEmbedding[]>;
+
+	/**
+	 * Get the raw embedding vector for a node.
+	 */
+	getEmbedding(nodeId: string): number[] | undefined;
+
+	/**
+	 * Get the embedding dimension (depends on source).
+	 */
+	getEmbeddingDimension(): number;
 }
