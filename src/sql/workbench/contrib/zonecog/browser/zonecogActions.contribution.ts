@@ -31,7 +31,7 @@ import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/s
 import { IPLNReasoningService } from 'sql/workbench/services/zonecog/common/plnReasoning';
 import { ISchemaReasonerAgent, INaturalLanguageAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
 import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
-import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmProvider';
+import { ILLMProviderService, APHRODITE_PROVIDER_ID } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { ICognitiveInsightsService } from 'sql/workbench/services/zonecog/common/cognitiveInsights';
 import { ICognitiveTraceService } from 'sql/workbench/services/zonecog/common/cognitiveTrace';
 import { ISharedCognitionService } from 'sql/workbench/services/zonecog/common/sharedCognition';
@@ -1260,6 +1260,7 @@ class ZoneCogAphroditeConnectAction extends Action2 {
 
 	async run(accessor: ServicesAccessor): Promise<void> {
 		const aphroditeService = accessor.get(IAphroditeService);
+		const llmService = accessor.get(ILLMProviderService);
 		const notificationService = accessor.get(INotificationService);
 		const quickInputService = accessor.get(IQuickInputService);
 
@@ -1277,9 +1278,27 @@ class ZoneCogAphroditeConnectAction extends Action2 {
 			if (aphroditeService.isConnected()) {
 				const models = await aphroditeService.listModels();
 				const modelList = models.slice(0, 5).map(m => m.id).join(', ');
+				const config = aphroditeService.getConfig();
+
+				// Route the Zone-Cog thinking protocol's LLM completions through
+				// Aphrodite, not just the standalone Aphrodite actions.
+				if (!llmService.getProviders().some(p => p.id === APHRODITE_PROVIDER_ID)) {
+					llmService.registerProvider({
+						id: APHRODITE_PROVIDER_ID,
+						displayName: 'Aphrodite Engine',
+						baseUrl: config.baseUrl,
+						model: config.model,
+						maxContextLength: models.find(m => m.loaded)?.contextLength ?? 4096,
+					});
+				}
+				llmService.setActiveProvider(APHRODITE_PROVIDER_ID);
+				// Discard any stale failure history from a prior session so a
+				// freshly-verified connection isn't kept on the built-in fallback
+				// until the circuit breaker's half-open retry window elapses.
+				llmService.resetCircuitBreaker(APHRODITE_PROVIDER_ID);
 
 				notificationService.info(localize('zonecog.aphroditeConnected',
-					'Connected to Aphrodite Engine at {0}\nAvailable models: {1}',
+					'Connected to Aphrodite Engine at {0}\nAvailable models: {1}\nZone-Cog thinking protocol now uses Aphrodite for completions.',
 					baseUrl, modelList || '(none)'
 				));
 			} else {

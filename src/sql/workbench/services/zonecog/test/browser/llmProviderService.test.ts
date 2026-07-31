@@ -4,18 +4,92 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
-import { ILLMProviderService, LLMProviderConfig, LLMCompletionRequest, LLMRequestTelemetry } from 'sql/workbench/services/zonecog/common/llmProvider';
+import { ILLMProviderService, LLMProviderConfig, LLMCompletionRequest, LLMRequestTelemetry, APHRODITE_PROVIDER_ID } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { LLMProviderService } from 'sql/workbench/services/zonecog/browser/llmProviderService';
 import { ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
+import {
+	IAphroditeService,
+	AphroditeConfig,
+	AphroditeCompletionRequest,
+	AphroditeCompletionResponse,
+	AphroditeStreamToken,
+	AphroditeBatchResponse,
+	AphroditeEmbeddingResponse,
+	AphroditeModelInfo,
+	AphroditeEngineStats
+} from 'sql/workbench/services/zonecog/common/aphrodite';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
+import { Event } from 'vs/base/common/event';
+
+const FAKE_APHRODITE_CONFIG: AphroditeConfig = {
+	baseUrl: 'http://localhost:2242',
+	model: 'test-model',
+	maxTokens: 2048,
+	temperature: 0.7,
+	topP: 0.95,
+	topK: 40,
+	frequencyPenalty: 0,
+	presencePenalty: 0,
+	timeoutMs: 60000,
+	batchingEnabled: true,
+	maxBatchSize: 16,
+};
+
+/**
+ * Minimal fake `IAphroditeService` for exercising `LLMProviderService`'s
+ * Aphrodite-routing path without any real network access.
+ */
+class FakeAphroditeService implements IAphroditeService {
+	declare readonly _serviceBrand: undefined;
+	readonly onDidReceiveStreamToken = Event.None;
+	readonly onDidChangeConnectionStatus = Event.None;
+	readonly onDidUpdateStats = Event.None;
+
+	connected = false;
+	completeResponse: AphroditeCompletionResponse | undefined;
+	streamTokens: AphroditeStreamToken[] = [];
+	lastCompleteRequest: AphroditeCompletionRequest | undefined;
+	lastStreamRequest: AphroditeCompletionRequest | undefined;
+
+	async initialize(): Promise<void> { }
+	isConnected(): boolean { return this.connected; }
+	getConfig(): AphroditeConfig { return FAKE_APHRODITE_CONFIG; }
+	updateConfig(): void { }
+
+	async complete(request: AphroditeCompletionRequest): Promise<AphroditeCompletionResponse> {
+		this.lastCompleteRequest = request;
+		if (!this.completeResponse) {
+			throw new Error('FakeAphroditeService: no stubbed complete() response');
+		}
+		return this.completeResponse;
+	}
+
+	async *streamComplete(request: AphroditeCompletionRequest): AsyncIterable<AphroditeStreamToken> {
+		this.lastStreamRequest = request;
+		for (const token of this.streamTokens) {
+			yield token;
+		}
+	}
+
+	async batchComplete(): Promise<AphroditeBatchResponse> { throw new Error('not implemented'); }
+	async embed(): Promise<AphroditeEmbeddingResponse> { throw new Error('not implemented'); }
+	async listModels(): Promise<AphroditeModelInfo[]> { return []; }
+	async getCurrentModel(): Promise<AphroditeModelInfo | undefined> { return undefined; }
+	async switchModel(): Promise<void> { }
+	async getStats(): Promise<AphroditeEngineStats> { throw new Error('not implemented'); }
+	async healthCheck(): Promise<boolean> { return this.connected; }
+	cancelRequest(): void { }
+	cancelAllRequests(): void { }
+}
 
 suite('LLM Provider Service Tests', () => {
 
 	let instantiationService: TestInstantiationService;
-	let llmService: ILLMProviderService & { getCircuitBreakerStatus(id: string): any; resetCircuitBreaker(id: string): void };
+	let llmService: ILLMProviderService;
 	let membraneService: CognitiveMembraneService;
+	let aphroditeService: FakeAphroditeService;
 	const originalFetch = globalThis.fetch;
 
 	setup(() => {
@@ -25,13 +99,28 @@ suite('LLM Provider Service Tests', () => {
 		membraneService = instantiationService.createInstance(CognitiveMembraneService);
 		instantiationService.stub(ICognitiveMembraneService, membraneService);
 
-		llmService = instantiationService.createInstance(LLMProviderService) as any;
+		aphroditeService = new FakeAphroditeService();
+		instantiationService.stub(IAphroditeService, aphroditeService);
+
+		llmService = instantiationService.createInstance(LLMProviderService);
 	});
 
 	teardown(() => {
 		membraneService.dispose();
 		globalThis.fetch = originalFetch;
 	});
+
+	/** Register and activate the Aphrodite provider for a test. */
+	function activateAphroditeProvider(): void {
+		llmService.registerProvider({
+			id: APHRODITE_PROVIDER_ID,
+			displayName: 'Aphrodite Engine',
+			baseUrl: 'http://localhost:2242',
+			model: 'test-model',
+			maxContextLength: 4096,
+		});
+		llmService.setActiveProvider(APHRODITE_PROVIDER_ID);
+	}
 
 	/** Register and activate an external SSE-streaming provider for a test. */
 	function activateExternalProvider(id: string = 'sse-provider'): void {
@@ -620,5 +709,129 @@ suite('LLM Provider Service Tests', () => {
 
 		assert.ok(response.isFallback);
 		assert.strictEqual(tokens.join(''), response.content);
+	});
+
+	// --- Aphrodite Engine Integration Tests ---
+
+	test('should route completions through Aphrodite when its provider is active and connected', async () => {
+		aphroditeService.connected = true;
+		aphroditeService.completeResponse = {
+			text: 'Aphrodite says hello',
+			promptTokens: 12,
+			completionTokens: 4,
+			totalTokens: 16,
+			finishReason: 'stop',
+			generationTimeMs: 42,
+			model: 'test-model',
+		};
+		activateAphroditeProvider();
+
+		const response = await llmService.complete({
+			systemPrompt: 'You are a helpful assistant.',
+			userMessage: 'Hello, how are you?',
+		});
+
+		assert.strictEqual(response.content, 'Aphrodite says hello');
+		assert.strictEqual(response.providerId, APHRODITE_PROVIDER_ID);
+		assert.strictEqual(response.isFallback, false);
+		assert.deepStrictEqual(response.usage, { promptTokens: 12, completionTokens: 4, totalTokens: 16 });
+	});
+
+	test('should fold system prompt, thinking context and user message into a single Aphrodite prompt', async () => {
+		aphroditeService.connected = true;
+		aphroditeService.completeResponse = {
+			text: 'ok', promptTokens: 0, completionTokens: 0, totalTokens: 0,
+			finishReason: 'stop', generationTimeMs: 1, model: 'test-model',
+		};
+		activateAphroditeProvider();
+
+		await llmService.complete({
+			systemPrompt: 'SYS',
+			thinkingContext: 'CTX',
+			userMessage: 'USER',
+		});
+
+		assert.strictEqual(aphroditeService.lastCompleteRequest?.prompt, 'SYS\n\nCTX\n\nUSER');
+	});
+
+	test('should fall back to built-in when Aphrodite provider is active but not connected', async () => {
+		aphroditeService.connected = false;
+		activateAphroditeProvider();
+
+		const response = await llmService.complete({
+			systemPrompt: 'You are a helpful assistant.',
+			userMessage: 'Hello?',
+		});
+
+		assert.strictEqual(response.isFallback, true);
+		assert.strictEqual(response.providerId, 'builtin-fallback');
+	});
+
+	test('should stream tokens through Aphrodite when its provider is active', async () => {
+		aphroditeService.connected = true;
+		aphroditeService.streamTokens = [
+			{ text: 'Hello', finished: false },
+			{ text: ' world', finished: true, finishReason: 'stop' },
+		];
+		activateAphroditeProvider();
+
+		const tokens: string[] = [];
+		const response = await llmService.completeStream(
+			{ systemPrompt: 'sys', userMessage: 'test' },
+			token => { tokens.push(token); }
+		);
+
+		assert.strictEqual(tokens.join(''), 'Hello world');
+		assert.strictEqual(response.content, 'Hello world');
+		assert.strictEqual(response.providerId, APHRODITE_PROVIDER_ID);
+		assert.strictEqual(response.isFallback, false);
+	});
+
+	test('should fall back to built-in when streaming through a disconnected Aphrodite provider', async () => {
+		aphroditeService.connected = false;
+		activateAphroditeProvider();
+
+		const tokens: string[] = [];
+		const response = await llmService.completeStream(
+			{ systemPrompt: 'sys', userMessage: 'test' },
+			token => { tokens.push(token); }
+		);
+
+		assert.strictEqual(response.isFallback, true);
+		assert.strictEqual(tokens.join(''), response.content);
+	});
+
+	test('should fall back to built-in when Aphrodite returns an empty completion', async () => {
+		aphroditeService.connected = true;
+		aphroditeService.completeResponse = {
+			text: '', promptTokens: 5, completionTokens: 0, totalTokens: 5,
+			finishReason: 'stop', generationTimeMs: 1, model: 'test-model',
+		};
+		activateAphroditeProvider();
+
+		const response = await llmService.complete({
+			systemPrompt: 'You are a helpful assistant.',
+			userMessage: 'Hello?',
+		});
+
+		assert.strictEqual(response.isFallback, true);
+		assert.strictEqual(response.providerId, 'builtin-fallback');
+	});
+
+	test('should reset a provider circuit breaker via resetCircuitBreaker', async () => {
+		activateExternalProvider();
+		globalThis.fetch = (async () => { throw new Error('network unreachable'); }) as unknown as typeof fetch;
+
+		// Drive enough failures to open the circuit.
+		for (let i = 0; i < 3; i++) {
+			await llmService.complete({ systemPrompt: 'sys', userMessage: 'fail' });
+		}
+		assert.strictEqual(llmService.getCircuitBreakerStatus('sse-provider').isOpen, true);
+
+		llmService.resetCircuitBreaker('sse-provider');
+
+		const status = llmService.getCircuitBreakerStatus('sse-provider');
+		assert.strictEqual(status.isOpen, false);
+		assert.strictEqual(status.failureCount, 0);
 	});
 });
