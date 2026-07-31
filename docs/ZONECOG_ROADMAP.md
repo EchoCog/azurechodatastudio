@@ -2,7 +2,7 @@
 
 **Ticket**: ECH-4  
 **Status**: Active  
-**Last Updated**: 2026-07-28
+**Last Updated**: 2026-07-31
 
 ## Phase Overview
 
@@ -55,7 +55,7 @@
 - [x] In-memory hypergraph with CRUD operations
 - [x] Salience-based attention scoring
 - [x] Link management (add/remove/query by type)
-- [ ] Persistence layer (future: RocksDB/AtomSpace backend)
+- [x] Persistence layer for the standalone Python bridge — `SqliteAtomStore` (`azure_integration/atomspace_store.py`), wired into `AtomSpaceAdapter`'s `local` mode via `ATOMSPACE_PERSIST_PATH`: every upsert is written through to a SQLite file and reloaded on the next process start; surfaced via `GET /atoms` / `zonecog-bridge list-atoms` and the `status.persisted` flag; the in-browser `IHypergraphStore` remains in-memory (session persistence for that side is `HypergraphPersistenceService`'s IndexedDB store, Phase 3.4)
 
 ### 2.4 Cognitive Membrane Architecture
 - [x] `ICognitiveMembraneService` interface for triad management
