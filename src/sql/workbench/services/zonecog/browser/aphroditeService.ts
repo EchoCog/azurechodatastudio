@@ -141,6 +141,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	}
 
 	/**
+	 * @param request The completion request.
 	 * @param bypassFallback When true, only the resolved primary model is tried - used by
 	 * `compareModels()` so a failing variant is reported as failed instead of silently
 	 * succeeding via another model through the fallback chain.
