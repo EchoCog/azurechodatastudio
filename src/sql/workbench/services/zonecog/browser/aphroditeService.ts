@@ -467,6 +467,18 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	async loadAdapter(adapterId: string, path: string, baseModel?: string): Promise<AphroditeAdapterInfo> {
 		this.membraneService.recordActivity('somatic');
+
+		const existing = this._adapters.get(adapterId);
+		if (existing) {
+			// Already resident on the engine (e.g. deactivated by a switchModel() call) -
+			// reissuing /v1/load_lora_adapter would fail since vLLM rejects a duplicate
+			// lora_name. Just reactivate it locally instead of re-loading the weights.
+			this._activeAdapterId = adapterId;
+			this._onDidChangeAdapters.fire(this.listAdapters());
+			this.logService.info(`[AphroditeService] Reactivated already-loaded LoRA adapter '${adapterId}'`);
+			return existing;
+		}
+
 		await this._makeRequest('/v1/load_lora_adapter', { lora_name: adapterId, lora_path: path });
 
 		const info: AphroditeAdapterInfo = { id: adapterId, path, baseModel, loaded: true };

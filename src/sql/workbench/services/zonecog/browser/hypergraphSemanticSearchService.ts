@@ -343,6 +343,11 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 
 	/** Embeds `text` via Aphrodite; returns undefined (never falls back to a local vector) so callers can tell whether a same-space comparison is possible. */
 	private async _tryEmbedAphrodite(text: string): Promise<number[] | undefined> {
+		if (!this.aphroditeService.isConnected()) {
+			// Fail fast instead of hitting the network: relevant when stale 'aphrodite'-sourced
+			// entries are still in the index but the connection has since dropped.
+			return undefined;
+		}
 		try {
 			const response = await this.aphroditeService.embed({ texts: [text] });
 			const vector = response.embeddings[0];
