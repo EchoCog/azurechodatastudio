@@ -222,4 +222,128 @@ suite('AphroditeService', () => {
 		assert.strictEqual(typeof config.maxBatchSize, 'number');
 		assert.ok(config.maxBatchSize > 0);
 	});
+
+	suite('LoRA adapters', () => {
+		test('should have no adapters initially', () => {
+			assert.deepStrictEqual(aphroditeService.listAdapters(), []);
+			assert.strictEqual(aphroditeService.getActiveAdapter(), undefined);
+		});
+
+		test('loadAdapter should throw when server unavailable', async () => {
+			try {
+				await aphroditeService.loadAdapter({ id: 'my-adapter', path: '/tmp/adapter' });
+				assert.fail('Should have thrown');
+			} catch (error) {
+				assert.ok(error);
+			}
+			// Failed load must not register the adapter
+			assert.deepStrictEqual(aphroditeService.listAdapters(), []);
+			assert.strictEqual(aphroditeService.getActiveAdapter(), undefined);
+		});
+
+		test('unloadAdapter should throw when server unavailable', async () => {
+			try {
+				await aphroditeService.unloadAdapter('non-existent');
+				assert.fail('Should have thrown');
+			} catch (error) {
+				assert.ok(error);
+			}
+		});
+	});
+
+	suite('fallback chain', () => {
+		test('should have an empty fallback chain by default', () => {
+			assert.deepStrictEqual(aphroditeService.getFallbackChain(), []);
+		});
+
+		test('setFallbackChain should update the chain', () => {
+			aphroditeService.setFallbackChain(['model-a', 'model-b']);
+			assert.deepStrictEqual(aphroditeService.getFallbackChain(), ['model-a', 'model-b']);
+		});
+
+		test('setFallbackChain should be independent of the returned array', () => {
+			aphroditeService.setFallbackChain(['model-a']);
+			const chain = aphroditeService.getFallbackChain();
+			chain.push('mutated');
+			assert.deepStrictEqual(aphroditeService.getFallbackChain(), ['model-a']);
+		});
+
+		test('complete should attempt every model in the fallback chain before throwing', async () => {
+			aphroditeService.setFallbackChain(['fallback-1', 'fallback-2']);
+
+			try {
+				await aphroditeService.complete({ prompt: 'Hello, world!' });
+				assert.fail('Should have thrown');
+			} catch (error) {
+				assert.ok(error);
+			}
+
+			// One telemetry entry per attempted model (default config model + 2 fallbacks)
+			const recent = aphroditeService.getRecentTelemetry(10);
+			assert.strictEqual(recent.length, 3);
+			assert.strictEqual(recent[0].model, 'default');
+			assert.strictEqual(recent[1].model, 'fallback-1');
+			assert.strictEqual(recent[2].model, 'fallback-2');
+			assert.ok(recent.every(entry => entry.success === false));
+		});
+	});
+
+	suite('telemetry', () => {
+		test('should report an empty summary before any requests', () => {
+			const summary = aphroditeService.getTelemetrySummary();
+
+			assert.strictEqual(summary.totalRequests, 0);
+			assert.strictEqual(summary.successCount, 0);
+			assert.strictEqual(summary.errorCount, 0);
+			assert.strictEqual(summary.errorRate, 0);
+			assert.strictEqual(summary.avgLatencyMs, 0);
+			assert.strictEqual(summary.p95LatencyMs, 0);
+			assert.strictEqual(summary.throughputPerSecond, 0);
+		});
+
+		test('failed complete() should record a telemetry entry', async () => {
+			try {
+				await aphroditeService.complete({ prompt: 'Hello, world!' });
+			} catch {
+				// expected: no server available
+			}
+
+			const summary = aphroditeService.getTelemetrySummary();
+			assert.strictEqual(summary.totalRequests, 1);
+			assert.strictEqual(summary.errorCount, 1);
+			assert.strictEqual(summary.errorRate, 1);
+
+			const recent = aphroditeService.getRecentTelemetry();
+			assert.strictEqual(recent.length, 1);
+			assert.strictEqual(recent[0].success, false);
+			assert.strictEqual(recent[0].model, 'default');
+			assert.ok(recent[0].errorMessage);
+		});
+
+		test('should fire onDidRecordTelemetry for each attempt', async () => {
+			let fired = 0;
+			aphroditeService.onDidRecordTelemetry(() => { fired++; });
+
+			try {
+				await aphroditeService.complete({ prompt: 'Hello, world!' });
+			} catch {
+				// expected: no server available
+			}
+
+			assert.strictEqual(fired, 1);
+		});
+
+		test('getRecentTelemetry should respect the limit argument', async () => {
+			for (let i = 0; i < 3; i++) {
+				try {
+					await aphroditeService.complete({ prompt: `Attempt ${i}` });
+				} catch {
+					// expected: no server available
+				}
+			}
+
+			assert.strictEqual(aphroditeService.getRecentTelemetry(2).length, 2);
+			assert.strictEqual(aphroditeService.getRecentTelemetry(100).length, 3);
+		});
+	});
 });

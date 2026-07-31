@@ -182,6 +182,60 @@ export interface AphroditeEngineStats {
 	kvCacheSize: number;
 }
 
+/**
+ * A LoRA (Low-Rank Adaptation) adapter that can be dynamically loaded
+ * into the Aphrodite engine without restarting or reloading the base model.
+ */
+export interface AphroditeLoraAdapter {
+	/** Unique adapter identifier (also used as the LoRA name for requests) */
+	id: string;
+	/** Human-readable name */
+	name: string;
+	/** Filesystem or remote path the adapter was loaded from */
+	path: string;
+	/** Whether the adapter is currently loaded in the engine */
+	loaded: boolean;
+}
+
+/**
+ * Telemetry for a single inference request, used to build performance
+ * dashboards and drive the automatic model fallback chain.
+ */
+export interface AphroditeRequestTelemetryEntry {
+	/** When the request completed (epoch ms) */
+	timestamp: number;
+	/** Model that served (or attempted to serve) the request */
+	model: string;
+	/** Wall-clock latency in milliseconds */
+	latencyMs: number;
+	/** Whether the request succeeded */
+	success: boolean;
+	/** Error message when `success` is false */
+	errorMessage?: string;
+}
+
+/**
+ * Aggregated performance telemetry across recorded requests.
+ */
+export interface AphroditeTelemetrySummary {
+	/** Total requests recorded (bounded ring buffer) */
+	totalRequests: number;
+	/** Successful requests */
+	successCount: number;
+	/** Failed requests */
+	errorCount: number;
+	/** errorCount / totalRequests, 0 when no requests recorded */
+	errorRate: number;
+	/** Average latency across successful requests, in milliseconds */
+	avgLatencyMs: number;
+	/** 95th percentile latency across successful requests, in milliseconds */
+	p95LatencyMs: number;
+	/** Requests per second over the trailing 60-second window */
+	throughputPerSecond: number;
+	/** When this summary was computed (epoch ms) */
+	lastUpdated: number;
+}
+
 export const IAphroditeService = createDecorator<IAphroditeService>('aphroditeService');
 
 /**
@@ -205,6 +259,12 @@ export interface IAphroditeService {
 	 * Event fired when engine stats update.
 	 */
 	readonly onDidUpdateStats: Event<AphroditeEngineStats>;
+
+	/**
+	 * Event fired after each inference request completes (success or failure),
+	 * carrying the telemetry entry that was recorded for it.
+	 */
+	readonly onDidRecordTelemetry: Event<AphroditeRequestTelemetryEntry>;
 
 	/**
 	 * Initialize the service and connect to Aphrodite.
@@ -282,4 +342,47 @@ export interface IAphroditeService {
 	 * Cancel all pending requests.
 	 */
 	cancelAllRequests(): void;
+
+	/**
+	 * Dynamically load a LoRA adapter into the running engine without
+	 * reloading the base model. Becomes the active adapter on success.
+	 */
+	loadAdapter(request: { id: string; path: string; name?: string }): Promise<AphroditeLoraAdapter>;
+
+	/**
+	 * Unload a previously loaded LoRA adapter.
+	 */
+	unloadAdapter(adapterId: string): Promise<void>;
+
+	/**
+	 * List LoRA adapters loaded during this session.
+	 */
+	listAdapters(): AphroditeLoraAdapter[];
+
+	/**
+	 * Get the currently active LoRA adapter, if any.
+	 */
+	getActiveAdapter(): AphroditeLoraAdapter | undefined;
+
+	/**
+	 * Configure an ordered fallback chain of model IDs. When `complete()`
+	 * fails against the configured model, subsequent models in the chain
+	 * are attempted in order before the call fails.
+	 */
+	setFallbackChain(modelIds: string[]): void;
+
+	/**
+	 * Get the currently configured fallback chain.
+	 */
+	getFallbackChain(): string[];
+
+	/**
+	 * Get the most recently recorded request telemetry entries, most recent last.
+	 */
+	getRecentTelemetry(limit?: number): AphroditeRequestTelemetryEntry[];
+
+	/**
+	 * Get aggregated performance telemetry (latency, throughput, error rate).
+	 */
+	getTelemetrySummary(): AphroditeTelemetrySummary;
 }
