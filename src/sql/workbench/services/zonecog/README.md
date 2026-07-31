@@ -402,6 +402,9 @@ Available through Command Palette (`Ctrl+Shift+P`):
 - `Zone-Cog: Run Aphrodite Completion` — Test LLM inference
 - `Zone-Cog: Index Hypergraph for Semantic Search` — Embed hypergraph nodes for similarity search (`IAphroditeService.embed()` when connected, local hashing-trick fallback otherwise)
 - `Zone-Cog: Semantic Search Hypergraph` — Rank hypergraph nodes by cosine similarity to a natural-language query
+- `Zone-Cog: Load LoRA Adapter` — Dynamically load a LoRA adapter into the running Aphrodite engine
+- `Zone-Cog: Hot-Swap Active Model` — Switch the active model/adapter, picking from `listModels()`/`listAdapters()` or entering an ID manually
+- `Zone-Cog: Show Aphrodite Performance Telemetry` — View aggregated request latency, success rate, and per-model breakdown (`getTelemetrySummary()`)
 
 ### Phase 6 - Cognitive Workflow Automation
 - `Zone-Cog: List Cognitive Workflows` — View all registered workflows
