@@ -92,9 +92,9 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		this.membraneService.recordActivity('cerebral');
 		if (config.model !== undefined) {
 			this._modelExplicitlySet = true;
-			// A LoRA adapter is only valid against the base model it was loaded for; an
-			// explicit model change must not be silently overridden by a stale adapter.
-			this._activeAdapterId = undefined;
+			if (config.model !== this._config.model) {
+				this._deactivateAdapter();
+			}
 		}
 		this._config = { ...this._config, ...config };
 		this.logService.info(`[AphroditeService] Initializing with config: ${JSON.stringify(this._config)}`);
@@ -128,8 +128,9 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	updateConfig(config: Partial<AphroditeConfig>): void {
 		if (config.model !== undefined) {
 			this._modelExplicitlySet = true;
-			// See initialize(): a stale adapter must not keep overriding an explicit model change.
-			this._activeAdapterId = undefined;
+			if (config.model !== this._config.model) {
+				this._deactivateAdapter();
+			}
 		}
 		this._config = { ...this._config, ...config };
 		this.logService.info('[AphroditeService] Config updated');
@@ -356,11 +357,13 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	async switchModel(modelId: string): Promise<void> {
 		this.membraneService.recordActivity('cerebral');
+		if (modelId !== this._config.model) {
+			// A LoRA adapter loaded for the previous base model is not valid for the new one;
+			// otherwise complete()/streamComplete() would keep dispatching to the stale adapter.
+			this._deactivateAdapter();
+		}
 		this._config.model = modelId;
 		this._modelExplicitlySet = true;
-		// A LoRA adapter loaded for the previous base model is not valid for the new one;
-		// otherwise complete()/streamComplete() would keep dispatching to the stale adapter.
-		this._activeAdapterId = undefined;
 		// In a real implementation, this would send a request to load the model
 		this.logService.info(`[AphroditeService] Switched to model: ${modelId}`);
 	}
@@ -546,6 +549,25 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	private _isAbortError(error: unknown): boolean {
 		return error instanceof Error && error.name === 'AbortError';
+	}
+
+	/**
+	 * Clear the active LoRA adapter and drop it from the local registry, best-effort notifying
+	 * the engine so the same adapter ID can be reloaded later without colliding with a still-
+	 * registered adapter (Aphrodite/vLLM reject loading an already-registered name). Local state
+	 * is updated synchronously; the network unload is fire-and-forget since callers
+	 * (updateConfig in particular) must stay synchronous.
+	 */
+	private _deactivateAdapter(): void {
+		const adapterId = this._activeAdapterId;
+		if (!adapterId) {
+			return;
+		}
+		this._activeAdapterId = undefined;
+		this._adapters.delete(adapterId);
+		this._makeRequest('/v1/unload_lora_adapter', { lora_name: adapterId }).catch(error => {
+			this.logService.warn(`[AphroditeService] Failed to unload adapter '${adapterId}' after model change: ${error instanceof Error ? error.message : String(error)}`);
+		});
 	}
 
 	private _getHeaders(): Record<string, string> {
