@@ -212,7 +212,7 @@ let AAROrchestrationView = class AAROrchestrationView extends viewPane_1.ViewPan
 			// Status indicator
 			const status = (0, dom_1.append)(agentEl, (0, dom_1.$)('.zonecog-aar-agent-status'));
 			// allow-any-unicode-next-line
-			status.textContent = agent.active ? '●' : '○';
+			status.textContent = agent.active ? '●' : 'o';
 		}
 	}
 	_getRoleIcon(role) {
@@ -310,7 +310,7 @@ let CognitiveWorkflowsView = class CognitiveWorkflowsView extends viewPane_1.Vie
 		// Status indicator
 		const status = (0, dom_1.append)(item, (0, dom_1.$)('.zonecog-workflow-status'));
 		// allow-any-unicode-next-line
-		status.textContent = workflow.enabled ? '●' : '○';
+		status.textContent = workflow.enabled ? '●' : 'o';
 		status.title = workflow.enabled ? 'Enabled' : 'Disabled';
 		// Workflow info
 		const info = (0, dom_1.append)(item, (0, dom_1.$)('.zonecog-workflow-info'));
@@ -357,7 +357,7 @@ let CognitiveWorkflowsView = class CognitiveWorkflowsView extends viewPane_1.Vie
 			item.classList.add(exec.status);
 			const statusIcon = (0, dom_1.append)(item, (0, dom_1.$)('.zonecog-execution-status'));
 			// allow-any-unicode-next-line
-			statusIcon.textContent = exec.status === 'completed' ? '✓' : exec.status === 'failed' ? '✗' : '○';
+			statusIcon.textContent = exec.status === 'completed' ? '✓' : exec.status === 'failed' ? '✗' : 'o';
 			const info = (0, dom_1.append)(item, (0, dom_1.$)('.zonecog-execution-info'));
 			const name = (0, dom_1.append)(info, (0, dom_1.$)('.zonecog-execution-name'));
 			name.textContent = exec.workflowId;
