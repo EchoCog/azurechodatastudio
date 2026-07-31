@@ -10,6 +10,8 @@ import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergra
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
 import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { LLMProviderService } from 'sql/workbench/services/zonecog/browser/llmProviderService';
+import { IAphroditeService } from 'sql/workbench/services/zonecog/common/aphrodite';
+import { AphroditeService } from 'sql/workbench/services/zonecog/browser/aphroditeService';
 import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
 import { ECANAttentionService } from 'sql/workbench/services/zonecog/browser/ecanAttentionService';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
@@ -36,6 +38,9 @@ suite('ZoneCog Service Tests', () => {
 
 		const membraneService = instantiationService.createInstance(CognitiveMembraneService);
 		instantiationService.stub(ICognitiveMembraneService, membraneService);
+
+		const aphroditeService = instantiationService.createInstance(AphroditeService);
+		instantiationService.stub(IAphroditeService, aphroditeService);
 
 		const llmProviderService = instantiationService.createInstance(LLMProviderService);
 		instantiationService.stub(ILLMProviderService, llmProviderService);
@@ -732,6 +737,9 @@ suite('LLMProviderService Tests', () => {
 
 		const membraneService = new CognitiveMembraneService(new NullLogService());
 		instantiationService.stub(ICognitiveMembraneService, membraneService);
+
+		const aphroditeService = new AphroditeService(new NullLogService(), membraneService);
+		instantiationService.stub(IAphroditeService, aphroditeService);
 
 		llmService = instantiationService.createInstance(LLMProviderService);
 	});

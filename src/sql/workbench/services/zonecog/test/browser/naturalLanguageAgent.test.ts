@@ -8,6 +8,7 @@ import { NaturalLanguageAgent } from 'sql/workbench/services/zonecog/browser/nat
 import { NullLogService } from 'vs/platform/log/common/log';
 import { LLMProviderService } from 'sql/workbench/services/zonecog/browser/llmProviderService';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
+import { AphroditeService } from 'sql/workbench/services/zonecog/browser/aphroditeService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 
 suite('NaturalLanguageAgent', () => {
@@ -20,7 +21,7 @@ suite('NaturalLanguageAgent', () => {
 	setup(() => {
 		logService = new NullLogService();
 		membraneService = new CognitiveMembraneService(logService);
-		llmService = new LLMProviderService(logService, membraneService);
+		llmService = new LLMProviderService(logService, membraneService, new AphroditeService(logService, membraneService));
 		hypergraphStore = new HypergraphStore(logService);
 		agent = new NaturalLanguageAgent(logService, llmService, membraneService, hypergraphStore);
 	});

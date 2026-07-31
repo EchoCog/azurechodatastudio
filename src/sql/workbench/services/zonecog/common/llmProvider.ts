@@ -9,6 +9,15 @@ import { Event } from 'vs/base/common/event';
 export const ILLMProviderService = createDecorator<ILLMProviderService>('llmProviderService');
 
 /**
+ * Reserved provider ID for the Aphrodite Engine backend. A provider
+ * registered under this ID is routed through `IAphroditeService` (its own
+ * `/v1/completions` transport, streaming, batching and stats) instead of the
+ * generic OpenAI-compatible `/v1/chat/completions` path used for other
+ * external providers.
+ */
+export const APHRODITE_PROVIDER_ID = 'aphrodite';
+
+/**
  * Configuration for an LLM provider.
  */
 export interface LLMProviderConfig {

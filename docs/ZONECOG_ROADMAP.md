@@ -2,7 +2,7 @@
 
 **Ticket**: ECH-4  
 **Status**: Active  
-**Last Updated**: 2026-07-28
+**Last Updated**: 2026-07-31
 
 ## Phase Overview
 
@@ -262,7 +262,7 @@
 - [x] Docker container for cognitive services — `azure_integration/Dockerfile` (standalone `python:3.11-slim` image, `HEALTHCHECK` via `azure_integration/healthcheck.py`), documented in `azure_integration/README.md`
 
 ### 5.3 EchoCog Integration
-- [ ] Deep integration with Aphrodite Engine for LLM inference
+- [x] Deep integration with Aphrodite Engine for LLM inference — `LLMProviderService` (the backend behind the Zone-Cog thinking protocol's completions) now routes requests for a provider registered under the reserved `APHRODITE_PROVIDER_ID` through `IAphroditeService`'s own `/v1/completions` transport (`complete()`/`streamComplete()`), instead of the generic OpenAI-compatible `/v1/chat/completions` path; `Zone-Cog: Connect to Aphrodite Engine` now registers and activates this provider on a successful connection so the cognitive protocol itself runs on Aphrodite, not just the standalone Aphrodite command-palette actions. Falls back to the built-in provider (with circuit breaker) when Aphrodite is disconnected or a request fails.
 - [ ] OpenCog Hyperon AtomSpace backend
 - [ ] FlareCog distributed cognitive processing
 - [x] Autognosis self-monitoring capabilities — `IAutognosisService`/`AutognosisService` (meta-cognitive layer that synthesizes membrane triad health, embodiment proprioception, and cognitive analytics into a first-person `SelfAssessment` with a verdict, self-confidence score, and detected anomalies; self-wires to `IZoneCogService.onDidProcessQuery` so every processed query triggers a fresh assessment, persisted as `SelfAssessment` hypergraph nodes; `Zone-Cog: Perform Self-Assessment` and `Zone-Cog: Show Self-Assessment History` Command Palette actions)

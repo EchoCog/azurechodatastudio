@@ -9,9 +9,11 @@ import {
 	LLMCompletionRequest,
 	LLMCompletionResponse,
 	LLMRequestTelemetry,
-	LLMStreamTokenCallback
+	LLMStreamTokenCallback,
+	APHRODITE_PROVIDER_ID
 } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { IAphroditeService } from 'sql/workbench/services/zonecog/common/aphrodite';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ILogService } from 'vs/platform/log/common/log';
@@ -91,7 +93,8 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
-		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService
+		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
+		@IAphroditeService private readonly aphroditeService: IAphroditeService
 	) {
 		super();
 
@@ -575,7 +578,14 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 	private _isNonTransientError(err: unknown): boolean {
 		const message = String(err);
 		// 4xx errors except 429 (rate limit) are usually non-transient
-		return /\b(401|403|404|400|422)\b/.test(message) && !/\b429\b/.test(message);
+		if (/\b(401|403|404|400|422)\b/.test(message) && !/\b429\b/.test(message)) {
+			return true;
+		}
+		// A disconnected Aphrodite engine won't reconnect within a retry window.
+		if (message.includes('Aphrodite Engine is not connected')) {
+			return true;
+		}
+		return false;
 	}
 
 	/**
@@ -585,12 +595,87 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 		return new Promise(resolve => setTimeout(resolve, ms));
 	}
 
+	// -- External provider (Aphrodite Engine) ---------------------------------
+
+	/**
+	 * Combine the Zone-Cog system prompt, optional thinking context, and user
+	 * message into a single prompt string for Aphrodite's raw `/v1/completions`
+	 * transport, which - unlike the OpenAI-compatible chat path - has no
+	 * separate system-role message slot.
+	 */
+	private _toAphroditePrompt(request: LLMCompletionRequest): string {
+		const parts = [request.systemPrompt];
+		if (request.thinkingContext) {
+			parts.push(request.thinkingContext);
+		}
+		parts.push(request.userMessage);
+		return parts.join('\n\n');
+	}
+
+	private async _aphroditeComplete(request: LLMCompletionRequest): Promise<LLMCompletionResponse> {
+		if (!this.aphroditeService.isConnected()) {
+			throw new Error('Aphrodite Engine is not connected');
+		}
+
+		const response = await this.aphroditeService.complete({
+			prompt: this._toAphroditePrompt(request),
+			maxTokens: request.maxTokens,
+			temperature: request.temperature,
+		});
+
+		return {
+			content: response.text,
+			providerId: APHRODITE_PROVIDER_ID,
+			usage: {
+				promptTokens: response.promptTokens,
+				completionTokens: response.completionTokens,
+				totalTokens: response.totalTokens,
+			},
+			isFallback: false,
+		};
+	}
+
+	private async _aphroditeCompleteStream(
+		request: LLMCompletionRequest,
+		onToken: LLMStreamTokenCallback
+	): Promise<LLMCompletionResponse> {
+		if (!this.aphroditeService.isConnected()) {
+			throw new Error('Aphrodite Engine is not connected');
+		}
+
+		let content = '';
+		for await (const token of this.aphroditeService.streamComplete({
+			prompt: this._toAphroditePrompt(request),
+			maxTokens: request.maxTokens,
+			temperature: request.temperature,
+		})) {
+			if (token.text) {
+				content += token.text;
+				onToken(token.text);
+			}
+		}
+
+		if (!content) {
+			throw new Error('Aphrodite streaming API returned empty response');
+		}
+
+		return {
+			content,
+			providerId: APHRODITE_PROVIDER_ID,
+			isFallback: false,
+		};
+	}
+
 	// -- External provider (OpenAI-compatible) --------------------------------
 
 	private async _externalComplete(
 		provider: LLMProviderConfig,
 		request: LLMCompletionRequest
 	): Promise<LLMCompletionResponse> {
+		if (provider.id === APHRODITE_PROVIDER_ID) {
+			return this._aphroditeComplete(request);
+		}
+
 		const url = `${provider.baseUrl}/v1/chat/completions`;
 
 		const messages: Array<{ role: string; content: string }> = [
@@ -649,6 +734,10 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 		request: LLMCompletionRequest,
 		onToken: LLMStreamTokenCallback
 	): Promise<LLMCompletionResponse> {
+		if (provider.id === APHRODITE_PROVIDER_ID) {
+			return this._aphroditeCompleteStream(request, onToken);
+		}
+
 		const url = `${provider.baseUrl}/v1/chat/completions`;
 
 		const messages: Array<{ role: string; content: string }> = [
