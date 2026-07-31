@@ -273,4 +273,23 @@ suite('Hypergraph Semantic Search Service Tests', () => {
 		assert.strictEqual(searchService.isIndexed('n1'), true);
 		assert.strictEqual(searchService.isIndexed('n2'), true);
 	});
+
+	test('a single batch larger than MAX_INDEX_SIZE should not evict entries it just embedded', () => {
+		// Regression coverage: a single indexAll()/search() batch must never
+		// evict a node it just computed a vector for in that same call -
+		// otherwise the caller (search()) silently drops candidates it just
+		// paid to embed. Exceeds the hardcoded 5000-entry cap to exercise the
+		// eviction path against the batch's own entries.
+		const NODE_COUNT = 5005;
+		for (let i = 0; i < NODE_COUNT; i++) {
+			addNode(`n${i}`, 'TableNode', `Orders table variant ${i}`);
+		}
+
+		return searchService.indexAll().then(indexed => {
+			assert.strictEqual(indexed, NODE_COUNT);
+			for (let i = 0; i < NODE_COUNT; i++) {
+				assert.strictEqual(searchService.isIndexed(`n${i}`), true, `n${i} should remain indexed`);
+			}
+		});
+	}).timeout(20000);
 });

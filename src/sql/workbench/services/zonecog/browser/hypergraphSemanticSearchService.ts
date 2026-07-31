@@ -242,11 +242,20 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 		this.membraneService.recordActivity('cerebral');
 		const vectors = await this._embedBatch(pending.map(p => nodeEmbeddingText(p.node)));
 
+		// Insert every entry from this batch before evicting, and never evict
+		// one of them to make room for another: otherwise a batch larger than
+		// the tail of the index could evict entries it just computed, so the
+		// caller (search()) would silently miss candidates it just paid to
+		// embed. The index may temporarily exceed MAX_INDEX_SIZE if the batch
+		// itself is larger than the cap.
+		const pendingIds = new Set(pending.map(p => p.node.id));
 		for (let i = 0; i < pending.length; i++) {
 			const { node, contentHash } = pending[i];
-			this._setIndexEntry(node.id, { vector: vectors[i], contentHash, source });
+			this._index.delete(node.id);
+			this._index.set(node.id, { vector: vectors[i], contentHash, source });
 			this._onDidIndexNode.fire(node.id);
 		}
+		this._evictIfNeeded(pendingIds);
 
 		return pending.length;
 	}
@@ -322,14 +331,32 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 	}
 
 	/**
-	 * Sets an index entry (marking it most-recently-used) and evicts the
-	 * least-recently-used entries if the index would exceed `MAX_INDEX_SIZE`.
+	 * Sets an index entry (marking it most-recently-used) and evicts
+	 * least-recently-used entries if the index would exceed `MAX_INDEX_SIZE`,
+	 * protecting `nodeId` itself from that eviction pass.
 	 */
 	private _setIndexEntry(nodeId: string, entry: IndexEntry): void {
 		this._index.delete(nodeId);
 		this._index.set(nodeId, entry);
+		this._evictIfNeeded(new Set([nodeId]));
+	}
+
+	/**
+	 * Evicts least-recently-used entries down to `MAX_INDEX_SIZE`, never
+	 * evicting an entry whose ID is in `protectedIds` (the entries the
+	 * current caller just wrote and is about to read back). If every
+	 * remaining entry is protected, the index is left over the cap rather
+	 * than dropping data the caller just paid to compute.
+	 */
+	private _evictIfNeeded(protectedIds: ReadonlySet<string>): void {
 		while (this._index.size > MAX_INDEX_SIZE) {
-			const oldestKey = this._index.keys().next().value;
+			let oldestKey: string | undefined;
+			for (const key of this._index.keys()) {
+				if (!protectedIds.has(key)) {
+					oldestKey = key;
+					break;
+				}
+			}
 			if (oldestKey === undefined) {
 				break;
 			}

@@ -347,4 +347,122 @@ suite('AphroditeService', () => {
 		assert.strictEqual(telemetry.requestCount, 1);
 		assert.strictEqual(telemetry.errorCount, 1);
 	});
+
+	// --- Adapter routing, streaming model field, and cancellation ---
+	// (regression coverage for Cursor Bugbot findings on PR #90)
+
+	function withMockFetch<T>(handler: (url: string, options: any) => any, fn: () => Promise<T>): Promise<T> {
+		const original = (globalThis as any).fetch;
+		(globalThis as any).fetch = async (url: string, options: any) => handler(url, options);
+		return fn().finally(() => {
+			(globalThis as any).fetch = original;
+		});
+	}
+
+	test('loadAdapter should call the vLLM-compatible /v1/load_lora_adapter endpoint', async () => {
+		const calls: { url: string; body: any }[] = [];
+		await withMockFetch(
+			(url, options) => {
+				calls.push({ url, body: JSON.parse(options.body) });
+				return { ok: true, json: async () => ({}) };
+			},
+			() => aphroditeService.loadAdapter({ id: 'my-adapter', path: '/models/my-adapter' })
+		);
+
+		assert.strictEqual(calls.length, 1);
+		assert.ok(calls[0].url.endsWith('/v1/load_lora_adapter'));
+		assert.deepStrictEqual(calls[0].body, { lora_name: 'my-adapter', lora_path: '/models/my-adapter' });
+	});
+
+	test('unloadAdapter should call the vLLM-compatible /v1/unload_lora_adapter endpoint', async () => {
+		const calls: { url: string; body: any }[] = [];
+		await withMockFetch(
+			(url, options) => {
+				calls.push({ url, body: JSON.parse(options.body) });
+				return { ok: true, json: async () => ({}) };
+			},
+			() => aphroditeService.unloadAdapter('my-adapter')
+		);
+
+		assert.strictEqual(calls.length, 1);
+		assert.ok(calls[0].url.endsWith('/v1/unload_lora_adapter'));
+		assert.deepStrictEqual(calls[0].body, { lora_name: 'my-adapter' });
+	});
+
+	test('complete should route through the active adapter as the model field', async () => {
+		await withMockFetch(
+			() => ({ ok: true, json: async () => ({}) }),
+			() => aphroditeService.loadAdapter({ id: 'my-adapter', path: '/models/my-adapter' })
+		);
+		assert.strictEqual(aphroditeService.getActiveAdapter()?.id, 'my-adapter');
+
+		const calls: any[] = [];
+		await withMockFetch(
+			(_url, options) => {
+				calls.push(JSON.parse(options.body));
+				return {
+					ok: true,
+					json: async () => ({ choices: [{ text: 'hi', finish_reason: 'stop' }], usage: {}, model: 'my-adapter' }),
+				};
+			},
+			() => aphroditeService.complete({ prompt: 'hello' })
+		);
+
+		assert.strictEqual(calls.length, 1);
+		assert.strictEqual(calls[0].model, 'my-adapter');
+	});
+
+	test('streamComplete should include the resolved model in the request body', async () => {
+		const calls: any[] = [];
+		try {
+			await withMockFetch(
+				(_url, options) => {
+					calls.push(JSON.parse(options.body));
+					return { ok: false, status: 500 };
+				},
+				async () => {
+					for await (const _token of aphroditeService.streamComplete({ prompt: 'hello' })) {
+						// no-op: the mock returns a non-ok response before any tokens
+					}
+				}
+			);
+		} catch {
+			// Expected: mock fetch returns a non-ok response.
+		}
+
+		assert.strictEqual(calls.length, 1);
+		assert.strictEqual(calls[0].model, 'default');
+	});
+
+	test('complete should stop immediately on cancellation instead of trying fallback models', async () => {
+		aphroditeService.updateConfig({ fallbackModels: ['fallback-a', 'fallback-b'] });
+
+		const requestId = 'cancel-me';
+		const completePromise = withMockFetch(
+			(_url, options) => new Promise((_resolve, reject) => {
+				const signal: AbortSignal | undefined = options?.signal;
+				signal?.addEventListener('abort', () => {
+					const err = new Error('The operation was aborted.');
+					err.name = 'AbortError';
+					reject(err);
+				});
+			}),
+			() => aphroditeService.complete({ prompt: 'hello', requestId })
+		);
+
+		aphroditeService.cancelRequest(requestId);
+
+		try {
+			await completePromise;
+			assert.fail('Should have thrown');
+		} catch (error) {
+			assert.ok(error instanceof Error);
+			assert.strictEqual((error as Error).name, 'AbortError');
+		}
+
+		// Only the cancelled attempt should have been recorded - the fallback
+		// chain must not have been tried after cancellation.
+		const samples = aphroditeService.getTelemetrySamples();
+		assert.strictEqual(samples.length, 1);
+	});
 });

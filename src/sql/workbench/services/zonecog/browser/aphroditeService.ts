@@ -186,6 +186,12 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 					success: false,
 					timestamp: Date.now(),
 				});
+				// A caller-initiated cancellation (cancelRequest/cancelAllRequests)
+				// should stop the request outright, not fall through to the next
+				// fallback model.
+				if (error instanceof Error && error.name === 'AbortError') {
+					throw error;
+				}
 				lastError = error;
 			}
 		}
@@ -201,12 +207,15 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		this._pendingRequests.set(requestId, abortController);
 
 		const startTime = Date.now();
-		const model = this._config.model;
+		// A loaded LoRA adapter is applied by sending its ID as the `model`
+		// field, matching the priority used by complete()'s fallback chain.
+		const model = this._activeAdapterId ?? this._config.model;
 		let completionTokens = 0;
 		let success = false;
 
 		try {
 			const body: Record<string, unknown> = {
+				model,
 				prompt: request.prompt,
 				max_tokens: request.maxTokens ?? this._config.maxTokens,
 				temperature: request.temperature ?? this._config.temperature,
@@ -440,7 +449,10 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	async loadAdapter(adapter: { id: string; path: string; name?: string; baseModel?: string }): Promise<AphroditeAdapterInfo> {
 		this.membraneService.recordActivity('cerebral');
 
-		await this._makeRequest('/v1/lora_adapters', {
+		// vLLM-compatible dynamic LoRA endpoint (Aphrodite implements the same
+		// OpenAI-compatible server surface); NOT `/v1/lora_adapters`, which
+		// does not exist on either engine.
+		await this._makeRequest('/v1/load_lora_adapter', {
 			lora_name: adapter.id,
 			lora_path: adapter.path,
 		});
@@ -460,7 +472,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	async unloadAdapter(adapterId: string): Promise<void> {
 		try {
-			await this._makeRequest(`/v1/lora_adapters/${encodeURIComponent(adapterId)}`, undefined, undefined, 'DELETE');
+			await this._makeRequest('/v1/unload_lora_adapter', { lora_name: adapterId });
 		} catch (error) {
 			// Unloading is a local-state operation first; log but do not
 			// propagate a failed best-effort network call.
@@ -504,7 +516,15 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	}
 
 	private _buildModelAttemptList(): string[] {
-		const raw = [this._config.model, ...(this._config.fallbackModels ?? [])];
+		// A loaded LoRA adapter is applied by sending its ID as the `model`
+		// field, so an active adapter takes priority over the base model,
+		// falling back to the base model (and its own fallback chain) if the
+		// adapter-routed request fails.
+		const raw = [
+			...(this._activeAdapterId ? [this._activeAdapterId] : []),
+			this._config.model,
+			...(this._config.fallbackModels ?? []),
+		];
 		const models: string[] = [];
 		for (const model of raw) {
 			if (models.length === 0 || models[models.length - 1] !== model) {
