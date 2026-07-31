@@ -1489,10 +1489,14 @@ class ZoneCogAphroditeSwapModelAction extends Action2 {
 
 		const currentModel = aphroditeService.getConfig().model;
 		const items: { label: string; description?: string }[] = [];
+		// The engine reports loaded LoRA adapters through /v1/models too, so
+		// track which IDs are already listed and skip them below.
+		const seenIds = new Set<string>();
 
 		try {
 			const models = await aphroditeService.listModels();
 			for (const model of models) {
+				seenIds.add(model.id);
 				items.push({ label: model.id, description: model.loaded ? localize('zonecog.aphroditeModelLoaded', 'currently loaded') : undefined });
 			}
 		} catch {
@@ -1500,6 +1504,10 @@ class ZoneCogAphroditeSwapModelAction extends Action2 {
 		}
 
 		for (const adapter of aphroditeService.listAdapters()) {
+			if (seenIds.has(adapter.id)) {
+				continue;
+			}
+			seenIds.add(adapter.id);
 			items.push({ label: adapter.id, description: localize('zonecog.aphroditeAdapterEntry', 'LoRA adapter over {0}', adapter.baseModel) });
 		}
 

@@ -439,5 +439,93 @@ suite('AphroditeService', () => {
 		test('getABTestResults should return an empty array for an unknown test', () => {
 			assert.deepStrictEqual(aphroditeService.getABTestResults('unknown'), []);
 		});
+
+		test('results should not leak across tests that reuse variant IDs', async () => {
+			// Both tests use variant IDs 'a'/'b'; attribution must be per-test.
+			aphroditeService.startABTest({
+				testId: 'test-x',
+				variants: [
+					{ variantId: 'a', model: 'x-model-a', weight: 1 },
+					{ variantId: 'b', model: 'x-model-b', weight: 1 },
+				],
+			});
+			aphroditeService.startABTest({
+				testId: 'test-y',
+				variants: [
+					{ variantId: 'a', model: 'y-model-a', weight: 1 },
+					{ variantId: 'b', model: 'y-model-b', weight: 1 },
+				],
+			});
+
+			try { await aphroditeService.completeViaABTest('test-x', { prompt: 'one' }); } catch { /* expected */ }
+			try { await aphroditeService.completeViaABTest('test-x', { prompt: 'two' }); } catch { /* expected */ }
+			try { await aphroditeService.completeViaABTest('test-y', { prompt: 'three' }); } catch { /* expected */ }
+
+			const xTotal = aphroditeService.getABTestResults('test-x').reduce((sum, r) => sum + r.requestCount, 0);
+			const yTotal = aphroditeService.getABTestResults('test-y').reduce((sum, r) => sum + r.requestCount, 0);
+
+			assert.strictEqual(xTotal, 2, 'test-x should only count its own requests');
+			assert.strictEqual(yTotal, 1, 'test-y should only count its own requests');
+		});
+
+		test('telemetry should carry the routing testId', async () => {
+			aphroditeService.startABTest({
+				testId: 'test-z',
+				variants: [
+					{ variantId: 'a', model: 'z-model-a', weight: 1 },
+					{ variantId: 'b', model: 'z-model-b', weight: 1 },
+				],
+			});
+
+			try { await aphroditeService.completeViaABTest('test-z', { prompt: 'test' }); } catch { /* expected */ }
+
+			const entry = aphroditeService.getTelemetry(1)[0];
+			assert.strictEqual(entry.testId, 'test-z');
+			assert.ok(['a', 'b'].includes(entry.variantId!));
+		});
+
+		test('restarting a test should exclude the previous run\'s requests', async () => {
+			const config = {
+				testId: 'test-restart',
+				variants: [
+					{ variantId: 'a', model: 'r-model-a', weight: 1 },
+					{ variantId: 'b', model: 'r-model-b', weight: 1 },
+				],
+			};
+
+			aphroditeService.startABTest(config);
+			try { await aphroditeService.completeViaABTest('test-restart', { prompt: 'before' }); } catch { /* expected */ }
+			assert.strictEqual(
+				aphroditeService.getABTestResults('test-restart').reduce((sum, r) => sum + r.requestCount, 0), 1);
+
+			// Ensure the restart lands on a strictly later millisecond than the
+			// request above, so the run boundary is unambiguous.
+			await new Promise(resolve => setTimeout(resolve, 5));
+
+			// Restart: prior requests belong to the previous run, not this one.
+			aphroditeService.startABTest(config);
+
+			assert.strictEqual(
+				aphroditeService.getABTestResults('test-restart').reduce((sum, r) => sum + r.requestCount, 0), 0);
+		});
+	});
+
+	suite('configurable LoRA endpoints', () => {
+		test('should default to the vLLM-compatible adapter paths', () => {
+			const config = aphroditeService.getConfig();
+			assert.strictEqual(config.loraLoadPath, '/v1/load_lora_adapter');
+			assert.strictEqual(config.loraUnloadPath, '/v1/unload_lora_adapter');
+		});
+
+		test('should allow overriding the adapter paths for forks that differ', () => {
+			aphroditeService.updateConfig({
+				loraLoadPath: '/v1/lora/load',
+				loraUnloadPath: '/v1/lora/unload',
+			});
+
+			const config = aphroditeService.getConfig();
+			assert.strictEqual(config.loraLoadPath, '/v1/lora/load');
+			assert.strictEqual(config.loraUnloadPath, '/v1/lora/unload');
+		});
 	});
 });

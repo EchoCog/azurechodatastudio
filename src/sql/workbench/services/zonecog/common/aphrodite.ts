@@ -34,6 +34,15 @@ export interface AphroditeConfig {
 	batchingEnabled: boolean;
 	/** Max batch size */
 	maxBatchSize: number;
+	/**
+	 * API path for dynamically loading a LoRA adapter. Defaults to the
+	 * vLLM-compatible `/v1/load_lora_adapter` that Aphrodite inherits from
+	 * upstream; builds and forks that expose a different path (e.g.
+	 * `/v1/lora/load`) can point this at theirs without a code change.
+	 */
+	loraLoadPath: string;
+	/** API path for unloading a LoRA adapter. See {@link loraLoadPath}. */
+	loraUnloadPath: string;
 }
 
 /**
@@ -184,6 +193,12 @@ export interface AphroditeRequestTelemetry {
 	requestId: string;
 	/** Model (or adapter-qualified model) used for this attempt */
 	model: string;
+	/**
+	 * A/B test this request was routed through, if any. Variant IDs are only
+	 * unique within a test, so results must be attributed by test *and*
+	 * variant to avoid mixing counts across concurrently running tests.
+	 */
+	testId?: string;
 	/** A/B test variant ID this request was attributed to, if any */
 	variantId?: string;
 	/** End-to-end latency in milliseconds */

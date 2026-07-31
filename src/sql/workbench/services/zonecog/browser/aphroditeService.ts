@@ -44,6 +44,8 @@ const DEFAULT_CONFIG: AphroditeConfig = {
 	timeoutMs: 60000,
 	batchingEnabled: true,
 	maxBatchSize: 16,
+	loraLoadPath: '/v1/load_lora_adapter',
+	loraUnloadPath: '/v1/unload_lora_adapter',
 };
 
 /**
@@ -62,7 +64,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	private _adapters: Map<string, AphroditeAdapterInfo> = new Map();
 	private _telemetry: AphroditeRequestTelemetry[] = [];
 	private _fallbackChain: string[] = [];
-	private _abTests: Map<string, { config: AphroditeABTestConfig; active: boolean }> = new Map();
+	private _abTests: Map<string, { config: AphroditeABTestConfig; active: boolean; startedAt: number }> = new Map();
 
 	private readonly _onDidReceiveStreamToken = this._register(new Emitter<AphroditeStreamToken>());
 	readonly onDidReceiveStreamToken: Event<AphroditeStreamToken> = this._onDidReceiveStreamToken.event;
@@ -131,10 +133,10 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	/**
 	 * Shared completion implementation. `modelOverride` lets callers (the
 	 * fallback chain and A/B test routing) target a specific model without
-	 * mutating the service's persistent configuration; `variantId` attributes
-	 * the resulting telemetry entry to an A/B test variant.
+	 * mutating the service's persistent configuration; `testId`/`variantId`
+	 * attribute the resulting telemetry entry to an A/B test variant.
 	 */
-	private async _completeInternal(request: AphroditeCompletionRequest, modelOverride?: string, variantId?: string): Promise<AphroditeCompletionResponse> {
+	private async _completeInternal(request: AphroditeCompletionRequest, modelOverride?: string, testId?: string, variantId?: string): Promise<AphroditeCompletionResponse> {
 		this.membraneService.recordActivity('cerebral');
 		const requestId = request.requestId ?? this._generateRequestId();
 		const model = modelOverride ?? this._config.model;
@@ -173,6 +175,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 			this._recordTelemetry({
 				requestId,
 				model: result.model,
+				testId,
 				variantId,
 				latencyMs: generationTimeMs,
 				promptTokens: result.promptTokens,
@@ -187,6 +190,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 			this._recordTelemetry({
 				requestId,
 				model,
+				testId,
 				variantId,
 				latencyMs: Date.now() - startTime,
 				promptTokens: 0,
@@ -447,7 +451,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	async loadAdapter(adapterId: string, adapterPath: string): Promise<AphroditeAdapterInfo> {
 		this.membraneService.recordActivity('cerebral');
 
-		await this._makeRequest('/v1/load_lora_adapter', {
+		await this._makeRequest(this._config.loraLoadPath, {
 			lora_name: adapterId,
 			lora_path: adapterPath,
 		});
@@ -469,7 +473,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	async unloadAdapter(adapterId: string): Promise<void> {
 		this.membraneService.recordActivity('cerebral');
 
-		await this._makeRequest('/v1/unload_lora_adapter', {
+		await this._makeRequest(this._config.loraUnloadPath, {
 			lora_name: adapterId,
 		});
 
@@ -545,7 +549,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		if (config.variants.length < 2) {
 			throw new Error('An A/B test requires at least 2 variants');
 		}
-		this._abTests.set(config.testId, { config, active: true });
+		this._abTests.set(config.testId, { config, active: true, startedAt: Date.now() });
 		this.logService.info(`[AphroditeService] Started A/B test '${config.testId}' with ${config.variants.length} variants`);
 	}
 
@@ -568,7 +572,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		}
 
 		const variant = this._selectVariant(test.config.variants);
-		return this._completeInternal(request, variant.model, variant.variantId);
+		return this._completeInternal(request, variant.model, testId, variant.variantId);
 	}
 
 	getABTestResults(testId: string): AphroditeABTestResult[] {
@@ -578,7 +582,13 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		}
 
 		return test.config.variants.map(variant => {
-			const entries = this._telemetry.filter(t => t.variantId === variant.variantId);
+			// Attribute by test *and* variant — variant IDs are only unique
+			// within a test — and ignore entries predating the current run so a
+			// restarted test reports only its own requests.
+			const entries = this._telemetry.filter(t =>
+				t.testId === testId
+				&& t.variantId === variant.variantId
+				&& t.timestamp >= test.startedAt);
 			const successes = entries.filter(e => e.success).length;
 			return {
 				variantId: variant.variantId,
