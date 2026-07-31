@@ -105,6 +105,15 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		this._config = { ...this._config, ...config };
 		this.logService.info(`[AphroditeService] Initializing with config: ${JSON.stringify(this._config)}`);
 
+		// A fresh connection may be to a different (or restarted) engine process, which would
+		// not actually have any LoRA adapters previously loaded resident - forget local state so
+		// loadAdapter() issues a real load instead of reactivating a now-stale entry.
+		if (this._adapters.size > 0) {
+			this._adapters.clear();
+			this._activeAdapterId = undefined;
+			this._onDidChangeAdapters.fire(this.listAdapters());
+		}
+
 		// Test connection
 		try {
 			const healthy = await this.healthCheck();
@@ -469,10 +478,12 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		this.membraneService.recordActivity('somatic');
 
 		const existing = this._adapters.get(adapterId);
-		if (existing) {
-			// Already resident on the engine (e.g. deactivated by a switchModel() call) -
-			// reissuing /v1/load_lora_adapter would fail since vLLM rejects a duplicate
-			// lora_name. Just reactivate it locally instead of re-loading the weights.
+		if (existing && existing.path === path) {
+			// Already resident on the engine under this same path (e.g. deactivated by a
+			// switchModel() call) - reissuing /v1/load_lora_adapter would fail since vLLM
+			// rejects a duplicate lora_name. Just reactivate it locally instead of re-loading.
+			// A different path for the same id is a genuinely different adapter, so that falls
+			// through to a real load below.
 			this._activeAdapterId = adapterId;
 			this._onDidChangeAdapters.fire(this.listAdapters());
 			this.logService.info(`[AphroditeService] Reactivated already-loaded LoRA adapter '${adapterId}'`);
@@ -491,13 +502,19 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	async unloadAdapter(adapterId: string): Promise<void> {
 		this.membraneService.recordActivity('somatic');
-		await this._makeRequest('/v1/unload_lora_adapter', { lora_name: adapterId });
-
-		this._adapters.delete(adapterId);
-		if (this._activeAdapterId === adapterId) {
-			this._activeAdapterId = undefined;
+		try {
+			await this._makeRequest('/v1/unload_lora_adapter', { lora_name: adapterId });
+		} finally {
+			// Forget local state even if the request failed (e.g. the engine already doesn't
+			// have it, such as after a restart) - otherwise loadAdapter()'s reactivation
+			// short-circuit would get permanently stuck believing a no-longer-resident adapter
+			// is still loaded.
+			this._adapters.delete(adapterId);
+			if (this._activeAdapterId === adapterId) {
+				this._activeAdapterId = undefined;
+			}
+			this._onDidChangeAdapters.fire(this.listAdapters());
 		}
-		this._onDidChangeAdapters.fire(this.listAdapters());
 		this.logService.info(`[AphroditeService] Unloaded LoRA adapter '${adapterId}'`);
 	}
 
