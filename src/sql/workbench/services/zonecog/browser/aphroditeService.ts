@@ -919,8 +919,8 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		}
 
 		return test.config.variants.map(variant => {
-			// Attribute by test *and* variant — variant IDs are only unique
-			// within a test — and ignore entries predating the current run so a
+			// Attribute by test *and* variant (variant IDs are only unique
+			// within a test) and ignore entries predating the current run so a
 			// restarted test reports only its own requests.
 			const entries = this._telemetry.filter(t =>
 				t.testId === testId
