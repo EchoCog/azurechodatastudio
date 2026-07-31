@@ -1,0 +1,83 @@
+name: Zone-Cog Bridge Extension
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'zonecog-bridge-v*.*.*'
+    paths:
+      - 'extensions/zonecog-bridge/**'
+      - '.github/workflows/zonecog-bridge.yml'
+  pull_request:
+    paths:
+      - 'extensions/zonecog-bridge/**'
+      - '.github/workflows/zonecog-bridge.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: extensions/zonecog-bridge
+
+jobs:
+  build-and-package:
+    name: 'Build, test, and validate packaging'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: 'Install dependencies'
+        run: yarn install --frozen-lockfile
+
+      - name: 'Compile'
+        run: yarn compile
+
+      - name: 'Test'
+        run: yarn test
+
+      - name: 'Validate packaging (vsce package --no-dependencies, dry run)'
+        run: yarn package:dry-run
+
+  publish:
+    name: 'Publish to VS Code Marketplace / Open VSX'
+    needs: build-and-package
+    if: startsWith(github.ref, 'refs/tags/zonecog-bridge-v')
+    runs-on: ubuntu-latest
+    environment: zonecog-bridge-publish
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: 'Install dependencies'
+        run: yarn install --frozen-lockfile
+
+      - name: 'Compile'
+        run: yarn compile
+
+      - name: 'Publish to VS Code Marketplace'
+        if: ${{ secrets.VSCE_PAT != '' }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --yes @vscode/vsce publish --no-dependencies --pat "$VSCE_PAT"
+
+      - name: 'Publish to Open VSX'
+        if: ${{ secrets.OVSX_PAT != '' }}
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx publish --no-dependencies --pat "$OVSX_PAT"
+
+      - name: 'No publisher credentials configured'
+        if: ${{ secrets.VSCE_PAT == '' && secrets.OVSX_PAT == '' }}
+        run: |
+          echo '::warning::Neither VSCE_PAT nor OVSX_PAT is configured for the zonecog-bridge-publish environment; skipping publish. Set up an Azure DevOps publisher (VSCE_PAT) and/or an Open VSX token (OVSX_PAT) as environment secrets to enable this job.'

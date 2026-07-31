@@ -36,7 +36,7 @@ written to the **Zone-Cog** output channel.
 - `zonecog.bridge.requestTimeout` — request timeout in milliseconds
 - `zonecog.bridge.maxResponseBytes` — maximum accepted response size
 
-****** are stored with VS Code SecretStorage through the token command,
+Auth tokens are stored with VS Code SecretStorage through the token command,
 not in user or workspace settings. Use HTTPS when connecting outside a trusted
 loopback network.
 
@@ -70,3 +70,13 @@ yarn test
 
 `yarn test` compiles the extension and runs transport tests against a real local
 HTTP server.
+
+## Packaging
+
+```bash
+yarn package          # builds a .vsix in this directory
+yarn package:dry-run  # validates packaging without keeping the artifact
+```
+
+Both scripts run `@vscode/vsce` via `npx`, so no publisher token or extra
+devDependency is needed just to build and validate the package locally.
