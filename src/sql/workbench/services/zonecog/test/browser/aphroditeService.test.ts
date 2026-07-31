@@ -268,6 +268,30 @@ suite('AphroditeService', () => {
 			assert.deepStrictEqual(aphroditeService.getFallbackChain(), ['model-a']);
 		});
 
+		test('cancelling a request should stop the fallback chain instead of trying the next model', async () => {
+			aphroditeService.setFallbackChain(['fallback-1', 'fallback-2']);
+
+			const promise = aphroditeService.complete({ prompt: 'Hello, world!', requestId: 'cancel-me' });
+			// The synchronous portion of complete() (including pending-request registration)
+			// runs before the underlying fetch call suspends, so this reliably cancels the
+			// in-flight attempt rather than racing it.
+			aphroditeService.cancelRequest('cancel-me');
+
+			try {
+				await promise;
+				assert.fail('Should have thrown');
+			} catch (error) {
+				assert.ok(error);
+			}
+
+			// Cancellation must end the whole operation: only the aborted attempt is recorded,
+			// the fallback chain must not have been walked.
+			const recent = aphroditeService.getRecentTelemetry(10);
+			assert.strictEqual(recent.length, 1);
+			assert.strictEqual(recent[0].model, 'default');
+			assert.strictEqual(recent[0].success, false);
+		});
+
 		test('complete should attempt every model in the fallback chain before throwing', async () => {
 			aphroditeService.setFallbackChain(['fallback-1', 'fallback-2']);
 

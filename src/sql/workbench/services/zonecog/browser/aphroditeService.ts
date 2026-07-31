@@ -63,6 +63,8 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	private readonly _adapters: Map<string, AphroditeLoraAdapter> = new Map();
 	private _activeAdapterId: string | undefined;
 	private _fallbackChain: string[] = [];
+	/** Whether the caller has ever explicitly set a model (vs. the untouched `DEFAULT_CONFIG.model` placeholder). */
+	private _modelExplicitlySet: boolean = false;
 	private readonly _telemetry: AphroditeRequestTelemetryEntry[] = [];
 
 	private readonly _onDidReceiveStreamToken = this._register(new Emitter<AphroditeStreamToken>());
@@ -88,6 +90,9 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	async initialize(config: Partial<AphroditeConfig>): Promise<void> {
 		this.membraneService.recordActivity('cerebral');
+		if (config.model !== undefined) {
+			this._modelExplicitlySet = true;
+		}
 		this._config = { ...this._config, ...config };
 		this.logService.info(`[AphroditeService] Initializing with config: ${JSON.stringify(this._config)}`);
 
@@ -118,6 +123,9 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	}
 
 	updateConfig(config: Partial<AphroditeConfig>): void {
+		if (config.model !== undefined) {
+			this._modelExplicitlySet = true;
+		}
 		this._config = { ...this._config, ...config };
 		this.logService.info('[AphroditeService] Config updated');
 	}
@@ -125,7 +133,10 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	async complete(request: AphroditeCompletionRequest): Promise<AphroditeCompletionResponse> {
 		this.membraneService.recordActivity('cerebral');
 
-		const modelsToTry = [this._config.model, ...this._fallbackChain.filter(m => m !== this._config.model)];
+		// A loaded LoRA adapter is itself the "model" the engine dispatches on, so it takes
+		// priority over the base config model when present.
+		const primaryModel = this._activeAdapterId ?? this._config.model;
+		const modelsToTry = [primaryModel, ...this._fallbackChain.filter(m => m !== primaryModel)];
 		let lastError: unknown;
 
 		for (const model of modelsToTry) {
@@ -138,6 +149,11 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 			} catch (error) {
 				lastError = error;
 				this._recordTelemetry(model, Date.now() - startTime, false, error);
+				if (this._isAbortError(error)) {
+					// User-initiated cancellation (cancelRequest/cancelAllRequests) must end the
+					// whole operation, not just the in-flight attempt against this one model.
+					throw error;
+				}
 				if (model !== modelsToTry[modelsToTry.length - 1]) {
 					this.logService.warn(`[AphroditeService] Model '${model}' failed, falling back to next model in chain`);
 				}
@@ -154,7 +170,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 		try {
 			const response = await this._makeRequest('/v1/completions', {
-				model,
+				model: this._resolveWireModel(model),
 				prompt: request.prompt,
 				max_tokens: request.maxTokens ?? this._config.maxTokens,
 				temperature: request.temperature ?? this._config.temperature,
@@ -191,6 +207,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 				method: 'POST',
 				headers: this._getHeaders(),
 				body: JSON.stringify({
+					model: this._resolveWireModel(this._activeAdapterId ?? this._config.model),
 					prompt: request.prompt,
 					max_tokens: request.maxTokens ?? this._config.maxTokens,
 					temperature: request.temperature ?? this._config.temperature,
@@ -335,6 +352,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	async switchModel(modelId: string): Promise<void> {
 		this.membraneService.recordActivity('cerebral');
 		this._config.model = modelId;
+		this._modelExplicitlySet = true;
 		// In a real implementation, this would send a request to load the model
 		this.logService.info(`[AphroditeService] Switched to model: ${modelId}`);
 	}
@@ -502,6 +520,24 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	private _generateRequestId(): string {
 		return `req_${++this._requestIdCounter}_${Date.now()}`;
+	}
+
+	/**
+	 * Resolve the model identifier to send on the wire. The untouched `DEFAULT_CONFIG.model`
+	 * placeholder is never sent (letting the engine pick its own default, matching prior
+	 * behavior) unless the caller has explicitly configured a model or there's an active LoRA
+	 * adapter, since Aphrodite validates `model` against served names and would otherwise
+	 * reject the literal placeholder as an unknown model.
+	 */
+	private _resolveWireModel(model: string): string | undefined {
+		if (model === this._config.model && !this._modelExplicitlySet && this._activeAdapterId === undefined) {
+			return undefined;
+		}
+		return model;
+	}
+
+	private _isAbortError(error: unknown): boolean {
+		return error instanceof Error && error.name === 'AbortError';
 	}
 
 	private _getHeaders(): Record<string, string> {
