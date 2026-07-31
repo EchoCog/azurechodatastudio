@@ -20,16 +20,13 @@ import {
 	AphroditeEmbeddingResponse,
 	AphroditeModelInfo,
 	AphroditeEngineStats,
-<<<<<<< HEAD
 	AphroditeAdapterInfo,
 	AphroditeRequestTelemetry,
 	AphroditeTelemetrySummary,
 	AphroditeABTestConfig,
 	AphroditeABTestVariant,
 	AphroditeABTestResult,
-=======
 	LoRAAdapterInfo,
-	AphroditeRequestTelemetry,
 	AphroditePerformanceMetrics,
 	ABTestConfig,
 	ABTestVariant,
@@ -40,7 +37,6 @@ import {
 	PromptCacheStats,
 	PromptCacheEntry,
 	SpeculativeDecodingConfig,
->>>>>>> origin/main
 } from 'sql/workbench/services/zonecog/common/aphrodite';
 import { ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 
@@ -87,26 +83,21 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	private _pendingRequests: Map<string, AbortController> = new Map();
 	private _requestIdCounter: number = 0;
 
-<<<<<<< HEAD
 	private static readonly _MAX_TELEMETRY = 500;
 	private _adapters: Map<string, AphroditeAdapterInfo> = new Map();
 	private _telemetry: AphroditeRequestTelemetry[] = [];
 	private _fallbackChain: string[] = [];
 	private _abTests: Map<string, { config: AphroditeABTestConfig; active: boolean; startedAt: number }> = new Map();
 
-=======
-	// LoRA adapter state
+	// Extended LoRA adapter state
 	private _currentAdapter: LoRAAdapterInfo | undefined;
 	private _availableAdapters: LoRAAdapterInfo[] = [];
 
-	// Telemetry history
-	private _telemetryHistory: AphroditeRequestTelemetry[] = [];
-
-	// A/B testing state
+	// Extended A/B testing state
 	private _activeABTest: ABTestConfig | undefined;
 	private _abTestTelemetry: Map<string, AphroditeRequestTelemetry[]> = new Map();
 
-	// Model fallback state
+	// Extended model fallback state
 	private _fallbackConfig: ModelFallbackConfig | undefined;
 	private _fallbackState: ModelFallbackState = {
 		activeModel: 'default',
@@ -125,8 +116,6 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	// Speculative decoding config
 	private _speculativeConfig: SpeculativeDecodingConfig | undefined;
 
-	// Events
->>>>>>> origin/main
 	private readonly _onDidReceiveStreamToken = this._register(new Emitter<AphroditeStreamToken>());
 	readonly onDidReceiveStreamToken: Event<AphroditeStreamToken> = this._onDidReceiveStreamToken.event;
 
@@ -142,16 +131,14 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	private readonly _onDidRecordTelemetry = this._register(new Emitter<AphroditeRequestTelemetry>());
 	readonly onDidRecordTelemetry: Event<AphroditeRequestTelemetry> = this._onDidRecordTelemetry.event;
 
-<<<<<<< HEAD
 	private readonly _onDidChangeAdapters = this._register(new Emitter<AphroditeAdapterInfo[]>());
 	readonly onDidChangeAdapters: Event<AphroditeAdapterInfo[]> = this._onDidChangeAdapters.event;
-=======
+
 	private readonly _onDidChangeAdapter = this._register(new Emitter<LoRAAdapterInfo | undefined>());
 	readonly onDidChangeAdapter: Event<LoRAAdapterInfo | undefined> = this._onDidChangeAdapter.event;
 
 	private readonly _onDidChangeFallbackState = this._register(new Emitter<ModelFallbackState>());
 	readonly onDidChangeFallbackState: Event<ModelFallbackState> = this._onDidChangeFallbackState.event;
->>>>>>> origin/main
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
@@ -216,26 +203,8 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		this._pendingRequests.set(requestId, abortController);
 
 		const startTime = Date.now();
-		let timeToFirstToken = 0;
-		let success = true;
-		let errorMessage: string | undefined;
-
-		// Determine which model/variant to use
-		const { model, adapterId, configOverrides } = this._selectModelVariant();
-		const effectiveConfig = { ...this._config, ...configOverrides };
-
-		// Check prompt cache
-		const cacheKey = this._computePromptCacheKey(request.prompt);
-		const cacheHit = this._promptCache.has(cacheKey);
-		if (cacheHit) {
-			this._promptCacheHits++;
-			this._touchPromptCache(cacheKey);
-		} else {
-			this._promptCacheMisses++;
-		}
 
 		try {
-<<<<<<< HEAD
 			const response = await this._makeRequest('/v1/completions', {
 				model,
 				prompt: request.prompt,
@@ -248,14 +217,10 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 				stop: request.stopSequences,
 				stream: false,
 			}, abortController.signal);
-=======
-			const response = await this._completeWithFallback(request, model, abortController.signal, effectiveConfig);
->>>>>>> origin/main
 
 			const generationTimeMs = Date.now() - startTime;
 			this._pendingRequests.delete(requestId);
 
-<<<<<<< HEAD
 			const result: AphroditeCompletionResponse = {
 				text: response.choices[0]?.text ?? '',
 				promptTokens: response.usage?.prompt_tokens ?? 0,
@@ -293,68 +258,10 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 				errorMessage: error instanceof Error ? error.message : String(error),
 				timestamp: Date.now(),
 			});
-=======
-			// Update prompt cache
-			if (!cacheHit) {
-				this._addToPromptCache(cacheKey, request.prompt);
-			}
-
-			// Record telemetry
-			const telemetry: AphroditeRequestTelemetry = {
-				requestId,
-				model,
-				adapterId,
-				timeToFirstTokenMs: timeToFirstToken || generationTimeMs,
-				totalTimeMs: generationTimeMs,
-				latencyMs: generationTimeMs,
-				promptTokens: response.promptTokens,
-				completionTokens: response.completionTokens,
-				tokensPerSecond: response.completionTokens > 0 ? (response.completionTokens / (generationTimeMs / 1000)) : 0,
-				speculativeDecodingUsed: this._speculativeConfig?.enabled ?? false,
-				promptCacheHit: cacheHit,
-				timestamp: Date.now(),
-				success: true,
-			};
-			this._recordTelemetry(telemetry);
-
-			// Record success for fallback state
-			this._recordModelSuccess();
-
-			return response;
-		} catch (error) {
-			this._pendingRequests.delete(requestId);
-			success = false;
-			errorMessage = String(error);
-			const totalTimeMs = Date.now() - startTime;
-
-			// Record failure telemetry
-			const telemetry: AphroditeRequestTelemetry = {
-				requestId,
-				model,
-				adapterId,
-				timeToFirstTokenMs: 0,
-				totalTimeMs,
-				latencyMs: totalTimeMs,
-				promptTokens: 0,
-				completionTokens: 0,
-				tokensPerSecond: 0,
-				speculativeDecodingUsed: false,
-				promptCacheHit: cacheHit,
-				timestamp: Date.now(),
-				success: false,
-				errorMessage,
-			};
-			this._recordTelemetry(telemetry);
-
-			// Record failure for fallback state
-			this._recordModelFailure();
-
->>>>>>> origin/main
 			throw error;
 		}
 	}
 
-<<<<<<< HEAD
 	async completeWithFallback(request: AphroditeCompletionRequest): Promise<AphroditeCompletionResponse> {
 		const chain = [this._config.model, ...this._fallbackChain.filter(m => m !== this._config.model)];
 		const errors: string[] = [];
@@ -377,9 +284,10 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	getFallbackChain(): string[] {
 		return [...this._fallbackChain];
-=======
+	}
+
 	/**
-	 * Complete with automatic fallback chain.
+	 * Complete with automatic fallback chain (extended, uses ModelFallbackConfig).
 	 */
 	private async _completeWithFallback(
 		request: AphroditeCompletionRequest,
@@ -444,7 +352,6 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		}
 
 		return [this._fallbackConfig.primary, ...this._fallbackConfig.fallbacks];
->>>>>>> origin/main
 	}
 
 	async *streamComplete(request: AphroditeCompletionRequest): AsyncIterable<AphroditeStreamToken> {
@@ -774,7 +681,8 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		this.logService.info('[AphroditeService] Cancelled all requests');
 	}
 
-<<<<<<< HEAD
+	// --- LoRA Adapter Management (A.1) ---
+
 	async loadAdapter(adapterId: string, adapterPath: string): Promise<AphroditeAdapterInfo> {
 		this.membraneService.recordActivity('cerebral');
 
@@ -812,6 +720,35 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	listAdapters(): AphroditeAdapterInfo[] {
 		return Array.from(this._adapters.values());
 	}
+
+	getCurrentAdapter(): LoRAAdapterInfo | undefined {
+		return this._currentAdapter;
+	}
+
+	async swapAdapter(adapterId: string, scale: number = 1.0): Promise<void> {
+		this.membraneService.recordActivity('cerebral');
+		await this._makeRequest('/v1/lora/swap', {
+			adapter_id: adapterId,
+			scale,
+		});
+
+		const adapter = this._availableAdapters.find(a => a.id === adapterId);
+		this._currentAdapter = {
+			id: adapterId,
+			name: adapter?.name ?? adapterId,
+			description: adapter?.description ?? '',
+			path: adapter?.path ?? '',
+			scale,
+			loaded: true,
+			parameters: adapter?.parameters ?? 0,
+			baseModel: adapter?.baseModel ?? '',
+		};
+
+		this._onDidChangeAdapter.fire(this._currentAdapter);
+		this.logService.info(`[AphroditeService] Swapped to LoRA adapter: ${adapterId} (scale: ${scale})`);
+	}
+
+	// --- Performance Telemetry (A.1) ---
 
 	getTelemetry(limit?: number): AphroditeRequestTelemetry[] {
 		const mostRecentFirst = [...this._telemetry].reverse();
@@ -868,9 +805,82 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		};
 	}
 
+	getPerformanceMetrics(windowSeconds: number = DEFAULT_METRICS_WINDOW_SECONDS): AphroditePerformanceMetrics {
+		const now = Date.now();
+		const windowMs = windowSeconds * 1000;
+		const windowStart = now - windowMs;
+
+		const recentTelemetry = this._telemetry.filter(t => t.timestamp >= windowStart);
+
+		if (recentTelemetry.length === 0) {
+			return {
+				windowSeconds,
+				totalRequests: 0,
+				successfulRequests: 0,
+				failedRequests: 0,
+				successRate: 0,
+				errorRate: 0,
+				avgLatencyMs: 0,
+				p50LatencyMs: 0,
+				p95LatencyMs: 0,
+				p99LatencyMs: 0,
+				avgTimeToFirstTokenMs: 0,
+				avgTokensPerSecond: 0,
+				throughputTokensPerSec: 0,
+				totalTokensGenerated: 0,
+				promptCacheHitRate: 0,
+				speculativeDecodingUsageRate: 0,
+				avgSpeculativeAcceptanceRate: 0,
+			};
+		}
+
+		const successful = recentTelemetry.filter(t => t.success);
+		const failed = recentTelemetry.filter(t => !t.success);
+
+		const latencies = successful.map(t => t.latencyMs).sort((a, b) => a - b);
+		const p50Index = Math.floor(latencies.length * 0.5);
+		const p95Index = Math.floor(latencies.length * 0.95);
+		const p99Index = Math.floor(latencies.length * 0.99);
+
+		const promptCacheHits = recentTelemetry.filter(t => t.promptCacheHit).length;
+		const speculativeUsed = recentTelemetry.filter(t => t.speculativeDecodingUsed);
+		const totalTokens = successful.reduce((a, t) => a + t.completionTokens, 0);
+		const avgTps = successful.length > 0
+			? successful.reduce((a, t) => a + (t.tokensPerSecond ?? 0), 0) / successful.length
+			: 0;
+
+		return {
+			windowSeconds,
+			totalRequests: recentTelemetry.length,
+			successfulRequests: successful.length,
+			failedRequests: failed.length,
+			successRate: recentTelemetry.length > 0 ? successful.length / recentTelemetry.length : 0,
+			errorRate: recentTelemetry.length > 0 ? failed.length / recentTelemetry.length : 0,
+			avgLatencyMs: latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0,
+			p50LatencyMs: latencies[p50Index] ?? 0,
+			p95LatencyMs: latencies[p95Index] ?? 0,
+			p99LatencyMs: latencies[p99Index] ?? 0,
+			avgTimeToFirstTokenMs: 0,
+			avgTokensPerSecond: avgTps,
+			throughputTokensPerSec: avgTps,
+			totalTokensGenerated: totalTokens,
+			promptCacheHitRate: recentTelemetry.length > 0 ? promptCacheHits / recentTelemetry.length : 0,
+			speculativeDecodingUsageRate: recentTelemetry.length > 0 ? speculativeUsed.length / recentTelemetry.length : 0,
+			avgSpeculativeAcceptanceRate: speculativeUsed.length > 0
+				? speculativeUsed.reduce((a, t) => a + (t.speculativeAcceptanceRate ?? 0), 0) / speculativeUsed.length
+				: 0,
+		};
+	}
+
+	getRecentTelemetry(limit: number = 100): AphroditeRequestTelemetry[] {
+		return this._telemetry.slice(-limit);
+	}
+
 	clearTelemetry(): void {
 		this._telemetry = [];
 	}
+
+	// --- A/B Testing (A.1) ---
 
 	startABTest(config: AphroditeABTestConfig): void {
 		if (config.variants.length < 2) {
@@ -927,288 +937,11 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		});
 	}
 
-	private _selectVariant(variants: AphroditeABTestVariant[]): AphroditeABTestVariant {
-		const totalWeight = variants.reduce((sum, v) => sum + Math.max(0, v.weight), 0);
-		if (totalWeight <= 0) {
-			return variants[0];
-		}
-
-		let roll = Math.random() * totalWeight;
-		for (const variant of variants) {
-			roll -= Math.max(0, variant.weight);
-			if (roll <= 0) {
-				return variant;
-			}
-		}
-		return variants[variants.length - 1];
-	}
-
-	private _recordTelemetry(entry: AphroditeRequestTelemetry): void {
-		this._telemetry.push(entry);
-		if (this._telemetry.length > AphroditeService._MAX_TELEMETRY) {
-			this._telemetry.shift();
-		}
-		this._onDidRecordTelemetry.fire(entry);
-	}
-
-=======
-	// --- LoRA Adapter Management (A.1) ---
-
-	async listAdapters(): Promise<LoRAAdapterInfo[]> {
-		try {
-			const response = await this._makeRequest('/v1/lora/list', undefined, undefined, 'GET');
-			this._availableAdapters = (response.adapters ?? []).map((a: any) => ({
-				id: a.id,
-				name: a.name ?? a.id,
-				description: a.description ?? '',
-				path: a.path,
-				scale: a.scale ?? 1.0,
-				loaded: a.loaded ?? false,
-				parameters: a.parameters ?? 0,
-				baseModel: a.base_model ?? '',
-			}));
-			return this._availableAdapters;
-		} catch {
-			return this._availableAdapters;
-		}
-	}
-
-	async loadAdapter(adapterId: string, scale: number = 1.0): Promise<boolean> {
-		this.membraneService.recordActivity('cerebral');
-		try {
-			await this._makeRequest('/v1/lora/load', {
-				adapter_id: adapterId,
-				scale,
-			});
-
-			const adapter = this._availableAdapters.find(a => a.id === adapterId);
-			this._currentAdapter = {
-				id: adapterId,
-				name: adapter?.name ?? adapterId,
-				description: adapter?.description ?? '',
-				path: adapter?.path ?? '',
-				scale,
-				loaded: true,
-				parameters: adapter?.parameters ?? 0,
-				baseModel: adapter?.baseModel ?? '',
-			};
-
-			this._onDidChangeAdapter.fire(this._currentAdapter);
-			this.logService.info(`[AphroditeService] Loaded LoRA adapter: ${adapterId} (scale: ${scale})`);
-			return true;
-		} catch (err) {
-			this.logService.error(`[AphroditeService] Failed to load LoRA adapter: ${err instanceof Error ? err.message : String(err)}`);
-			return false;
-		}
-	}
-
-	async unloadAdapter(): Promise<void> {
-		if (!this._currentAdapter) {
-			return;
-		}
-
-		this.membraneService.recordActivity('cerebral');
-		await this._makeRequest('/v1/lora/unload', {});
-
-		this._currentAdapter = undefined;
-		this._onDidChangeAdapter.fire(undefined);
-		this.logService.info('[AphroditeService] Unloaded LoRA adapter');
-	}
-
-	getCurrentAdapter(): LoRAAdapterInfo | undefined {
-		return this._currentAdapter;
-	}
-
-	async swapAdapter(adapterId: string, scale: number = 1.0): Promise<void> {
-		this.membraneService.recordActivity('cerebral');
-		await this._makeRequest('/v1/lora/swap', {
-			adapter_id: adapterId,
-			scale,
-		});
-
-		const adapter = this._availableAdapters.find(a => a.id === adapterId);
-		this._currentAdapter = {
-			id: adapterId,
-			name: adapter?.name ?? adapterId,
-			description: adapter?.description ?? '',
-			path: adapter?.path ?? '',
-			scale,
-			loaded: true,
-			parameters: adapter?.parameters ?? 0,
-			baseModel: adapter?.baseModel ?? '',
-		};
-
-		this._onDidChangeAdapter.fire(this._currentAdapter);
-		this.logService.info(`[AphroditeService] Swapped to LoRA adapter: ${adapterId} (scale: ${scale})`);
-	}
-
-	// --- Performance Telemetry (A.1) ---
-
-	getPerformanceMetrics(windowSeconds: number = DEFAULT_METRICS_WINDOW_SECONDS): AphroditePerformanceMetrics {
-		const now = Date.now();
-		const windowMs = windowSeconds * 1000;
-		const windowStart = now - windowMs;
-
-		const recentTelemetry = this._telemetryHistory.filter(t => t.timestamp >= windowStart);
-
-		if (recentTelemetry.length === 0) {
-			return {
-				windowSeconds,
-				totalRequests: 0,
-				successfulRequests: 0,
-				failedRequests: 0,
-				successRate: 0,
-				errorRate: 0,
-				avgLatencyMs: 0,
-				p50LatencyMs: 0,
-				p95LatencyMs: 0,
-				p99LatencyMs: 0,
-				avgTimeToFirstTokenMs: 0,
-				avgTokensPerSecond: 0,
-				throughputTokensPerSec: 0,
-				totalTokensGenerated: 0,
-				promptCacheHitRate: 0,
-				speculativeDecodingUsageRate: 0,
-				avgSpeculativeAcceptanceRate: 0,
-			};
-		}
-
-		const successful = recentTelemetry.filter(t => t.success);
-		const failed = recentTelemetry.filter(t => !t.success);
-
-		const latencies = successful.map(t => t.totalTimeMs).sort((a, b) => a - b);
-		const p50Index = Math.floor(latencies.length * 0.5);
-		const p95Index = Math.floor(latencies.length * 0.95);
-		const p99Index = Math.floor(latencies.length * 0.99);
-
-		const promptCacheHits = recentTelemetry.filter(t => t.promptCacheHit).length;
-		const speculativeUsed = recentTelemetry.filter(t => t.speculativeDecodingUsed);
-		const totalTokens = successful.reduce((a, t) => a + t.completionTokens, 0);
-		const avgTps = successful.length > 0
-			? successful.reduce((a, t) => a + t.tokensPerSecond, 0) / successful.length
-			: 0;
-
-		return {
-			windowSeconds,
-			totalRequests: recentTelemetry.length,
-			successfulRequests: successful.length,
-			failedRequests: failed.length,
-			successRate: recentTelemetry.length > 0 ? successful.length / recentTelemetry.length : 0,
-			errorRate: recentTelemetry.length > 0 ? failed.length / recentTelemetry.length : 0,
-			avgLatencyMs: latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0,
-			p50LatencyMs: latencies[p50Index] ?? 0,
-			p95LatencyMs: latencies[p95Index] ?? 0,
-			p99LatencyMs: latencies[p99Index] ?? 0,
-			avgTimeToFirstTokenMs: successful.length > 0
-				? successful.reduce((a, t) => a + t.timeToFirstTokenMs, 0) / successful.length
-				: 0,
-			avgTokensPerSecond: avgTps,
-			throughputTokensPerSec: avgTps,
-			totalTokensGenerated: totalTokens,
-			promptCacheHitRate: recentTelemetry.length > 0 ? promptCacheHits / recentTelemetry.length : 0,
-			speculativeDecodingUsageRate: recentTelemetry.length > 0 ? speculativeUsed.length / recentTelemetry.length : 0,
-			avgSpeculativeAcceptanceRate: speculativeUsed.length > 0
-				? speculativeUsed.reduce((a, t) => a + (t.speculativeAcceptanceRate ?? 0), 0) / speculativeUsed.length
-				: 0,
-		};
-	}
-
-	getRecentTelemetry(limit: number = 100): AphroditeRequestTelemetry[] {
-		return this._telemetryHistory.slice(-limit);
-	}
-
-	clearTelemetry(): void {
-		this._telemetryHistory = [];
-		this.logService.info('[AphroditeService] Cleared telemetry history');
-	}
-
-	// --- A/B Testing (A.1) ---
-
-	startABTest(config: ABTestConfig): void {
-		this._activeABTest = { ...config, active: true };
-		this._abTestTelemetry.clear();
-		for (const variant of config.variants) {
-			this._abTestTelemetry.set(variant.id, []);
-		}
-		this.logService.info(`[AphroditeService] Started A/B test: ${config.name}`);
-	}
-
-	stopABTest(testId: string): void {
-		if (this._activeABTest?.testId === testId) {
-			this._activeABTest.active = false;
-			this._activeABTest.endTime = Date.now();
-			this.logService.info(`[AphroditeService] Stopped A/B test: ${testId}`);
-		}
-	}
-
 	getABTest(): ABTestConfig | undefined {
 		return this._activeABTest;
 	}
 
-	getABTestResults(testId: string): ABTestResults | undefined {
-		if (this._activeABTest?.testId !== testId) {
-			return undefined;
-		}
-
-		const variantResults = new Map<string, AphroditePerformanceMetrics>();
-		for (const [variantId, telemetry] of this._abTestTelemetry) {
-			if (telemetry.length === 0) {
-				continue;
-			}
-
-			const latencies = telemetry.filter(t => t.success).map(t => t.totalTimeMs).sort((a, b) => a - b);
-			const successful = telemetry.filter(t => t.success);
-			const failed = telemetry.filter(t => !t.success);
-
-			const p50Index = Math.floor(latencies.length * 0.5);
-			const p95Index = Math.floor(latencies.length * 0.95);
-			const p99Index = Math.floor(latencies.length * 0.99);
-
-			const avgTps = successful.length > 0
-				? successful.reduce((a, t) => a + t.tokensPerSecond, 0) / successful.length
-				: 0;
-
-			variantResults.set(variantId, {
-				windowSeconds: (Date.now() - this._activeABTest.startTime) / 1000,
-				totalRequests: telemetry.length,
-				successfulRequests: successful.length,
-				failedRequests: failed.length,
-				successRate: telemetry.length > 0 ? successful.length / telemetry.length : 0,
-				errorRate: telemetry.length > 0 ? failed.length / telemetry.length : 0,
-				avgLatencyMs: latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0,
-				p50LatencyMs: latencies[p50Index] ?? 0,
-				p95LatencyMs: latencies[p95Index] ?? 0,
-				p99LatencyMs: latencies[p99Index] ?? 0,
-				avgTimeToFirstTokenMs: successful.length > 0
-					? successful.reduce((a, t) => a + t.timeToFirstTokenMs, 0) / successful.length
-					: 0,
-				avgTokensPerSecond: avgTps,
-				throughputTokensPerSec: avgTps,
-				totalTokensGenerated: successful.reduce((a, t) => a + t.completionTokens, 0),
-				promptCacheHitRate: telemetry.length > 0 ? telemetry.filter(t => t.promptCacheHit).length / telemetry.length : 0,
-				speculativeDecodingUsageRate: 0,
-				avgSpeculativeAcceptanceRate: 0,
-			});
-		}
-
-		// Find best variant by lowest average latency
-		let recommendedVariant: string | undefined;
-		let lowestLatency = Infinity;
-		for (const [variantId, metrics] of variantResults) {
-			if (metrics.avgLatencyMs > 0 && metrics.avgLatencyMs < lowestLatency && metrics.errorRate < 0.1) {
-				lowestLatency = metrics.avgLatencyMs;
-				recommendedVariant = variantId;
-			}
-		}
-
-		return {
-			testId,
-			variantResults,
-			recommendedVariant,
-		};
-	}
-
-	// --- Model Fallback Chain (A.1) ---
+	// --- Extended Fallback Chain (A.1) ---
 
 	setFallbackConfig(config: ModelFallbackConfig): void {
 		this._fallbackConfig = config;
@@ -1373,9 +1106,31 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		}
 	}
 
-	// --- Private Helper Methods ---
+	private _selectVariant(variants: AphroditeABTestVariant[]): AphroditeABTestVariant {
+		const totalWeight = variants.reduce((sum, v) => sum + Math.max(0, v.weight), 0);
+		if (totalWeight <= 0) {
+			return variants[0];
+		}
 
->>>>>>> origin/main
+		let roll = Math.random() * totalWeight;
+		for (const variant of variants) {
+			roll -= Math.max(0, variant.weight);
+			if (roll <= 0) {
+				return variant;
+			}
+		}
+		return variants[variants.length - 1];
+	}
+
+	private _recordTelemetry(entry: AphroditeRequestTelemetry): void {
+		this._telemetry.push(entry);
+		if (this._telemetry.length > AphroditeService._MAX_TELEMETRY) {
+			this._telemetry.shift();
+		}
+		this._onDidRecordTelemetry.fire(entry);
+	}
+
+
 	private _generateRequestId(): string {
 		return `req_${++this._requestIdCounter}_${Date.now()}`;
 	}
@@ -1418,26 +1173,6 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 			chunks.push(array.slice(i, i + size));
 		}
 		return chunks;
-	}
-
-	private _recordTelemetry(telemetry: AphroditeRequestTelemetry): void {
-		this._telemetryHistory.push(telemetry);
-
-		// Trim history if needed
-		if (this._telemetryHistory.length > MAX_TELEMETRY_HISTORY) {
-			this._telemetryHistory = this._telemetryHistory.slice(-MAX_TELEMETRY_HISTORY);
-		}
-
-		// Record to A/B test if active
-		if (this._activeABTest?.active && telemetry.model) {
-			const variant = this._activeABTest.variants.find(v => v.model === telemetry.model);
-			if (variant) {
-				const variantTelemetry = this._abTestTelemetry.get(variant.id);
-				variantTelemetry?.push(telemetry);
-			}
-		}
-
-		this._onDidRecordTelemetry.fire(telemetry);
 	}
 
 	private _selectModelVariant(): { model: string; adapterId?: string; configOverrides?: Partial<AphroditeConfig> } {

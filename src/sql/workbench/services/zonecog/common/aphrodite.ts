@@ -195,6 +195,8 @@ export interface AphroditeRequestTelemetry {
 	requestId: string;
 	/** Model (or adapter-qualified model) used for this attempt */
 	model: string;
+	/** LoRA adapter used (if any) */
+	adapterId?: string;
 	/**
 	 * A/B test this request was routed through, if any. Variant IDs are only
 	 * unique within a test, so results must be attributed by test *and*
@@ -215,6 +217,18 @@ export interface AphroditeRequestTelemetry {
 	errorMessage?: string;
 	/** Timestamp (ms) the attempt completed */
 	timestamp: number;
+	/** Time to first token in milliseconds (if measured) */
+	timeToFirstTokenMs?: number;
+	/** Total generation time in milliseconds (alias for latencyMs) */
+	totalTimeMs?: number;
+	/** Tokens generated per second */
+	tokensPerSecond?: number;
+	/** Whether speculative decoding was used */
+	speculativeDecodingUsed?: boolean;
+	/** Speculative decoding acceptance rate */
+	speculativeAcceptanceRate?: number;
+	/** Whether prompt cache was hit */
+	promptCacheHit?: boolean;
 }
 
 /**
@@ -320,42 +334,6 @@ export interface LoRAAdapterInfo {
 	parameters: number;
 	/** Base model this adapter is compatible with */
 	baseModel: string;
-}
-
-/**
- * Performance telemetry record for a single request.
- */
-export interface AphroditeRequestTelemetry {
-	/** Request ID */
-	requestId: string;
-	/** Model used */
-	model: string;
-	/** LoRA adapter used (if any) */
-	adapterId?: string;
-	/** Time to first token in milliseconds */
-	timeToFirstTokenMs: number;
-	/** Total generation time in milliseconds */
-	totalTimeMs: number;
-	/** Total latency in milliseconds (alias for totalTimeMs) */
-	latencyMs: number;
-	/** Prompt tokens */
-	promptTokens: number;
-	/** Completion tokens */
-	completionTokens: number;
-	/** Tokens per second */
-	tokensPerSecond: number;
-	/** Whether speculative decoding was used */
-	speculativeDecodingUsed: boolean;
-	/** Speculative decoding acceptance rate */
-	speculativeAcceptanceRate?: number;
-	/** Whether prompt cache was hit */
-	promptCacheHit: boolean;
-	/** Timestamp */
-	timestamp: number;
-	/** Whether request succeeded */
-	success: boolean;
-	/** Error message if failed */
-	errorMessage?: string;
 }
 
 /**
@@ -712,16 +690,12 @@ export interface IAphroditeService {
 	 */
 	cancelAllRequests(): void;
 
-<<<<<<< HEAD
-	/**
-	 * Event fired whenever a completion attempt's telemetry is recorded.
-	 */
-	readonly onDidRecordTelemetry: Event<AphroditeRequestTelemetry>;
-
 	/**
 	 * Event fired when the set of loaded LoRA adapters changes.
 	 */
 	readonly onDidChangeAdapters: Event<AphroditeAdapterInfo[]>;
+
+	// --- LoRA Adapter Management (A.1) ---
 
 	/**
 	 * Dynamically load a LoRA adapter into the running engine.
@@ -739,6 +713,18 @@ export interface IAphroditeService {
 	listAdapters(): AphroditeAdapterInfo[];
 
 	/**
+	 * Get the currently loaded LoRA adapter info (most recently loaded).
+	 */
+	getCurrentAdapter(): LoRAAdapterInfo | undefined;
+
+	/**
+	 * Swap the current LoRA adapter with a new one atomically.
+	 */
+	swapAdapter(adapterId: string, scale?: number): Promise<void>;
+
+	// --- Performance Telemetry (A.1) ---
+
+	/**
 	 * Get recorded per-request telemetry, most recent first.
 	 */
 	getTelemetry(limit?: number): AphroditeRequestTelemetry[];
@@ -749,9 +735,21 @@ export interface IAphroditeService {
 	getTelemetrySummary(): AphroditeTelemetrySummary;
 
 	/**
+	 * Get performance metrics over a time window.
+	 */
+	getPerformanceMetrics(windowSeconds?: number): AphroditePerformanceMetrics;
+
+	/**
+	 * Get recent request telemetry records.
+	 */
+	getRecentTelemetry(limit?: number): AphroditeRequestTelemetry[];
+
+	/**
 	 * Clear recorded telemetry.
 	 */
 	clearTelemetry(): void;
+
+	// --- Model Fallback (A.1) ---
 
 	/**
 	 * Configure the ordered list of model IDs to try, in order, when a
@@ -772,6 +770,8 @@ export interface IAphroditeService {
 	 */
 	completeWithFallback(request: AphroditeCompletionRequest): Promise<AphroditeCompletionResponse>;
 
+	// --- A/B Testing (A.1) ---
+
 	/**
 	 * Register and activate an A/B test comparing model/adapter variants.
 	 */
@@ -779,66 +779,11 @@ export interface IAphroditeService {
 
 	/**
 	 * Deactivate a running A/B test. Recorded results remain queryable.
-=======
-	// --- LoRA Adapter Management (A.1) ---
-
-	/**
-	 * List available LoRA adapters.
-	 */
-	listAdapters(): Promise<LoRAAdapterInfo[]>;
-
-	/**
-	 * Load a LoRA adapter by ID. Returns true if successful, false otherwise.
-	 */
-	loadAdapter(adapterId: string, scale?: number): Promise<boolean>;
-
-	/**
-	 * Unload the currently loaded LoRA adapter.
-	 */
-	unloadAdapter(): Promise<void>;
-
-	/**
-	 * Get the currently loaded adapter info.
-	 */
-	getCurrentAdapter(): LoRAAdapterInfo | undefined;
-
-	/**
-	 * Swap the current adapter with a new one atomically.
-	 */
-	swapAdapter(adapterId: string, scale?: number): Promise<void>;
-
-	// --- Performance Telemetry (A.1) ---
-
-	/**
-	 * Get performance metrics over a time window.
-	 */
-	getPerformanceMetrics(windowSeconds?: number): AphroditePerformanceMetrics;
-
-	/**
-	 * Get recent request telemetry records.
-	 */
-	getRecentTelemetry(limit?: number): AphroditeRequestTelemetry[];
-
-	/**
-	 * Clear telemetry history.
-	 */
-	clearTelemetry(): void;
-
-	// --- A/B Testing (A.1) ---
-
-	/**
-	 * Start an A/B test with the given configuration.
-	 */
-	startABTest(config: ABTestConfig): void;
-
-	/**
-	 * Stop the current A/B test.
->>>>>>> origin/main
 	 */
 	stopABTest(testId: string): void;
 
 	/**
-<<<<<<< HEAD
+	/**
 	 * Whether the given A/B test is currently active.
 	 */
 	isABTestActive(testId: string): boolean;
@@ -854,20 +799,11 @@ export interface IAphroditeService {
 	 * Get aggregated per-variant results for an A/B test.
 	 */
 	getABTestResults(testId: string): AphroditeABTestResult[];
-=======
-	 * Get the current A/B test configuration.
-	 */
-	getABTest(): ABTestConfig | undefined;
+
+	// --- Extended Fallback Chain (A.1) ---
 
 	/**
-	 * Get A/B test results.
-	 */
-	getABTestResults(testId: string): ABTestResults | undefined;
-
-	// --- Model Fallback Chain (A.1) ---
-
-	/**
-	 * Configure the model fallback chain.
+	 * Configure the model fallback chain with extended options.
 	 */
 	setFallbackConfig(config: ModelFallbackConfig): void;
 
@@ -926,5 +862,4 @@ export interface IAphroditeService {
 	 * Check if speculative decoding is available.
 	 */
 	isSpeculativeDecodingAvailable(): Promise<boolean>;
->>>>>>> origin/main
 }
