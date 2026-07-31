@@ -27,6 +27,15 @@ interface IndexEntry {
 	vector: number[];
 	contentHash: string;
 	source: SemanticEmbeddingSource;
+	/**
+	 * Whether an Aphrodite embed was attempted for this content, whether it
+	 * succeeded (`source: 'aphrodite'`) or fell back to a local embedding after
+	 * failing (`source: 'local'`). Content is only re-flagged stale to retry
+	 * Aphrodite when this is false — e.g. it was embedded locally before
+	 * Aphrodite ever connected — so a persistently failing `embed()` call
+	 * doesn't get retried on every subsequent `search()`/`indexAll()`.
+	 */
+	aphroditeAttempted: boolean;
 }
 
 /**
@@ -153,10 +162,11 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 			return 0;
 		}
 
+		const toIndex = this._capToIndexBudget(stale);
 		this.membraneService.recordActivity('cerebral');
-		await this._indexNodes(stale);
-		this.logService.info(`HypergraphSemanticSearchService: indexed ${stale.length}/${nodes.length} node(s)`);
-		return stale.length;
+		await this._indexNodes(toIndex);
+		this.logService.info(`HypergraphSemanticSearchService: indexed ${toIndex.length}/${nodes.length} node(s)`);
+		return toIndex.length;
 	}
 
 	// -- Search --------------------------------------------------------------
@@ -174,7 +184,7 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 
 		const stale = candidates.filter(node => this._isStale(node));
 		if (stale.length > 0) {
-			await this._indexNodes(stale);
+			await this._indexNodes(this._capToIndexBudget(stale));
 		}
 
 		const queryVector = await this._embed(query);
@@ -214,7 +224,34 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 
 	private _isStale(node: HypergraphNode): boolean {
 		const entry = this._index.get(node.id);
-		return !entry || entry.contentHash !== this._contentHash(node) || entry.source !== this._currentSource();
+		if (!entry || entry.contentHash !== this._contentHash(node)) {
+			return true;
+		}
+		// Only re-flag as stale to *retry* Aphrodite when it hasn't been attempted for this
+		// content yet. Otherwise a connected-but-failing embed() would be retried on every
+		// subsequent search()/indexAll() call for the same unchanged content.
+		return this._currentSource() === 'aphrodite' && !entry.aphroditeAttempted;
+	}
+
+	/**
+	 * Bound how many nodes a single indexing pass embeds so it never inserts more than
+	 * `MAX_INDEX_ENTRIES` entries in one call. Without this, indexing a stale set larger than
+	 * the cap would evict entries from within the very same batch, and a later pass would find
+	 * those evicted nodes stale again — an oscillation that never converges on graphs bigger than
+	 * the cap. The most salient nodes are kept first so the resident set is deterministic and
+	 * stable across calls (matching the ECAN-style salience triage used elsewhere in ZoneCog).
+	 */
+	private _capToIndexBudget(nodes: HypergraphNode[]): HypergraphNode[] {
+		if (nodes.length <= MAX_INDEX_ENTRIES) {
+			return nodes;
+		}
+		const mostSalientFirst = [...nodes].sort((a, b) => b.salience_score - a.salience_score || a.id.localeCompare(b.id));
+		const selected = mostSalientFirst.slice(0, MAX_INDEX_ENTRIES);
+		this.logService.warn(`HypergraphSemanticSearchService: ${nodes.length} node(s) need (re-)indexing but the index is capped at ${MAX_INDEX_ENTRIES}; indexing the ${MAX_INDEX_ENTRIES} most salient this pass.`);
+		// Insert least-salient-of-the-selected first (i.e. ascending) so the most salient nodes
+		// end up most-recently-touched in the LRU map and are evicted last, not first, once a
+		// later pass pushes the index back over the cap.
+		return selected.reverse();
 	}
 
 	private async _ensureIndexed(node: HypergraphNode): Promise<void> {
@@ -235,7 +272,7 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 
 		if (source === 'local') {
 			for (const node of nodes) {
-				this._setIndexEntry(node.id, { vector: localEmbed(nodeEmbeddingText(node)), contentHash: this._contentHash(node), source: 'local' });
+				this._setIndexEntry(node.id, { vector: localEmbed(nodeEmbeddingText(node)), contentHash: this._contentHash(node), source: 'local', aphroditeAttempted: false });
 			}
 			return;
 		}
@@ -247,15 +284,15 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 				batch.forEach((node, index) => {
 					const vector = response.embeddings[index];
 					if (vector && vector.length > 0) {
-						this._setIndexEntry(node.id, { vector, contentHash: this._contentHash(node), source: 'aphrodite' });
+						this._setIndexEntry(node.id, { vector, contentHash: this._contentHash(node), source: 'aphrodite', aphroditeAttempted: true });
 					} else {
-						this._setIndexEntry(node.id, { vector: localEmbed(nodeEmbeddingText(node)), contentHash: this._contentHash(node), source: 'local' });
+						this._setIndexEntry(node.id, { vector: localEmbed(nodeEmbeddingText(node)), contentHash: this._contentHash(node), source: 'local', aphroditeAttempted: true });
 					}
 				});
 			} catch (err) {
 				this.logService.warn(`HypergraphSemanticSearchService: batch embed() failed for ${batch.length} node(s), falling back to local embedding: ${err instanceof Error ? err.message : String(err)}`);
 				for (const node of batch) {
-					this._setIndexEntry(node.id, { vector: localEmbed(nodeEmbeddingText(node)), contentHash: this._contentHash(node), source: 'local' });
+					this._setIndexEntry(node.id, { vector: localEmbed(nodeEmbeddingText(node)), contentHash: this._contentHash(node), source: 'local', aphroditeAttempted: true });
 				}
 			}
 		}

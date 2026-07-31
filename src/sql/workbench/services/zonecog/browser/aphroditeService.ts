@@ -137,12 +137,21 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	}
 
 	async complete(request: AphroditeCompletionRequest): Promise<AphroditeCompletionResponse> {
+		return this._completeInternal(request, false);
+	}
+
+	/**
+	 * @param bypassFallback When true, only the resolved primary model is tried — used by
+	 * `compareModels()` so a failing variant is reported as failed instead of silently
+	 * succeeding via another model through the fallback chain.
+	 */
+	private async _completeInternal(request: AphroditeCompletionRequest, bypassFallback: boolean): Promise<AphroditeCompletionResponse> {
 		this.membraneService.recordActivity('cerebral');
 		const requestId = request.requestId ?? this._generateRequestId();
 		const abortController = new AbortController();
 		this._pendingRequests.set(requestId, abortController);
 
-		const primaryModel = request.model ?? this._config.model;
+		const primaryModel = request.model ?? this.getActiveAdapter()?.id ?? this._config.model;
 
 		if (this._config.promptCachingEnabled) {
 			const cacheKey = this._promptCacheKey(request, primaryModel);
@@ -154,7 +163,9 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 			}
 		}
 
-		const modelsToTry = [primaryModel, ...this._fallbackChain.filter(m => m !== primaryModel)];
+		const modelsToTry = bypassFallback
+			? [primaryModel]
+			: [primaryModel, ...this._fallbackChain.filter(m => m !== primaryModel)];
 		let lastError: unknown;
 
 		try {
@@ -195,6 +206,11 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 					return result;
 				} catch (error) {
+					if (abortController.signal.aborted) {
+						// Cancelled by the caller: stop the fallback chain immediately instead of
+						// churning through (and mis-recording telemetry for) the remaining models.
+						throw error;
+					}
 					this._recordTelemetry(modelId, Date.now() - startTime, 0, 0, false);
 					lastError = error;
 					if (modelId !== modelsToTry[modelsToTry.length - 1]) {
@@ -214,7 +230,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		const abortController = new AbortController();
 		this._pendingRequests.set(requestId, abortController);
 
-		const modelId = request.model ?? this._config.model;
+		const modelId = request.model ?? this.getActiveAdapter()?.id ?? this._config.model;
 		const startTime = Date.now();
 		let tokenCount = 0;
 
@@ -500,7 +516,9 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		return Promise.all(modelIds.map(async (modelId): Promise<AphroditeModelComparisonResult> => {
 			const startTime = Date.now();
 			try {
-				const response = await this.complete({ ...request, model: modelId, requestId: undefined });
+				// bypassFallback: true so a variant that genuinely fails is reported as failed,
+				// rather than silently succeeding via another model in the fallback chain.
+				const response = await this._completeInternal({ ...request, model: modelId, requestId: undefined }, true);
 				return { modelId, response, latencyMs: Date.now() - startTime };
 			} catch (error) {
 				return { modelId, error: error instanceof Error ? error.message : String(error), latencyMs: Date.now() - startTime };
