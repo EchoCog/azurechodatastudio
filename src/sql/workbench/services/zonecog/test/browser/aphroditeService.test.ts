@@ -222,4 +222,222 @@ suite('AphroditeService', () => {
 		assert.strictEqual(typeof config.maxBatchSize, 'number');
 		assert.ok(config.maxBatchSize > 0);
 	});
+
+	suite('telemetry', () => {
+		test('should start with no telemetry recorded', () => {
+			assert.strictEqual(aphroditeService.getTelemetry().length, 0);
+			const summary = aphroditeService.getTelemetrySummary();
+			assert.strictEqual(summary.totalRequests, 0);
+			assert.strictEqual(summary.successRate, 0);
+		});
+
+		test('should record a failed telemetry entry when complete() throws', async () => {
+			try {
+				await aphroditeService.complete({ prompt: 'test' });
+			} catch {
+				// expected: no server available
+			}
+
+			const telemetry = aphroditeService.getTelemetry();
+			assert.strictEqual(telemetry.length, 1);
+			assert.strictEqual(telemetry[0].success, false);
+			assert.ok(telemetry[0].errorMessage);
+			assert.strictEqual(telemetry[0].model, 'default');
+		});
+
+		test('should fire onDidRecordTelemetry on a completion attempt', async () => {
+			let fired = false;
+			aphroditeService.onDidRecordTelemetry(() => { fired = true; });
+
+			try {
+				await aphroditeService.complete({ prompt: 'test' });
+			} catch {
+				// expected
+			}
+
+			assert.strictEqual(fired, true);
+		});
+
+		test('getTelemetrySummary should aggregate failures', async () => {
+			try { await aphroditeService.complete({ prompt: 'one' }); } catch { /* expected */ }
+			try { await aphroditeService.complete({ prompt: 'two' }); } catch { /* expected */ }
+
+			const summary = aphroditeService.getTelemetrySummary();
+			assert.strictEqual(summary.totalRequests, 2);
+			assert.strictEqual(summary.errorCount, 2);
+			assert.strictEqual(summary.successCount, 0);
+			assert.strictEqual(summary.successRate, 0);
+			assert.ok(summary.avgLatencyMs >= 0);
+			assert.ok('default' in summary.byModel);
+			assert.strictEqual(summary.byModel['default'].requests, 2);
+		});
+
+		test('getTelemetry should return most-recent-first and respect limit', async () => {
+			try { await aphroditeService.complete({ prompt: 'one', requestId: 'r1' }); } catch { /* expected */ }
+			try { await aphroditeService.complete({ prompt: 'two', requestId: 'r2' }); } catch { /* expected */ }
+
+			const all = aphroditeService.getTelemetry();
+			assert.strictEqual(all[0].requestId, 'r2');
+			assert.strictEqual(all[1].requestId, 'r1');
+
+			const limited = aphroditeService.getTelemetry(1);
+			assert.strictEqual(limited.length, 1);
+			assert.strictEqual(limited[0].requestId, 'r2');
+		});
+
+		test('clearTelemetry should empty the telemetry log', async () => {
+			try { await aphroditeService.complete({ prompt: 'test' }); } catch { /* expected */ }
+			assert.ok(aphroditeService.getTelemetry().length > 0);
+
+			aphroditeService.clearTelemetry();
+
+			assert.strictEqual(aphroditeService.getTelemetry().length, 0);
+			assert.strictEqual(aphroditeService.getTelemetrySummary().totalRequests, 0);
+		});
+	});
+
+	suite('fallback chain', () => {
+		test('should start with an empty fallback chain', () => {
+			assert.deepStrictEqual(aphroditeService.getFallbackChain(), []);
+		});
+
+		test('setFallbackChain should update the configured chain', () => {
+			aphroditeService.setFallbackChain(['model-b', 'model-c']);
+			assert.deepStrictEqual(aphroditeService.getFallbackChain(), ['model-b', 'model-c']);
+		});
+
+		test('completeWithFallback should try every model in the chain and then throw', async () => {
+			aphroditeService.setFallbackChain(['model-b', 'model-c']);
+
+			try {
+				await aphroditeService.completeWithFallback({ prompt: 'test' });
+				assert.fail('Should have thrown after exhausting the fallback chain');
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				assert.ok(message.includes('default'));
+				assert.ok(message.includes('model-b'));
+				assert.ok(message.includes('model-c'));
+			}
+
+			// One telemetry entry per attempted model.
+			const telemetry = aphroditeService.getTelemetry();
+			assert.strictEqual(telemetry.length, 3);
+		});
+
+		test('completeWithFallback should not duplicate the primary model in the chain', async () => {
+			aphroditeService.setFallbackChain(['default', 'model-b']);
+
+			try {
+				await aphroditeService.completeWithFallback({ prompt: 'test' });
+			} catch {
+				// expected
+			}
+
+			const telemetry = aphroditeService.getTelemetry();
+			assert.strictEqual(telemetry.length, 2);
+		});
+	});
+
+	suite('LoRA adapters', () => {
+		test('should start with no adapters loaded', () => {
+			assert.deepStrictEqual(aphroditeService.listAdapters(), []);
+		});
+
+		test('loadAdapter should throw when server unavailable and not register the adapter', async () => {
+			try {
+				await aphroditeService.loadAdapter('my-adapter', '/models/my-adapter');
+				assert.fail('Should have thrown');
+			} catch (error) {
+				assert.ok(error);
+			}
+
+			assert.deepStrictEqual(aphroditeService.listAdapters(), []);
+		});
+
+		test('should have onDidChangeAdapters event', () => {
+			assert.ok(aphroditeService.onDidChangeAdapters);
+			const disposable = aphroditeService.onDidChangeAdapters(() => { });
+			disposable.dispose();
+		});
+	});
+
+	suite('A/B testing', () => {
+		test('startABTest should throw with fewer than 2 variants', () => {
+			assert.throws(() => aphroditeService.startABTest({
+				testId: 'single-variant',
+				variants: [{ variantId: 'a', model: 'model-a', weight: 1 }],
+			}));
+		});
+
+		test('startABTest should activate a test with 2+ variants', () => {
+			aphroditeService.startABTest({
+				testId: 'ab-1',
+				variants: [
+					{ variantId: 'a', model: 'model-a', weight: 1 },
+					{ variantId: 'b', model: 'model-b', weight: 1 },
+				],
+			});
+
+			assert.strictEqual(aphroditeService.isABTestActive('ab-1'), true);
+		});
+
+		test('stopABTest should deactivate a running test', () => {
+			aphroditeService.startABTest({
+				testId: 'ab-2',
+				variants: [
+					{ variantId: 'a', model: 'model-a', weight: 1 },
+					{ variantId: 'b', model: 'model-b', weight: 1 },
+				],
+			});
+
+			aphroditeService.stopABTest('ab-2');
+
+			assert.strictEqual(aphroditeService.isABTestActive('ab-2'), false);
+		});
+
+		test('isABTestActive should be false for an unknown test', () => {
+			assert.strictEqual(aphroditeService.isABTestActive('never-started'), false);
+		});
+
+		test('completeViaABTest should route through a variant and record attributed telemetry', async () => {
+			aphroditeService.startABTest({
+				testId: 'ab-3',
+				variants: [
+					{ variantId: 'a', model: 'model-a', weight: 1 },
+					{ variantId: 'b', model: 'model-b', weight: 1 },
+				],
+			});
+
+			try {
+				await aphroditeService.completeViaABTest('ab-3', { prompt: 'test' });
+			} catch {
+				// expected: no server available
+			}
+
+			const results = aphroditeService.getABTestResults('ab-3');
+			assert.strictEqual(results.length, 2);
+			const totalRequests = results.reduce((sum, r) => sum + r.requestCount, 0);
+			assert.strictEqual(totalRequests, 1);
+			for (const result of results) {
+				assert.ok(['model-a', 'model-b'].includes(result.model));
+			}
+		});
+
+		test('completeViaABTest should fall back to complete() when the test is inactive', async () => {
+			try {
+				await aphroditeService.completeViaABTest('never-started', { prompt: 'test', requestId: 'inactive-test-req' });
+			} catch {
+				// expected
+			}
+
+			const telemetry = aphroditeService.getTelemetry();
+			assert.strictEqual(telemetry[0].requestId, 'inactive-test-req');
+			assert.strictEqual(telemetry[0].model, 'default');
+			assert.strictEqual(telemetry[0].variantId, undefined);
+		});
+
+		test('getABTestResults should return an empty array for an unknown test', () => {
+			assert.deepStrictEqual(aphroditeService.getABTestResults('unknown'), []);
+		});
+	});
 });
