@@ -92,6 +92,9 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		this.membraneService.recordActivity('cerebral');
 		if (config.model !== undefined) {
 			this._modelExplicitlySet = true;
+			// A LoRA adapter is only valid against the base model it was loaded for; an
+			// explicit model change must not be silently overridden by a stale adapter.
+			this._activeAdapterId = undefined;
 		}
 		this._config = { ...this._config, ...config };
 		this.logService.info(`[AphroditeService] Initializing with config: ${JSON.stringify(this._config)}`);
@@ -125,6 +128,8 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	updateConfig(config: Partial<AphroditeConfig>): void {
 		if (config.model !== undefined) {
 			this._modelExplicitlySet = true;
+			// See initialize(): a stale adapter must not keep overriding an explicit model change.
+			this._activeAdapterId = undefined;
 		}
 		this._config = { ...this._config, ...config };
 		this.logService.info('[AphroditeService] Config updated');
@@ -353,6 +358,9 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 		this.membraneService.recordActivity('cerebral');
 		this._config.model = modelId;
 		this._modelExplicitlySet = true;
+		// A LoRA adapter loaded for the previous base model is not valid for the new one;
+		// otherwise complete()/streamComplete() would keep dispatching to the stale adapter.
+		this._activeAdapterId = undefined;
 		// In a real implementation, this would send a request to load the model
 		this.logService.info(`[AphroditeService] Switched to model: ${modelId}`);
 	}
