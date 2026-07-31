@@ -164,6 +164,16 @@ function schemeEscape(value: string): string {
 }
 
 /**
+ * Collapse any line breaks out of text destined for a Scheme `;` line
+ * comment. Scheme comments run to the end of the physical line, so embedded
+ * newlines (common in query/SQL/response node content) would otherwise
+ * spill out of the comment as live, likely-invalid Scheme on import.
+ */
+function schemeCommentSafe(value: string): string {
+	return value.replace(/\s*[\r\n]+\s*/g, ' ');
+}
+
+/**
  * Render a hypergraph as OpenCog AtomSpace Scheme.
  *
  * Mirrors the generic Node/Link atom mapping already used by
@@ -171,7 +181,11 @@ function schemeEscape(value: string): string {
  * `link_type` through as-is rather than remapping to canonical OpenCog atom
  * names such as `ConceptNode`): each node becomes `(<node_type> "id" (stv
  * salience 1.0))`, each link becomes `(<link_type> (stv 1.0 1.0) ...)` over
- * `ConceptNode` references to its outgoing node ids.
+ * typed references to its outgoing node ids - using each target's own
+ * `node_type` (falling back to `ConceptNode` only for a dangling reference
+ * with no corresponding exported node), since in Atomese an atom's identity
+ * is its type *and* name together, so a mistyped reference would silently
+ * fail to resolve to the exported node.
  */
 export function nodesAndLinksToAtomSpaceScheme(nodes: ReadonlyArray<HypergraphNode>, links: ReadonlyArray<HypergraphLink>): string {
 	const lines: string[] = [
@@ -180,10 +194,15 @@ export function nodesAndLinksToAtomSpaceScheme(nodes: ReadonlyArray<HypergraphNo
 		'',
 	];
 
+	const nodeTypeById = new Map<string, string>();
+	for (const node of nodes) {
+		nodeTypeById.set(node.id, node.node_type || 'ConceptNode');
+	}
+
 	for (const node of nodes) {
 		const atomType = node.node_type || 'ConceptNode';
 		const strength = Number.isFinite(node.salience_score) ? node.salience_score : 0;
-		const comment = node.content.length > 0 ? ` ; ${schemeEscape(node.content).slice(0, 120)}` : '';
+		const comment = node.content.length > 0 ? ` ; ${schemeEscape(schemeCommentSafe(node.content)).slice(0, 120)}` : '';
 		lines.push(`(${atomType} "${schemeEscape(node.id)}" (stv ${strength} 1.0))${comment}`);
 	}
 
@@ -193,7 +212,9 @@ export function nodesAndLinksToAtomSpaceScheme(nodes: ReadonlyArray<HypergraphNo
 
 	for (const link of links) {
 		const atomType = link.link_type || 'Link';
-		const outgoing = link.outgoing.map(id => `(ConceptNode "${schemeEscape(id)}")`).join('\n    ');
+		const outgoing = link.outgoing
+			.map(id => `(${nodeTypeById.get(id) ?? 'ConceptNode'} "${schemeEscape(id)}")`)
+			.join('\n    ');
 		lines.push(outgoing.length > 0
 			? `(${atomType} (stv 1.0 1.0)\n    ${outgoing})`
 			: `(${atomType} (stv 1.0 1.0))`);

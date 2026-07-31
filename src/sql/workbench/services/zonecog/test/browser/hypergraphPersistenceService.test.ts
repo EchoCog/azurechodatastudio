@@ -474,4 +474,34 @@ suite('Hypergraph export format helpers', () => {
 		const scheme = nodesAndLinksToAtomSpaceScheme([], [link({ id: 'empty-link', link_type: 'Orphan', outgoing: [] })]);
 		assert.ok(scheme.includes('(Orphan (stv 1.0 1.0))'));
 	});
+
+	test('nodesAndLinksToAtomSpaceScheme references each outgoing node under its own node_type', () => {
+		const scheme = nodesAndLinksToAtomSpaceScheme(
+			[node({ id: 'q1', node_type: 'QueryInput' }), node({ id: 't1', node_type: 'TableNode' })],
+			[link({ id: 'evaluates', link_type: 'EvaluationLink', outgoing: ['q1', 't1'] })]
+		);
+
+		assert.ok(scheme.includes('(QueryInput "q1")'), 'link should reference q1 as QueryInput, not ConceptNode');
+		assert.ok(scheme.includes('(TableNode "t1")'), 'link should reference t1 as TableNode, not ConceptNode');
+		assert.ok(!scheme.includes('(ConceptNode "q1")'));
+		assert.ok(!scheme.includes('(ConceptNode "t1")'));
+	});
+
+	test('nodesAndLinksToAtomSpaceScheme falls back to ConceptNode for a link referencing a node outside the exported set', () => {
+		const scheme = nodesAndLinksToAtomSpaceScheme(
+			[],
+			[link({ id: 'dangling', link_type: 'Link', outgoing: ['missing-node'] })]
+		);
+		assert.ok(scheme.includes('(ConceptNode "missing-node")'));
+	});
+
+	test('nodesAndLinksToAtomSpaceScheme keeps a multi-line content comment on one line', () => {
+		const scheme = nodesAndLinksToAtomSpaceScheme(
+			[node({ id: 'multi', content: 'line one\nline two\r\nline three' })],
+			[]
+		);
+
+		assert.ok(!scheme.includes('line one\nline two'), 'raw newlines from content must not reach the output');
+		assert.ok(scheme.includes('; line one line two line three'));
+	});
 });
