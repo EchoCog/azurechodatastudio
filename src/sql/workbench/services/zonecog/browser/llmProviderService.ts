@@ -623,6 +623,10 @@ export class LLMProviderService extends Disposable implements ILLMProviderServic
 			temperature: request.temperature,
 		});
 
+		if (!response.text) {
+			throw new Error('Aphrodite API returned empty response');
+		}
+
 		return {
 			content: response.text,
 			providerId: APHRODITE_PROVIDER_ID,

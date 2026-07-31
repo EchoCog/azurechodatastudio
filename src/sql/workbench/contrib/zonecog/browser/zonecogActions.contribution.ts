@@ -1292,6 +1292,10 @@ class ZoneCogAphroditeConnectAction extends Action2 {
 					});
 				}
 				llmService.setActiveProvider(APHRODITE_PROVIDER_ID);
+				// Discard any stale failure history from a prior session so a
+				// freshly-verified connection isn't kept on the built-in fallback
+				// until the circuit breaker's half-open retry window elapses.
+				llmService.resetCircuitBreaker(APHRODITE_PROVIDER_ID);
 
 				notificationService.info(localize('zonecog.aphroditeConnected',
 					'Connected to Aphrodite Engine at {0}\nAvailable models: {1}\nZone-Cog thinking protocol now uses Aphrodite for completions.',

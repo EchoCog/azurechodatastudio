@@ -87,7 +87,7 @@ class FakeAphroditeService implements IAphroditeService {
 suite('LLM Provider Service Tests', () => {
 
 	let instantiationService: TestInstantiationService;
-	let llmService: ILLMProviderService & { getCircuitBreakerStatus(id: string): any; resetCircuitBreaker(id: string): void };
+	let llmService: ILLMProviderService;
 	let membraneService: CognitiveMembraneService;
 	let aphroditeService: FakeAphroditeService;
 	const originalFetch = globalThis.fetch;
@@ -102,7 +102,7 @@ suite('LLM Provider Service Tests', () => {
 		aphroditeService = new FakeAphroditeService();
 		instantiationService.stub(IAphroditeService, aphroditeService);
 
-		llmService = instantiationService.createInstance(LLMProviderService) as any;
+		llmService = instantiationService.createInstance(LLMProviderService);
 	});
 
 	teardown(() => {
@@ -799,5 +799,39 @@ suite('LLM Provider Service Tests', () => {
 
 		assert.strictEqual(response.isFallback, true);
 		assert.strictEqual(tokens.join(''), response.content);
+	});
+
+	test('should fall back to built-in when Aphrodite returns an empty completion', async () => {
+		aphroditeService.connected = true;
+		aphroditeService.completeResponse = {
+			text: '', promptTokens: 5, completionTokens: 0, totalTokens: 5,
+			finishReason: 'stop', generationTimeMs: 1, model: 'test-model',
+		};
+		activateAphroditeProvider();
+
+		const response = await llmService.complete({
+			systemPrompt: 'You are a helpful assistant.',
+			userMessage: 'Hello?',
+		});
+
+		assert.strictEqual(response.isFallback, true);
+		assert.strictEqual(response.providerId, 'builtin-fallback');
+	});
+
+	test('should reset a provider circuit breaker via resetCircuitBreaker', async () => {
+		activateExternalProvider();
+		globalThis.fetch = (async () => { throw new Error('network unreachable'); }) as unknown as typeof fetch;
+
+		// Drive enough failures to open the circuit.
+		for (let i = 0; i < 3; i++) {
+			await llmService.complete({ systemPrompt: 'sys', userMessage: 'fail' });
+		}
+		assert.strictEqual(llmService.getCircuitBreakerStatus('sse-provider').isOpen, true);
+
+		llmService.resetCircuitBreaker('sse-provider');
+
+		const status = llmService.getCircuitBreakerStatus('sse-provider');
+		assert.strictEqual(status.isOpen, false);
+		assert.strictEqual(status.failureCount, 0);
 	});
 });
