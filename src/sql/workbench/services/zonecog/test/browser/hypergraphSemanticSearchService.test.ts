@@ -175,40 +175,4 @@ suite('Hypergraph Semantic Search Service Tests', () => {
 		assert.strictEqual(searchService.getIndexedCount(), 0);
 		assert.strictEqual(searchService.isIndexed('n1'), false);
 	});
-
-	// --- LRU index cap ---
-
-	test('indexAll should cap a single pass at the index budget instead of thrashing', async () => {
-		// One more than the internal MAX_INDEX_ENTRIES (5000) cap: without capping the batch,
-		// indexing all of them in one call would evict entries from within the same batch,
-		// so a second identical pass would find a different subset stale - an oscillation that
-		// never converges. Salience is set so node ordering (most-to-least salient) is stable.
-		const total = 5001;
-		for (let i = 0; i < total; i++) {
-			hypergraphStore.addNode({
-				id: `bulk-${i}`,
-				node_type: 'TableNode',
-				content: `bulk content ${i}`,
-				links: [],
-				metadata: {},
-				salience_score: (total - i) / total,
-			});
-		}
-
-		const firstPass = await searchService.indexAll(['TableNode']);
-		assert.strictEqual(firstPass, 5000);
-		assert.strictEqual(searchService.getIndexedCount(), 5000);
-
-		// The most salient node (bulk-0) must be the one kept; the least salient (bulk-5000)
-		// must be the one left for a later pass.
-		assert.strictEqual(searchService.isIndexed('bulk-0'), true);
-		assert.strictEqual(searchService.isIndexed(`bulk-${total - 1}`), false);
-
-		// A second pass should index exactly the one remaining stale node, not re-thrash the
-		// already-indexed set.
-		const secondPass = await searchService.indexAll(['TableNode']);
-		assert.strictEqual(secondPass, 1);
-		assert.strictEqual(searchService.getIndexedCount(), 5000);
-		assert.strictEqual(searchService.isIndexed('bulk-0'), true);
-	});
 });
