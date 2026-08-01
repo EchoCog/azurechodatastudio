@@ -9,6 +9,15 @@ import { Event } from 'vs/base/common/event';
 export const ILLMProviderService = createDecorator<ILLMProviderService>('llmProviderService');
 
 /**
+ * Reserved provider ID for the Aphrodite Engine backend. A provider
+ * registered under this ID is routed through `IAphroditeService` (its own
+ * `/v1/completions` transport, streaming, batching and stats) instead of the
+ * generic OpenAI-compatible `/v1/chat/completions` path used for other
+ * external providers.
+ */
+export const APHRODITE_PROVIDER_ID = 'aphrodite';
+
+/**
  * Configuration for an LLM provider.
  */
 export interface LLMProviderConfig {
@@ -162,4 +171,20 @@ export interface ILLMProviderService {
 	 * Check if an external LLM provider is available (non-fallback).
 	 */
 	isExternalProviderActive(): boolean;
+
+	/**
+	 * Get the circuit breaker state for a provider (open/closed, failure
+	 * count, last failure time). A provider that has never failed reports a
+	 * closed circuit with zero failures.
+	 */
+	getCircuitBreakerStatus(providerId: string): { isOpen: boolean; failureCount: number; lastFailureTime: number };
+
+	/**
+	 * Manually reset a provider's circuit breaker to closed with zero
+	 * failures. Useful after a fresh, verified connection (e.g. a successful
+	 * "Connect to X" action) to discard stale failure history that would
+	 * otherwise keep routing requests to the built-in fallback until the
+	 * half-open retry window elapses on its own.
+	 */
+	resetCircuitBreaker(providerId: string): void;
 }

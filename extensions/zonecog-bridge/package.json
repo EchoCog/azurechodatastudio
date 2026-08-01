@@ -13,6 +13,11 @@
     "url": "https://github.com/EchoCog/azurechodatastudio/issues"
   },
   "homepage": "https://github.com/EchoCog/azurechodatastudio/tree/main/extensions/zonecog-bridge",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#111321",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.79.0"
   },
@@ -33,6 +38,7 @@
   "main": "./out/extension.js",
   "files": [
     "out/**/*.js",
+    "media/icon.png",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
@@ -108,7 +114,9 @@
   "scripts": {
     "compile": "tsc -p ./",
     "test": "yarn compile && node --test test/*.test.js",
-    "vscode:prepublish": "yarn compile"
+    "vscode:prepublish": "yarn compile",
+    "package": "npx --yes @vscode/vsce package --no-dependencies",
+    "package:dry-run": "npx --yes @vscode/vsce package --no-dependencies --out zonecog-bridge-dry-run.vsix && node -e \"require('fs').unlinkSync('zonecog-bridge-dry-run.vsix')\""
   },
   "devDependencies": {
     "@types/node": "20.14.10",

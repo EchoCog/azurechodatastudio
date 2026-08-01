@@ -82,7 +82,7 @@ suite('AGI Studio Service Tests', () => {
 
 	test('service should initialise with 7 built-in tools', () => {
 		const tools = service.getTools();
-		assert.ok(tools.length >= 7, `Expected ≥7 tools, got ${tools.length}`);
+		assert.ok(tools.length >= 7, `Expected >=7 tools, got ${tools.length}`);
 
 		const toolIds = tools.map(t => t.id);
 		assert.ok(toolIds.includes('sql-analyze'), 'sql-analyze tool should be registered');
@@ -174,7 +174,7 @@ suite('AGI Studio Service Tests', () => {
 		await waitForRunComplete(run.id);
 
 		const agents = service.getAgents(run.id);
-		assert.ok(agents.length >= 2, `Expected ≥2 agents, got ${agents.length}`);
+		assert.ok(agents.length >= 2, `Expected >=2 agents, got ${agents.length}`);
 
 		const root = agents.find(a => a.superiorId === undefined);
 		assert.ok(root, 'Root agent with no superiorId should exist');
@@ -205,7 +205,7 @@ suite('AGI Studio Service Tests', () => {
 		await waitForRunComplete(run.id);
 
 		const messages = service.getMessages(run.id);
-		assert.ok(messages.length >= 2, `Expected ≥2 messages, got ${messages.length}`);
+		assert.ok(messages.length >= 2, `Expected >=2 messages, got ${messages.length}`);
 
 		const taskAssignments = messages.filter(m => m.messageType === 'task-assignment');
 		const resultReports = messages.filter(m => m.messageType === 'result-report');
@@ -237,7 +237,7 @@ suite('AGI Studio Service Tests', () => {
 		await waitForRunComplete(run.id);
 
 		const toolCalls = service.getToolCalls(run.id);
-		assert.ok(toolCalls.length >= 2, `Expected ≥2 tool calls, got ${toolCalls.length}`);
+		assert.ok(toolCalls.length >= 2, `Expected >=2 tool calls, got ${toolCalls.length}`);
 
 		for (const tc of toolCalls) {
 			assert.ok(tc.toolId, 'Tool call should have toolId');
@@ -348,7 +348,7 @@ suite('AGI Studio Service Tests', () => {
 		await waitForRunComplete(run.id);
 
 		const agents = service.getAgents(run.id);
-		assert.ok(spawnedAgentIds.length >= 2, `Expected ≥2 spawned events, got ${spawnedAgentIds.length}`);
+		assert.ok(spawnedAgentIds.length >= 2, `Expected >=2 spawned events, got ${spawnedAgentIds.length}`);
 
 		// All spawned agent IDs should match actual agents
 		for (const id of spawnedAgentIds) {
@@ -367,7 +367,7 @@ suite('AGI Studio Service Tests', () => {
 		const run = await service.startRun('analyze sql query structure');
 		await waitForRunComplete(run.id);
 
-		assert.ok(receivedMessages.length >= 2, `Expected ≥2 message events, got ${receivedMessages.length}`);
+		assert.ok(receivedMessages.length >= 2, `Expected >=2 message events, got ${receivedMessages.length}`);
 
 		const hasTaskAssignment = receivedMessages.some(m => m.type === 'task-assignment');
 		const hasResultReport = receivedMessages.some(m => m.type === 'result-report');

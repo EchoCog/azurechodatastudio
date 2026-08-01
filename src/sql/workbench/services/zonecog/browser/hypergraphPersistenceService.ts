@@ -98,6 +98,132 @@ function idbCount(db: IDBDatabase, storeName: string): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// Export format helpers (pure, no IndexedDB access - unit-testable directly)
+// ---------------------------------------------------------------------------
+
+function cypherEscape(value: string): string {
+	return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function cypherPropertyLiteral(value: unknown): string {
+	if (typeof value === 'string') { return `'${cypherEscape(value)}'`; }
+	if (typeof value === 'number' || typeof value === 'boolean') { return String(value); }
+	if (value === null || value === undefined) { return 'null'; }
+	return `'${cypherEscape(JSON.stringify(value))}'`;
+}
+
+/** Sanitize a raw string into a valid Cypher label/relationship-type identifier. */
+function cypherIdentifier(raw: string): string {
+	const cleaned = (raw || 'HypergraphNode').replace(/[^A-Za-z0-9_]/g, '_');
+	return /^[A-Za-z_]/.test(cleaned) ? cleaned : `N_${cleaned}`;
+}
+
+/**
+ * Render a hypergraph as a Neo4j Cypher import script.
+ *
+ * Nodes become `CREATE` statements labeled with their `node_type`. Because
+ * Cypher relationships are strictly binary but a `HypergraphLink` can
+ * connect any number of nodes via `outgoing`, every link is reified as its
+ * own `:HyperLink` node with ordered `:PARTICIPATES` edges to each of its
+ * outgoing nodes, rather than special-casing 2-ary links as direct
+ * relationships.
+ */
+export function nodesAndLinksToCypher(nodes: ReadonlyArray<HypergraphNode>, links: ReadonlyArray<HypergraphLink>): string {
+	const lines: string[] = [
+		'// Zone-Cog hypergraph export - Neo4j Cypher',
+		`// ${nodes.length} node(s), ${links.length} link(s)`,
+		'',
+	];
+
+	for (const node of nodes) {
+		const props = [
+			`id: ${cypherPropertyLiteral(node.id)}`,
+			`content: ${cypherPropertyLiteral(node.content)}`,
+			`salience_score: ${cypherPropertyLiteral(node.salience_score)}`,
+			...Object.entries(node.metadata ?? {}).map(([key, value]) => `${cypherIdentifier(key)}: ${cypherPropertyLiteral(value)}`),
+		];
+		lines.push(`CREATE (:${cypherIdentifier(node.node_type)} {${props.join(', ')}});`);
+	}
+
+	for (const link of links) {
+		const relType = cypherIdentifier(link.link_type).toUpperCase();
+		lines.push(`CREATE (:HyperLink:${relType} {id: ${cypherPropertyLiteral(link.id)}});`);
+		link.outgoing.forEach((targetId, position) => {
+			lines.push(
+				`MATCH (l {id: ${cypherPropertyLiteral(link.id)}}), (t {id: ${cypherPropertyLiteral(targetId)}}) ` +
+				`CREATE (l)-[:PARTICIPATES {position: ${position}}]->(t);`
+			);
+		});
+	}
+
+	return lines.join('\n');
+}
+
+function schemeEscape(value: string): string {
+	return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/**
+ * Collapse any line breaks out of text destined for a Scheme `;` line
+ * comment. Scheme comments run to the end of the physical line, so embedded
+ * newlines (common in query/SQL/response node content) would otherwise
+ * spill out of the comment as live, likely-invalid Scheme on import.
+ */
+function schemeCommentSafe(value: string): string {
+	return value.replace(/\s*[\r\n]+\s*/g, ' ');
+}
+
+/**
+ * Render a hypergraph as OpenCog AtomSpace Scheme.
+ *
+ * Mirrors the generic Node/Link atom mapping already used by
+ * `IAtomSpaceTransportService`'s bridge sync (which passes `node_type`/
+ * `link_type` through as-is rather than remapping to canonical OpenCog atom
+ * names such as `ConceptNode`): each node becomes `(<node_type> "id" (stv
+ * salience 1.0))`, each link becomes `(<link_type> (stv 1.0 1.0) ...)` over
+ * typed references to its outgoing node ids - using each target's own
+ * `node_type` (falling back to `ConceptNode` only for a dangling reference
+ * with no corresponding exported node), since in Atomese an atom's identity
+ * is its type *and* name together, so a mistyped reference would silently
+ * fail to resolve to the exported node.
+ */
+export function nodesAndLinksToAtomSpaceScheme(nodes: ReadonlyArray<HypergraphNode>, links: ReadonlyArray<HypergraphLink>): string {
+	const lines: string[] = [
+		'; Zone-Cog hypergraph export - AtomSpace Scheme',
+		`; ${nodes.length} node(s), ${links.length} link(s)`,
+		'',
+	];
+
+	const nodeTypeById = new Map<string, string>();
+	for (const node of nodes) {
+		nodeTypeById.set(node.id, node.node_type || 'ConceptNode');
+	}
+
+	for (const node of nodes) {
+		const atomType = node.node_type || 'ConceptNode';
+		const strength = Number.isFinite(node.salience_score) ? node.salience_score : 0;
+		const comment = node.content.length > 0 ? ` ; ${schemeEscape(schemeCommentSafe(node.content)).slice(0, 120)}` : '';
+		lines.push(`(${atomType} "${schemeEscape(node.id)}" (stv ${strength} 1.0))${comment}`);
+	}
+
+	if (links.length > 0) {
+		lines.push('');
+	}
+
+	for (const link of links) {
+		const atomType = link.link_type || 'Link';
+		const outgoing = link.outgoing
+			.map(id => `(${nodeTypeById.get(id) ?? 'ConceptNode'} "${schemeEscape(id)}")`)
+			.join('\n    ');
+		lines.push(outgoing.length > 0
+			? `(${atomType} (stv 1.0 1.0)\n    ${outgoing})`
+			: `(${atomType} (stv 1.0 1.0))`);
+	}
+
+	return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Hypergraph Persistence Service implementation
 // ---------------------------------------------------------------------------
 
@@ -162,20 +288,7 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 
 	async save(label = 'manual'): Promise<HypergraphSnapshot> {
 		const db = await this._getDb();
-		const nodes = this.hypergraphStore.getAllNodes();
-		const links: HypergraphLink[] = [];
-
-		// Collect links referenced by any node in the graph
-		const linkIds = new Set<string>();
-		for (const node of nodes) {
-			for (const lid of node.links) {
-				if (!linkIds.has(lid)) {
-					linkIds.add(lid);
-					const l = this.hypergraphStore.getLink(lid);
-					if (l) { links.push(l); }
-				}
-			}
-		}
+		const { nodes, links } = this._collectGraph();
 
 		const snapshot: HypergraphSnapshot = {
 			id: Date.now(),
@@ -352,6 +465,22 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	}
 
 	// -------------------------------------------------------------------------
+	// Export
+	// -------------------------------------------------------------------------
+
+	exportToCypher(): string {
+		const { nodes, links } = this._collectGraph();
+		this.membraneService.recordActivity('autonomic');
+		return nodesAndLinksToCypher(nodes, links);
+	}
+
+	exportToAtomSpaceScheme(): string {
+		const { nodes, links } = this._collectGraph();
+		this.membraneService.recordActivity('autonomic');
+		return nodesAndLinksToAtomSpaceScheme(nodes, links);
+	}
+
+	// -------------------------------------------------------------------------
 	// Lifecycle
 	// -------------------------------------------------------------------------
 
@@ -377,5 +506,27 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			return db;
 		});
 		return this._dbOpenPromise;
+	}
+
+	/**
+	 * Collect the full in-memory hypergraph: every node, plus every link
+	 * referenced by at least one node's `links` list (deduplicated).
+	 */
+	private _collectGraph(): { nodes: HypergraphNode[]; links: HypergraphLink[] } {
+		const nodes = this.hypergraphStore.getAllNodes();
+		const links: HypergraphLink[] = [];
+
+		const linkIds = new Set<string>();
+		for (const node of nodes) {
+			for (const lid of node.links) {
+				if (!linkIds.has(lid)) {
+					linkIds.add(lid);
+					const l = this.hypergraphStore.getLink(lid);
+					if (l) { links.push(l); }
+				}
+			}
+		}
+
+		return { nodes, links };
 	}
 }
