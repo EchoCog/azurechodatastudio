@@ -81,6 +81,12 @@ export interface AphroditeCompletionRequest {
 	priority?: number;
 	/** Request ID for tracking */
 	requestId?: string;
+	/** Structured output format; passed through as `guided_json` when set */
+	responseFormat?: {
+		type: 'json_schema';
+		/** JSON schema the completion must conform to */
+		schema: Record<string, unknown>;
+	};
 }
 
 /**

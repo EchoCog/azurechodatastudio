@@ -227,6 +227,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 				presence_penalty: this._config.presencePenalty,
 				stop: request.stopSequences,
 				stream: false,
+				...(request.responseFormat?.type === 'json_schema' && { guided_json: request.responseFormat.schema }),
 			}, abortController.signal);
 
 			const generationTimeMs = Date.now() - startTime;
@@ -324,6 +325,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 					presence_penalty: this._config.presencePenalty,
 					stop: request.stopSequences,
 					stream: true,
+					...(request.responseFormat?.type === 'json_schema' && { guided_json: request.responseFormat.schema }),
 				}),
 				signal: abortController.signal,
 			});
@@ -414,6 +416,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 					presence_penalty: this._config.presencePenalty,
 					stop: request.stopSequences,
 					stream: true,
+					...(request.responseFormat?.type === 'json_schema' && { guided_json: request.responseFormat.schema }),
 				}),
 				signal: abortController.signal,
 			});
