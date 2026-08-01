@@ -5,8 +5,12 @@
 
 import * as assert from 'assert';
 import { IHypergraphPersistenceService } from 'sql/workbench/services/zonecog/common/hypergraphPersistence';
-import { HypergraphPersistenceService } from 'sql/workbench/services/zonecog/browser/hypergraphPersistenceService';
-import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import {
+	HypergraphPersistenceService,
+	nodesAndLinksToCypher,
+	nodesAndLinksToAtomSpaceScheme,
+} from 'sql/workbench/services/zonecog/browser/hypergraphPersistenceService';
+import { IHypergraphStore, ICognitiveMembraneService, HypergraphNode, HypergraphLink } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
@@ -352,5 +356,152 @@ suite('Hypergraph Persistence Service Tests', () => {
 		persistenceService.onDidLoad(() => { loadFired = true; });
 		await persistenceService.load();
 		assert.ok(loadFired);
+	});
+
+	// --- Export Tests ---
+
+	test('should export nodes and links to a Cypher script', () => {
+		hypergraphStore.addNode({
+			id: 'users', node_type: 'TableNode', content: 'users table', links: [], metadata: { schema: 'dbo' }, salience_score: 0.8,
+		});
+		hypergraphStore.addNode({
+			id: 'orders', node_type: 'TableNode', content: 'orders table', links: [], metadata: {}, salience_score: 0.6,
+		});
+		hypergraphStore.addLink({
+			id: 'fk-1', link_type: 'ForeignKey', outgoing: ['orders', 'users'], metadata: {},
+		});
+
+		const cypher = persistenceService.exportToCypher();
+
+		assert.ok(cypher.includes("CREATE (:TableNode {id: 'users'"));
+		assert.ok(cypher.includes("schema: 'dbo'"));
+		assert.ok(cypher.includes("CREATE (:TableNode {id: 'orders'"));
+		assert.ok(cypher.includes("CREATE (:HyperLink:FOREIGNKEY {id: 'fk-1'});"));
+		assert.ok(cypher.includes("MATCH (l {id: 'fk-1'}), (t {id: 'orders'}) CREATE (l)-[:PARTICIPATES {position: 0}]->(t);"));
+		assert.ok(cypher.includes("MATCH (l {id: 'fk-1'}), (t {id: 'users'}) CREATE (l)-[:PARTICIPATES {position: 1}]->(t);"));
+	});
+
+	test('should export nodes and links to AtomSpace Scheme', () => {
+		hypergraphStore.addNode({
+			id: 'n1', node_type: 'ConceptNode', content: 'first concept', links: [], metadata: {}, salience_score: 0.75,
+		});
+		hypergraphStore.addNode({
+			id: 'n2', node_type: 'ConceptNode', content: 'second concept', links: [], metadata: {}, salience_score: 0.25,
+		});
+		hypergraphStore.addLink({
+			id: 'link-1', link_type: 'SimilarityLink', outgoing: ['n1', 'n2'], metadata: {},
+		});
+
+		const scheme = persistenceService.exportToAtomSpaceScheme();
+
+		assert.ok(scheme.includes('(ConceptNode "n1" (stv 0.75 1.0))'));
+		assert.ok(scheme.includes('(ConceptNode "n2" (stv 0.25 1.0))'));
+		assert.ok(scheme.includes('(SimilarityLink (stv 1.0 1.0)'));
+		assert.ok(scheme.includes('(ConceptNode "n1")'));
+		assert.ok(scheme.includes('(ConceptNode "n2")'));
+	});
+
+	test('should export an empty hypergraph as a header-only script', () => {
+		const cypher = persistenceService.exportToCypher();
+		const scheme = persistenceService.exportToAtomSpaceScheme();
+
+		assert.ok(cypher.includes('0 node(s), 0 link(s)'));
+		assert.ok(scheme.includes('0 node(s), 0 link(s)'));
+	});
+
+	test('should record autonomic membrane activity on export', () => {
+		const membraneService = instantiationService.get(ICognitiveMembraneService);
+		const before = membraneService.getActivity('autonomic');
+
+		persistenceService.exportToCypher();
+
+		assert.ok(membraneService.getActivity('autonomic') > before);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Pure export-format function tests (no service/IndexedDB involved)
+// ---------------------------------------------------------------------------
+
+suite('Hypergraph export format helpers', () => {
+
+	function node(overrides: Partial<HypergraphNode>): HypergraphNode {
+		return { id: 'n', node_type: 'ConceptNode', content: '', links: [], metadata: {}, salience_score: 0, ...overrides };
+	}
+
+	function link(overrides: Partial<HypergraphLink>): HypergraphLink {
+		return { id: 'l', link_type: 'Link', outgoing: [], metadata: {}, ...overrides };
+	}
+
+	test('nodesAndLinksToCypher escapes a single quote in a property value', () => {
+		const cypher = nodesAndLinksToCypher([node({ id: "o'brien" })], []);
+		assert.ok(cypher.includes("id: 'o\\'brien'"));
+	});
+
+	test('nodesAndLinksToCypher escapes a backslash in a property value', () => {
+		const cypher = nodesAndLinksToCypher([node({ content: 'back\\slash' })], []);
+		assert.ok(cypher.includes("content: 'back\\\\slash'"));
+	});
+
+	test('nodesAndLinksToCypher sanitizes node types with invalid label characters', () => {
+		const cypher = nodesAndLinksToCypher([node({ node_type: 'My Node-Type!' })], []);
+		assert.ok(cypher.includes('CREATE (:My_Node_Type_ {'));
+	});
+
+	test('nodesAndLinksToCypher reifies a hyperedge with more than two outgoing nodes', () => {
+		const cypher = nodesAndLinksToCypher(
+			[node({ id: 'a' }), node({ id: 'b' }), node({ id: 'c' })],
+			[link({ id: 'hyper-1', link_type: 'Triad', outgoing: ['a', 'b', 'c'] })]
+		);
+
+		assert.ok(cypher.includes("CREATE (:HyperLink:TRIAD {id: 'hyper-1'});"));
+		for (const [position, id] of [[0, 'a'], [1, 'b'], [2, 'c']] as const) {
+			assert.ok(cypher.includes(`MATCH (l {id: 'hyper-1'}), (t {id: '${id}'}) CREATE (l)-[:PARTICIPATES {position: ${position}}]->(t);`));
+		}
+	});
+
+	test('nodesAndLinksToAtomSpaceScheme escapes a double quote in a node id', () => {
+		const scheme = nodesAndLinksToAtomSpaceScheme([node({ id: 'a"b' })], []);
+		assert.ok(scheme.includes('(ConceptNode "a\\"b" (stv 0 1.0))'));
+	});
+
+	test('nodesAndLinksToAtomSpaceScheme escapes a backslash in a node id', () => {
+		const scheme = nodesAndLinksToAtomSpaceScheme([node({ id: 'a\\b' })], []);
+		assert.ok(scheme.includes('(ConceptNode "a\\\\b" (stv 0 1.0))'));
+	});
+
+	test('nodesAndLinksToAtomSpaceScheme renders a link with no outgoing nodes without a dangling body', () => {
+		const scheme = nodesAndLinksToAtomSpaceScheme([], [link({ id: 'empty-link', link_type: 'Orphan', outgoing: [] })]);
+		assert.ok(scheme.includes('(Orphan (stv 1.0 1.0))'));
+	});
+
+	test('nodesAndLinksToAtomSpaceScheme references each outgoing node under its own node_type', () => {
+		const scheme = nodesAndLinksToAtomSpaceScheme(
+			[node({ id: 'q1', node_type: 'QueryInput' }), node({ id: 't1', node_type: 'TableNode' })],
+			[link({ id: 'evaluates', link_type: 'EvaluationLink', outgoing: ['q1', 't1'] })]
+		);
+
+		assert.ok(scheme.includes('(QueryInput "q1")'), 'link should reference q1 as QueryInput, not ConceptNode');
+		assert.ok(scheme.includes('(TableNode "t1")'), 'link should reference t1 as TableNode, not ConceptNode');
+		assert.ok(!scheme.includes('(ConceptNode "q1")'));
+		assert.ok(!scheme.includes('(ConceptNode "t1")'));
+	});
+
+	test('nodesAndLinksToAtomSpaceScheme falls back to ConceptNode for a link referencing a node outside the exported set', () => {
+		const scheme = nodesAndLinksToAtomSpaceScheme(
+			[],
+			[link({ id: 'dangling', link_type: 'Link', outgoing: ['missing-node'] })]
+		);
+		assert.ok(scheme.includes('(ConceptNode "missing-node")'));
+	});
+
+	test('nodesAndLinksToAtomSpaceScheme keeps a multi-line content comment on one line', () => {
+		const scheme = nodesAndLinksToAtomSpaceScheme(
+			[node({ id: 'multi', content: 'line one\nline two\r\nline three' })],
+			[]
+		);
+
+		assert.ok(!scheme.includes('line one\nline two'), 'raw newlines from content must not reach the output');
+		assert.ok(scheme.includes('; line one line two line three'));
 	});
 });

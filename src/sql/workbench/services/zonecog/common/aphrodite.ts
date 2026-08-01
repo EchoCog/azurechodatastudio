@@ -34,8 +34,15 @@ export interface AphroditeConfig {
 	batchingEnabled: boolean;
 	/** Max batch size */
 	maxBatchSize: number;
-	/** Cache identical non-streaming completion requests for a short TTL */
-	promptCachingEnabled: boolean;
+	/**
+	 * API path for dynamically loading a LoRA adapter. Defaults to the
+	 * vLLM-compatible `/v1/load_lora_adapter` that Aphrodite inherits from
+	 * upstream; builds and forks that expose a different path (e.g.
+	 * `/v1/lora/load`) can point this at theirs without a code change.
+	 */
+	loraLoadPath: string;
+	/** API path for unloading a LoRA adapter. See {@link loraLoadPath}. */
+	loraUnloadPath: string;
 }
 
 /**
@@ -74,58 +81,6 @@ export interface AphroditeCompletionRequest {
 	priority?: number;
 	/** Request ID for tracking */
 	requestId?: string;
-	/** Override the configured model for this request (used by fallback chains and model comparison). */
-	model?: string;
-	/** JSON schema used to constrain output via the backend's guided decoding support. */
-	responseSchema?: Record<string, unknown>;
-}
-
-/**
- * A LoRA adapter that can be dynamically loaded onto the running Aphrodite engine.
- */
-export interface AphroditeAdapterInfo {
-	/** Adapter identifier, used to reference it in requests. */
-	id: string;
-	/** Filesystem path or registry name the adapter weights were loaded from. */
-	path: string;
-	/** Base model the adapter was trained against, if known. */
-	baseModel?: string;
-	/** Whether the adapter is currently loaded on the engine. */
-	loaded: boolean;
-}
-
-/**
- * Rolling performance telemetry for a single model, accumulated from
- * `complete()`/`streamComplete()` calls made through that model.
- */
-export interface AphroditeModelTelemetry {
-	/** Model this telemetry applies to. */
-	modelId: string;
-	/** Total requests attempted against this model. */
-	requestCount: number;
-	/** Requests that ended in an error. */
-	errorCount: number;
-	/** Mean latency in milliseconds across successful requests. */
-	averageLatencyMs: number;
-	/** Mean completion throughput in tokens/second across successful requests. */
-	averageTokensPerSecond: number;
-	/** Timestamp (ms since epoch) of the most recent request. */
-	lastUsed: number;
-}
-
-/**
- * The outcome of running one prompt against one model variant as part of
- * `compareModels()`.
- */
-export interface AphroditeModelComparisonResult {
-	/** Model variant this result is for. */
-	modelId: string;
-	/** Successful completion, if the request succeeded. */
-	response?: AphroditeCompletionResponse;
-	/** Error message, if the request failed. */
-	error?: string;
-	/** Wall-clock time for this variant's request, in milliseconds. */
-	latencyMs: number;
 }
 
 /**
@@ -204,6 +159,8 @@ export interface AphroditeModelInfo {
 	id: string;
 	/** Human-readable name */
 	name: string;
+	/** Model description */
+	description: string;
 	/** Context window size */
 	contextLength: number;
 	/** Whether model supports embeddings */
@@ -212,6 +169,127 @@ export interface AphroditeModelInfo {
 	loaded: boolean;
 	/** Memory usage in GB */
 	memoryGb: number;
+}
+
+/**
+ * A LoRA adapter known to the Aphrodite engine.
+ */
+export interface AphroditeAdapterInfo {
+	/** Adapter identifier (the `lora_name` Aphrodite was given on load) */
+	id: string;
+	/** Filesystem or hub path the adapter was loaded from */
+	path: string;
+	/** Base model the adapter was loaded against */
+	baseModel: string;
+	/** Whether the adapter is currently loaded in the engine */
+	loaded: boolean;
+	/** Timestamp (ms) the adapter was loaded, if loaded */
+	loadedAt?: number;
+}
+
+/**
+ * Per-request telemetry captured for every completion attempt.
+ */
+export interface AphroditeRequestTelemetry {
+	/** Request ID this telemetry entry corresponds to */
+	requestId: string;
+	/** Model (or adapter-qualified model) used for this attempt */
+	model: string;
+	/** LoRA adapter used (if any) */
+	adapterId?: string;
+	/**
+	 * A/B test this request was routed through, if any. Variant IDs are only
+	 * unique within a test, so results must be attributed by test *and*
+	 * variant to avoid mixing counts across concurrently running tests.
+	 */
+	testId?: string;
+	/** A/B test variant ID this request was attributed to, if any */
+	variantId?: string;
+	/** End-to-end latency in milliseconds */
+	latencyMs: number;
+	/** Prompt tokens consumed, if known */
+	promptTokens: number;
+	/** Completion tokens generated, if known */
+	completionTokens: number;
+	/** Whether the attempt succeeded */
+	success: boolean;
+	/** Error message, if the attempt failed */
+	errorMessage?: string;
+	/** Timestamp (ms) the attempt completed */
+	timestamp: number;
+	/** Time to first token in milliseconds (if measured) */
+	timeToFirstTokenMs?: number;
+	/** Total generation time in milliseconds (alias for latencyMs) */
+	totalTimeMs?: number;
+	/** Tokens generated per second */
+	tokensPerSecond?: number;
+	/** Whether speculative decoding was used */
+	speculativeDecodingUsed?: boolean;
+	/** Speculative decoding acceptance rate */
+	speculativeAcceptanceRate?: number;
+	/** Whether prompt cache was hit */
+	promptCacheHit?: boolean;
+}
+
+/**
+ * Aggregated telemetry summary, overall and broken down by model.
+ */
+export interface AphroditeTelemetrySummary {
+	/** Total completion attempts recorded */
+	totalRequests: number;
+	/** Attempts that succeeded */
+	successCount: number;
+	/** Attempts that failed */
+	errorCount: number;
+	/** Success rate in [0, 1]; 0 when no requests recorded */
+	successRate: number;
+	/** Mean latency across recorded attempts (ms) */
+	avgLatencyMs: number;
+	/** 95th percentile latency across recorded attempts (ms) */
+	p95LatencyMs: number;
+	/** Sum of prompt + completion tokens across recorded attempts */
+	totalTokens: number;
+	/** Per-model breakdown */
+	byModel: Record<string, { requests: number; successRate: number; avgLatencyMs: number }>;
+}
+
+/**
+ * A single variant in an A/B test: a candidate model/adapter and its
+ * selection weight relative to the other variants in the same test.
+ */
+export interface AphroditeABTestVariant {
+	/** Variant identifier, unique within the test */
+	variantId: string;
+	/** Model (or adapter) ID to route this variant's requests to */
+	model: string;
+	/** Relative selection weight (weights are normalized across variants) */
+	weight: number;
+}
+
+/**
+ * An A/B test comparing completion quality/performance across model variants.
+ */
+export interface AphroditeABTestConfig {
+	/** Test identifier */
+	testId: string;
+	/** Candidate variants; at least 2 required for a meaningful comparison */
+	variants: AphroditeABTestVariant[];
+}
+
+/**
+ * Aggregated results for a single variant of a running or completed A/B test.
+ */
+export interface AphroditeABTestResult {
+	/** Variant identifier */
+	variantId: string;
+	/** Model (or adapter) the variant routed to */
+	model: string;
+	/** Requests attributed to this variant */
+	requestCount: number;
+	/** Fraction of this variant's requests that succeeded, in [0, 1] */
+	successRate: number;
+	/** Mean latency for this variant's requests (ms) */
+	avgLatencyMs: number;
 }
 
 /**
@@ -236,11 +314,255 @@ export interface AphroditeEngineStats {
 	kvCacheSize: number;
 }
 
+/**
+ * LoRA adapter information.
+ */
+export interface LoRAAdapterInfo {
+	/** Adapter identifier */
+	id: string;
+	/** Human-readable name */
+	name: string;
+	/** Adapter description */
+	description: string;
+	/** Adapter file path or URL */
+	path: string;
+	/** Scaling factor (typically 0.0-2.0) */
+	scale: number;
+	/** Whether the adapter is currently loaded */
+	loaded: boolean;
+	/** Number of trainable parameters */
+	parameters: number;
+	/** Base model this adapter is compatible with */
+	baseModel: string;
+}
+
+/**
+ * Aggregated performance metrics over a time window.
+ */
+export interface AphroditePerformanceMetrics {
+	/** Time window in seconds */
+	windowSeconds: number;
+	/** Total requests in window */
+	totalRequests: number;
+	/** Successful requests */
+	successfulRequests: number;
+	/** Failed requests */
+	failedRequests: number;
+	/** Success rate (0-1) */
+	successRate: number;
+	/** Error rate (0-1) */
+	errorRate: number;
+	/** Average latency in ms */
+	avgLatencyMs: number;
+	/** P50 latency in ms */
+	p50LatencyMs: number;
+	/** P95 latency in ms */
+	p95LatencyMs: number;
+	/** P99 latency in ms */
+	p99LatencyMs: number;
+	/** Average time to first token in ms */
+	avgTimeToFirstTokenMs: number;
+	/** Average tokens per second */
+	avgTokensPerSecond: number;
+	/** Throughput in tokens per second */
+	throughputTokensPerSec: number;
+	/** Total tokens generated */
+	totalTokensGenerated: number;
+	/** Prompt cache hit rate */
+	promptCacheHitRate: number;
+	/** Speculative decoding usage rate */
+	speculativeDecodingUsageRate: number;
+	/** Average speculative acceptance rate */
+	avgSpeculativeAcceptanceRate: number;
+}
+
+/**
+ * A/B test variant configuration.
+ */
+export interface ABTestVariant {
+	/** Variant identifier */
+	id: string;
+	/** Variant name */
+	name: string;
+	/** Model to use for this variant */
+	model: string;
+	/** LoRA adapter to use (optional) */
+	adapterId?: string;
+	/** Traffic weight (0-100) */
+	weight: number;
+	/** Variant-specific config overrides */
+	configOverrides?: Partial<AphroditeConfig>;
+}
+
+/**
+ * A/B test configuration.
+ */
+export interface ABTestConfig {
+	/** Test identifier */
+	testId: string;
+	/** Test name */
+	name: string;
+	/** Test description */
+	description: string;
+	/** Variants in this test */
+	variants: ABTestVariant[];
+	/** Whether the test is active */
+	active: boolean;
+	/** Test start time */
+	startTime: number;
+	/** Test end time (optional) */
+	endTime?: number;
+}
+
+/**
+ * A/B test results.
+ */
+export interface ABTestResults {
+	/** Test identifier */
+	testId: string;
+	/** Results per variant */
+	variantResults: Map<string, AphroditePerformanceMetrics>;
+	/** Statistical significance (p-value) for latency difference */
+	latencySignificance?: number;
+	/** Statistical significance for error rate difference */
+	errorRateSignificance?: number;
+	/** Recommended variant based on results */
+	recommendedVariant?: string;
+}
+
+/**
+ * Model fallback chain configuration.
+ */
+export interface ModelFallbackConfig {
+	/** Primary model */
+	primary: string;
+	/** Fallback models in priority order */
+	fallbacks: string[];
+	/** Number of retries before falling back */
+	retriesBeforeFallback: number;
+	/** Timeout before falling back (ms) */
+	timeoutBeforeFallbackMs: number;
+	/** Whether to automatically re-enable primary after success */
+	autoReenablePrimary: boolean;
+	/** Time to wait before retrying primary (ms) */
+	primaryReenableDelayMs: number;
+}
+
+/**
+ * Current model fallback state.
+ */
+export interface ModelFallbackState {
+	/** Currently active model */
+	activeModel: string;
+	/** Whether using a fallback model */
+	usingFallback: boolean;
+	/** Alias for usingFallback for compatibility */
+	isUsingFallback: boolean;
+	/** Number of consecutive failures on primary */
+	primaryFailureCount: number;
+	/** Alias for primaryFailureCount */
+	consecutiveFailures: number;
+	/** Current fallback index (0 = primary) */
+	currentFallbackIndex: number;
+	/** Time when primary was disabled */
+	primaryDisabledAt?: number;
+	/** Time when primary will be re-enabled */
+	primaryReenableAt?: number;
+	/** Last failure time */
+	lastFailureTime?: number;
+	/** Next retry time for primary */
+	nextRetryTime?: number;
+}
+
+/**
+ * Structured output (JSON schema) constraints for completions.
+ */
+export interface StructuredOutputConfig {
+	/** JSON schema for the expected output */
+	jsonSchema: object;
+	/** Whether to enforce strict schema validation */
+	strict: boolean;
+	/** Maximum retries on schema validation failure */
+	maxRetries: number;
+}
+
+/**
+ * Prompt cache entry.
+ */
+export interface PromptCacheEntry {
+	/** Cache key (hash of prompt prefix) */
+	key: string;
+	/** Cached KV state identifier */
+	kvStateId: string;
+	/** Number of tokens in the cached prefix */
+	tokenCount: number;
+	/** Last access time */
+	lastAccessTime: number;
+	/** Number of times this cache entry was used */
+	hitCount: number;
+}
+
+/**
+ * Prompt cache statistics.
+ */
+export interface PromptCacheStats {
+	/** Total entries in cache */
+	totalEntries: number;
+	/** Number of entries (alias for totalEntries) */
+	entryCount: number;
+	/** Maximum entries allowed */
+	maxEntries: number;
+	/** Total tokens cached */
+	totalTokensCached: number;
+	/** Cache hit rate (0-1) */
+	hitRate: number;
+	/** Total cache hits */
+	totalHits: number;
+	/** Alias for totalHits */
+	hitCount: number;
+	/** Total cache misses */
+	totalMisses: number;
+	/** Alias for totalMisses */
+	missCount: number;
+	/** Estimated memory usage in bytes */
+	memoryUsageBytes: number;
+}
+
+/**
+ * Speculative decoding configuration.
+ */
+export interface SpeculativeDecodingConfig {
+	/** Whether speculative decoding is enabled */
+	enabled: boolean;
+	/** Draft model for speculation */
+	draftModel: string;
+	/** Number of tokens to speculate */
+	speculationLength: number;
+	/** Minimum acceptance rate before disabling */
+	minAcceptanceRate: number;
+}
+
+/**
+ * Streaming token with timing telemetry.
+ */
+export interface AphroditeStreamTokenWithTiming extends AphroditeStreamToken {
+	/** Token index in the sequence */
+	tokenIndex: number;
+	/** Time since request start in ms */
+	elapsedMs: number;
+	/** Inter-token latency in ms */
+	interTokenLatencyMs: number;
+	/** Whether this token was from speculative decoding */
+	fromSpeculation: boolean;
+}
+
 export const IAphroditeService = createDecorator<IAphroditeService>('aphroditeService');
 
 /**
  * Service for interacting with the Aphrodite LLM inference engine.
- * Provides streaming completions, batch inference, and embeddings.
+ * Provides streaming completions, batch inference, embeddings, LoRA adapters,
+ * performance telemetry, A/B testing, model fallback chains, structured output,
+ * prompt caching, and speculative decoding.
  */
 export interface IAphroditeService {
 	readonly _serviceBrand: undefined;
@@ -249,6 +571,11 @@ export interface IAphroditeService {
 	 * Event fired when a streaming token is received.
 	 */
 	readonly onDidReceiveStreamToken: Event<AphroditeStreamToken>;
+
+	/**
+	 * Event fired when a streaming token with timing telemetry is received.
+	 */
+	readonly onDidReceiveStreamTokenWithTiming: Event<AphroditeStreamTokenWithTiming>;
 
 	/**
 	 * Event fired when connection status changes.
@@ -261,9 +588,19 @@ export interface IAphroditeService {
 	readonly onDidUpdateStats: Event<AphroditeEngineStats>;
 
 	/**
-	 * Event fired when the set of loaded LoRA adapters changes.
+	 * Event fired when request telemetry is recorded.
 	 */
-	readonly onDidChangeAdapters: Event<AphroditeAdapterInfo[]>;
+	readonly onDidRecordTelemetry: Event<AphroditeRequestTelemetry>;
+
+	/**
+	 * Event fired when a LoRA adapter is loaded or unloaded.
+	 */
+	readonly onDidChangeAdapter: Event<LoRAAdapterInfo | undefined>;
+
+	/**
+	 * Event fired when the model fallback state changes.
+	 */
+	readonly onDidChangeFallbackState: Event<ModelFallbackState>;
 
 	/**
 	 * Initialize the service and connect to Aphrodite.
@@ -297,6 +634,12 @@ export interface IAphroditeService {
 	streamComplete(request: AphroditeCompletionRequest): AsyncIterable<AphroditeStreamToken>;
 
 	/**
+	 * Complete a prompt with streaming and token-level timing telemetry.
+	 * Returns an async iterator of tokens with timing information.
+	 */
+	streamCompleteWithTiming(request: AphroditeCompletionRequest): AsyncIterable<AphroditeStreamTokenWithTiming>;
+
+	/**
 	 * Execute batch inference.
 	 * More efficient for multiple requests.
 	 */
@@ -311,6 +654,11 @@ export interface IAphroditeService {
 	 * List available models.
 	 */
 	listModels(): Promise<AphroditeModelInfo[]>;
+
+	/**
+	 * Get all available models (alias for listModels).
+	 */
+	getAvailableModels(): Promise<AphroditeModelInfo[]>;
 
 	/**
 	 * Get current model info.
@@ -343,9 +691,16 @@ export interface IAphroditeService {
 	cancelAllRequests(): void;
 
 	/**
-	 * Dynamically load a LoRA adapter onto the running engine and make it active.
+	 * Event fired when the set of loaded LoRA adapters changes.
 	 */
-	loadAdapter(adapterId: string, path: string, baseModel?: string): Promise<AphroditeAdapterInfo>;
+	readonly onDidChangeAdapters: Event<AphroditeAdapterInfo[]>;
+
+	// --- LoRA Adapter Management (A.1) ---
+
+	/**
+	 * Dynamically load a LoRA adapter into the running engine.
+	 */
+	loadAdapter(adapterId: string, adapterPath: string): Promise<AphroditeAdapterInfo>;
 
 	/**
 	 * Unload a previously loaded LoRA adapter.
@@ -353,34 +708,53 @@ export interface IAphroditeService {
 	unloadAdapter(adapterId: string): Promise<void>;
 
 	/**
-	 * List LoRA adapters currently loaded on the engine.
+	 * List LoRA adapters known to this service (loaded this session).
 	 */
 	listAdapters(): AphroditeAdapterInfo[];
 
 	/**
-	 * Get the currently active LoRA adapter, if any.
+	 * Get the currently loaded LoRA adapter info (most recently loaded).
 	 */
-	getActiveAdapter(): AphroditeAdapterInfo | undefined;
+	getCurrentAdapter(): LoRAAdapterInfo | undefined;
 
 	/**
-	 * Get accumulated performance telemetry, optionally scoped to one model.
+	 * Swap the current LoRA adapter with a new one atomically.
 	 */
-	getTelemetry(modelId?: string): AphroditeModelTelemetry[];
+	swapAdapter(adapterId: string, scale?: number): Promise<void>;
+
+	// --- Performance Telemetry (A.1) ---
 
 	/**
-	 * Clear all accumulated telemetry.
+	 * Get recorded per-request telemetry, most recent first.
 	 */
-	resetTelemetry(): void;
+	getTelemetry(limit?: number): AphroditeRequestTelemetry[];
 
 	/**
-	 * Run the same request against multiple model variants for A/B comparison.
-	 * Requests run concurrently; failures for one variant do not affect others.
+	 * Get aggregated telemetry statistics (latency, throughput, error rate).
 	 */
-	compareModels(request: AphroditeCompletionRequest, modelIds: string[]): Promise<AphroditeModelComparisonResult[]>;
+	getTelemetrySummary(): AphroditeTelemetrySummary;
 
 	/**
-	 * Configure the ordered list of models to fall back to when the primary
-	 * model (the request's `model` or the configured default) fails.
+	 * Get performance metrics over a time window.
+	 */
+	getPerformanceMetrics(windowSeconds?: number): AphroditePerformanceMetrics;
+
+	/**
+	 * Get recent request telemetry records.
+	 */
+	getRecentTelemetry(limit?: number): AphroditeRequestTelemetry[];
+
+	/**
+	 * Clear recorded telemetry.
+	 */
+	clearTelemetry(): void;
+
+	// --- Model Fallback (A.1) ---
+
+	/**
+	 * Configure the ordered list of model IDs to try, in order, when a
+	 * completion attempt fails. The currently configured model is always
+	 * tried first regardless of this list.
 	 */
 	setFallbackChain(modelIds: string[]): void;
 
@@ -388,4 +762,104 @@ export interface IAphroditeService {
 	 * Get the currently configured fallback chain.
 	 */
 	getFallbackChain(): string[];
+
+	/**
+	 * Complete a prompt, automatically retrying against the configured
+	 * fallback chain if the primary model attempt fails. Every attempt is
+	 * recorded as telemetry; throws only if every attempt fails.
+	 */
+	completeWithFallback(request: AphroditeCompletionRequest): Promise<AphroditeCompletionResponse>;
+
+	// --- A/B Testing (A.1) ---
+
+	/**
+	 * Register and activate an A/B test comparing model/adapter variants.
+	 */
+	startABTest(config: AphroditeABTestConfig): void;
+
+	/**
+	 * Deactivate a running A/B test. Recorded results remain queryable.
+	 */
+	stopABTest(testId: string): void;
+
+	/**
+	/**
+	 * Whether the given A/B test is currently active.
+	 */
+	isABTestActive(testId: string): boolean;
+
+	/**
+	 * Complete a prompt routed through an active A/B test's variant
+	 * selection. Falls back to the configured default model if the test is
+	 * unknown or inactive.
+	 */
+	completeViaABTest(testId: string, request: AphroditeCompletionRequest): Promise<AphroditeCompletionResponse>;
+
+	/**
+	 * Get aggregated per-variant results for an A/B test.
+	 */
+	getABTestResults(testId: string): AphroditeABTestResult[];
+
+	// --- Extended Fallback Chain (A.1) ---
+
+	/**
+	 * Configure the model fallback chain with extended options.
+	 */
+	setFallbackConfig(config: ModelFallbackConfig): void;
+
+	/**
+	 * Get the current fallback configuration.
+	 */
+	getFallbackConfig(): ModelFallbackConfig | undefined;
+
+	/**
+	 * Get the current fallback state.
+	 */
+	getFallbackState(): ModelFallbackState;
+
+	/**
+	 * Manually reset the fallback state to use the primary model.
+	 */
+	resetFallbackState(): void;
+
+	// --- Structured Output (A.3) ---
+
+	/**
+	 * Complete with structured output (JSON schema constraints).
+	 */
+	completeStructured(request: AphroditeCompletionRequest, outputConfig: StructuredOutputConfig): Promise<AphroditeCompletionResponse>;
+
+	// --- Prompt Caching (A.3) ---
+
+	/**
+	 * Get prompt cache statistics.
+	 */
+	getPromptCacheStats(): PromptCacheStats;
+
+	/**
+	 * Clear the prompt cache.
+	 */
+	clearPromptCache(): void;
+
+	/**
+	 * Pre-warm the prompt cache with a prompt prefix.
+	 */
+	preWarmPromptCache(promptPrefix: string): Promise<void>;
+
+	// --- Speculative Decoding (A.3) ---
+
+	/**
+	 * Configure speculative decoding.
+	 */
+	setSpeculativeDecodingConfig(config: SpeculativeDecodingConfig): void;
+
+	/**
+	 * Get the current speculative decoding configuration.
+	 */
+	getSpeculativeDecodingConfig(): SpeculativeDecodingConfig | undefined;
+
+	/**
+	 * Check if speculative decoding is available.
+	 */
+	isSpeculativeDecodingAvailable(): Promise<boolean>;
 }

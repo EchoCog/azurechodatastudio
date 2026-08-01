@@ -43,6 +43,10 @@ def cmd_status(app: BridgeApp, args: argparse.Namespace) -> Dict[str, Any]:
     return app.status()
 
 
+def cmd_list_atoms(app: BridgeApp, args: argparse.Namespace) -> Dict[str, Any]:
+    return app.list_atoms()
+
+
 def cmd_ingest_schema(app: BridgeApp, args: argparse.Namespace) -> Dict[str, Any]:
     payload = _read_json(args.input)
     return app.ingest_schema(IngestSchemaRequest(**payload))
@@ -88,6 +92,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_status = sub.add_parser("status", help="report processed batch count and last request id")
     p_status.set_defaults(func=cmd_status)
+
+    p_list_atoms = sub.add_parser(
+        "list-atoms", help="list all nodes/links currently held by the AtomSpace adapter"
+    )
+    p_list_atoms.set_defaults(func=cmd_list_atoms)
 
     p_schema = sub.add_parser(
         "ingest-schema", help="ingest a {tables, foreign_keys} JSON document"

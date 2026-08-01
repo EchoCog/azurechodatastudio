@@ -8,6 +8,7 @@ import { CognitiveWorkflowAutomationService } from 'sql/workbench/services/zonec
 import { CognitiveWorkflowDefinition } from 'sql/workbench/services/zonecog/common/cognitiveWorkflowAutomation';
 import { NullLogService } from 'vs/platform/log/common/log';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
+import { AphroditeService } from 'sql/workbench/services/zonecog/browser/aphroditeService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { AAROrchestrationService } from 'sql/workbench/services/zonecog/browser/aarOrchestrationService';
 import { EmbodiedCognitionService } from 'sql/workbench/services/zonecog/browser/embodiedCognitionService';
@@ -119,7 +120,7 @@ suite('CognitiveWorkflowAutomationService', () => {
 		hypergraphStore = new HypergraphStore(logService);
 		ecanService = new ECANAttentionService(logService, hypergraphStore, membraneService);
 		embodiedService = new EmbodiedCognitionService(logService, hypergraphStore, membraneService);
-		llmService = new LLMProviderService(logService, membraneService);
+		llmService = new LLMProviderService(logService, membraneService, new AphroditeService(logService, membraneService));
 		zonecogService = new ZoneCogService(logService, hypergraphStore, membraneService, llmService);
 		workspaceService = new CognitiveWorkspaceService(logService, hypergraphStore);
 		loopService = new CognitiveLoopService(logService, hypergraphStore, membraneService, ecanService, embodiedService, workspaceService);

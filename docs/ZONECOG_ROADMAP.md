@@ -2,7 +2,7 @@
 
 **Ticket**: ECH-4  
 **Status**: Active  
-**Last Updated**: 2026-07-28
+**Last Updated**: 2026-07-31
 
 ## Phase Overview
 
@@ -55,7 +55,7 @@
 - [x] In-memory hypergraph with CRUD operations
 - [x] Salience-based attention scoring
 - [x] Link management (add/remove/query by type)
-- [ ] Persistence layer (future: RocksDB/AtomSpace backend)
+- [x] Persistence layer for the standalone Python bridge — `SqliteAtomStore` (`azure_integration/atomspace_store.py`), wired into `AtomSpaceAdapter`'s `local` mode via `ATOMSPACE_PERSIST_PATH`: every upsert is written through to a SQLite file and reloaded on the next process start; surfaced via `GET /atoms` / `zonecog-bridge list-atoms` and the `status.persisted` flag; the in-browser `IHypergraphStore` remains in-memory (session persistence for that side is `HypergraphPersistenceService`'s IndexedDB store, Phase 3.4)
 
 ### 2.4 Cognitive Membrane Architecture
 - [x] `ICognitiveMembraneService` interface for triad management
@@ -262,9 +262,12 @@
 - [x] Docker container for cognitive services — `azure_integration/Dockerfile` (standalone `python:3.11-slim` image, `HEALTHCHECK` via `azure_integration/healthcheck.py`), documented in `azure_integration/README.md`
 
 ### 5.3 EchoCog Integration
-- [x] Deep integration with Aphrodite Engine for LLM inference — `IAphroditeService`/`AphroditeService` (issue #77 Phase A): dynamic LoRA adapter loading/unloading via `/v1/load_lora_adapter`+`/v1/unload_lora_adapter` with an `onDidChangeAdapters` event; per-model rolling telemetry (request/error counts, average latency, average tokens/sec) via `getTelemetry()`; `compareModels()` A/B runner that fans one request out to N model variants concurrently; automatic fallback chain (`setFallbackChain()`) that retries a failed `complete()`/`streamComplete()` call against configured backup models, recording telemetry per attempt; guided-JSON structured output (`AphroditeCompletionRequest.responseSchema`) threaded through both `complete()` and `streamComplete()`; short-TTL prompt response caching for repeated non-streaming completions; `IHypergraphSemanticSearchService` batch-embeds stale nodes in `embed()` calls of up to 32 texts instead of one request per node, with LRU eviction capping the in-memory embedding index at 5,000 entries; three new Command Palette actions (`zonecog.aphrodite.loadAdapter`, `zonecog.aphrodite.swapModel`, `zonecog.aphrodite.showPerformance`). Deferred: speculative decoding (server-side engine config, not a per-request client concern) and embedding dimensionality reduction (PCA/UMAP) for visualization — tracked for a future pass.
+- [x] Deep integration with Aphrodite Engine for LLM inference — `LLMProviderService` (the backend behind the Zone-Cog thinking protocol's completions) now routes requests for a provider registered under the reserved `APHRODITE_PROVIDER_ID` through `IAphroditeService`'s own `/v1/completions` transport (`complete()`/`streamComplete()`), instead of the generic OpenAI-compatible `/v1/chat/completions` path; `Zone-Cog: Connect to Aphrodite Engine` now registers and activates this provider on a successful connection so the cognitive protocol itself runs on Aphrodite, not just the standalone Aphrodite command-palette actions. Falls back to the built-in provider (with circuit breaker) when Aphrodite is disconnected or a request fails.
 - [ ] OpenCog Hyperon AtomSpace backend
 - [ ] FlareCog distributed cognitive processing
+- [x] Deep integration with Aphrodite Engine for LLM inference (Phase A, issue #77) — `IAphroditeService`/`AphroditeService` gained dynamic LoRA adapter load/unload (paths configurable via `loraLoadPath`/`loraUnloadPath`, defaulting to the vLLM-compatible `/v1/load_lora_adapter` and `/v1/unload_lora_adapter` Aphrodite inherits from upstream) with a session-local adapter registry (`listAdapters()`, `onDidChangeAdapters`); per-request performance telemetry (latency, token counts, success/error) recorded for every completion attempt and queryable via `getTelemetry()`/`getTelemetrySummary()` (overall + per-model breakdown, p95 latency); an automatic model fallback chain (`setFallbackChain()`/`completeWithFallback()`) that retries a failed completion against configured backup models; and a weighted A/B testing framework (`startABTest()`/`completeViaABTest()`/`getABTestResults()`) for comparing model/adapter variants, attributing telemetry to the selected variant. Three new Command Palette actions expose this: `zonecog.aphrodite.loadAdapter`, `zonecog.aphrodite.swapModel`, `zonecog.aphrodite.showPerformance`. Embedding pipeline batching/caching and streaming/speculative-decoding enhancements remain future work.
+- [ ] OpenCog Hyperon AtomSpace backend (Phase B, issue #78) — native `IAtomSpaceBackendService`, Hyperon MeTTa integration, and an AtomSpace-Rocks-backed persistent store remain future work; today's `AtomSpaceTransportService` only pushes atoms to the Python bridge's mock/HTTP transport (see §3.2).
+- [ ] FlareCog distributed cognitive processing (Phase C) — cross-machine peer discovery, distributed hypergraph federation, and multi-node AAR orchestration remain future work; today's federation/collaboration services are same-machine-only via `BroadcastChannel` (see §3.4, §4.4).
 - [x] Autognosis self-monitoring capabilities — `IAutognosisService`/`AutognosisService` (meta-cognitive layer that synthesizes membrane triad health, embodiment proprioception, and cognitive analytics into a first-person `SelfAssessment` with a verdict, self-confidence score, and detected anomalies; self-wires to `IZoneCogService.onDidProcessQuery` so every processed query triggers a fresh assessment, persisted as `SelfAssessment` hypergraph nodes; `Zone-Cog: Perform Self-Assessment` and `Zone-Cog: Show Self-Assessment History` Command Palette actions)
 
 ---
