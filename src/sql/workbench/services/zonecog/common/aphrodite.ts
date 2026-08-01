@@ -34,12 +34,6 @@ export interface AphroditeConfig {
 	batchingEnabled: boolean;
 	/** Max batch size */
 	maxBatchSize: number;
-<<<<<<< HEAD
-	/** Models to try in order if the primary model's completion request fails */
-	fallbackModels?: string[];
-	/** Max number of request telemetry samples retained in memory (ring buffer) */
-	maxTelemetrySamples?: number;
-=======
 	/**
 	 * API path for dynamically loading a LoRA adapter. Defaults to the
 	 * vLLM-compatible `/v1/load_lora_adapter` that Aphrodite inherits from
@@ -49,7 +43,6 @@ export interface AphroditeConfig {
 	loraLoadPath: string;
 	/** API path for unloading a LoRA adapter. See {@link loraLoadPath}. */
 	loraUnloadPath: string;
->>>>>>> origin/main
 }
 
 /**
@@ -328,57 +321,6 @@ export interface AphroditeEngineStats {
 }
 
 /**
-<<<<<<< HEAD
- * Information about a loaded (or loadable) LoRA adapter.
- */
-export interface AphroditeAdapterInfo {
-	/** Adapter ID (also used as its `lora_name`) */
-	id: string;
-	/** Human-readable name */
-	name: string;
-	/** Path the adapter was loaded from */
-	path: string;
-	/** Whether the adapter is currently loaded */
-	loaded: boolean;
-	/** Base model the adapter was trained against, if known */
-	baseModel?: string;
-}
-
-/**
- * A single request's telemetry sample.
- */
-export interface AphroditeRequestTelemetry {
-	/** Request ID this sample corresponds to */
-	requestId: string;
-	/** Model used for the request */
-	model: string;
-	/** End-to-end latency in milliseconds */
-	latencyMs: number;
-	/** Number of prompt tokens */
-	promptTokens: number;
-	/** Number of completion tokens */
-	completionTokens: number;
-	/** Whether the request succeeded */
-	success: boolean;
-	/** Epoch milliseconds when the sample was recorded */
-	timestamp: number;
-}
-
-/**
- * Aggregate telemetry summary computed from recorded request samples.
- */
-export interface AphroditeTelemetrySummary {
-	/** Total number of recorded requests */
-	requestCount: number;
-	/** Number of requests that failed */
-	errorCount: number;
-	/** Mean latency across all recorded requests, in milliseconds */
-	averageLatencyMs: number;
-	/** Aggregate completion tokens per second across successful requests */
-	tokensPerSecond: number;
-	/** Fraction of recorded requests that failed (0-1) */
-	errorRate: number;
-=======
  * LoRA adapter information.
  */
 export interface LoRAAdapterInfo {
@@ -618,7 +560,6 @@ export interface AphroditeStreamTokenWithTiming extends AphroditeStreamToken {
 	interTokenLatencyMs: number;
 	/** Whether this token was from speculative decoding */
 	fromSpeculation: boolean;
->>>>>>> origin/main
 }
 
 export const IAphroditeService = createDecorator<IAphroditeService>('aphroditeService');
@@ -653,11 +594,6 @@ export interface IAphroditeService {
 	readonly onDidUpdateStats: Event<AphroditeEngineStats>;
 
 	/**
-<<<<<<< HEAD
-	 * Event fired when request telemetry updates.
-	 */
-	readonly onDidUpdateTelemetry: Event<AphroditeTelemetrySummary>;
-=======
 	 * Event fired when request telemetry is recorded.
 	 */
 	readonly onDidRecordTelemetry: Event<AphroditeRequestTelemetry>;
@@ -671,7 +607,6 @@ export interface IAphroditeService {
 	 * Event fired when the model fallback state changes.
 	 */
 	readonly onDidChangeFallbackState: Event<ModelFallbackState>;
->>>>>>> origin/main
 
 	/**
 	 * Initialize the service and connect to Aphrodite.
@@ -762,11 +697,6 @@ export interface IAphroditeService {
 	cancelAllRequests(): void;
 
 	/**
-<<<<<<< HEAD
-	 * Load a LoRA adapter into the engine.
-	 */
-	loadAdapter(adapter: { id: string; path: string; name?: string; baseModel?: string }): Promise<AphroditeAdapterInfo>;
-=======
 	 * Event fired when the set of loaded LoRA adapters changes.
 	 */
 	readonly onDidChangeAdapters: Event<AphroditeAdapterInfo[]>;
@@ -777,7 +707,6 @@ export interface IAphroditeService {
 	 * Dynamically load a LoRA adapter into the running engine.
 	 */
 	loadAdapter(adapterId: string, adapterPath: string): Promise<AphroditeAdapterInfo>;
->>>>>>> origin/main
 
 	/**
 	 * Unload a previously loaded LoRA adapter.
@@ -785,28 +714,6 @@ export interface IAphroditeService {
 	unloadAdapter(adapterId: string): Promise<void>;
 
 	/**
-<<<<<<< HEAD
-	 * List locally tracked LoRA adapters. Resolves synchronously against local
-	 * state (there is no dedicated list endpoint) but returns a Promise for
-	 * API consistency with the other adapter-management methods.
-	 */
-	listAdapters(): Promise<AphroditeAdapterInfo[]>;
-
-	/**
-	 * Get the currently active LoRA adapter, if any.
-	 */
-	getActiveAdapter(): AphroditeAdapterInfo | undefined;
-
-	/**
-	 * Get the aggregate request telemetry summary.
-	 */
-	getTelemetry(): AphroditeTelemetrySummary;
-
-	/**
-	 * Get a copy of the recorded per-request telemetry samples.
-	 */
-	getTelemetrySamples(): AphroditeRequestTelemetry[];
-=======
 	 * List LoRA adapters known to this service (loaded this session).
 	 */
 	listAdapters(): AphroditeAdapterInfo[];
@@ -961,5 +868,4 @@ export interface IAphroditeService {
 	 * Check if speculative decoding is available.
 	 */
 	isSpeculativeDecodingAvailable(): Promise<boolean>;
->>>>>>> origin/main
 }

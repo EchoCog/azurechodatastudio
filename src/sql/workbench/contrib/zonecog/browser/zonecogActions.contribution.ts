@@ -1427,11 +1427,7 @@ class ZoneCogAphroditeCompleteAction extends Action2 {
 }
 
 /**
-<<<<<<< HEAD
- * Action to load a LoRA adapter into the Aphrodite engine
-=======
  * Action to dynamically load a LoRA adapter into the running Aphrodite engine.
->>>>>>> origin/main
  */
 class ZoneCogAphroditeLoadAdapterAction extends Action2 {
 
@@ -1453,38 +1449,12 @@ class ZoneCogAphroditeLoadAdapterAction extends Action2 {
 		const quickInputService = accessor.get(IQuickInputService);
 
 		if (!aphroditeService.isConnected()) {
-<<<<<<< HEAD
-			notificationService.warn(localize('zonecog.aphroditeNotConnectedWarn',
-=======
 			notificationService.warn(localize('zonecog.aphroditeNotConnectedWarnAdapter',
->>>>>>> origin/main
 				'Aphrodite Engine is not connected. Use "Connect to Aphrodite Engine" first.'));
 			return;
 		}
 
 		const adapterId = await quickInputService.input({
-<<<<<<< HEAD
-			prompt: localize('zonecog.aphroditeAdapterIdPrompt', 'Enter LoRA adapter ID'),
-			placeHolder: localize('zonecog.aphroditeAdapterIdPlaceholder', 'e.g., my-finetuned-adapter'),
-		});
-
-		if (!adapterId) { return; }
-
-		const adapterPath = await quickInputService.input({
-			prompt: localize('zonecog.aphroditeAdapterPathPrompt', 'Enter LoRA adapter path'),
-			placeHolder: localize('zonecog.aphroditeAdapterPathPlaceholder', 'e.g., /models/adapters/my-finetuned-adapter'),
-		});
-
-		if (!adapterPath) { return; }
-
-		try {
-			const adapter = await aphroditeService.loadAdapter({ id: adapterId, path: adapterPath });
-
-			notificationService.info(localize('zonecog.aphroditeAdapterLoaded',
-				'LoRA adapter loaded: {0} ({1})', adapter.name, adapter.path));
-		} catch (err) {
-			notificationService.error(localize('zonecog.aphroditeLoadAdapterError',
-=======
 			prompt: localize('zonecog.aphroditeAdapterIdPrompt', 'Enter a name for the LoRA adapter'),
 			placeHolder: 'my-domain-adapter',
 		});
@@ -1502,19 +1472,14 @@ class ZoneCogAphroditeLoadAdapterAction extends Action2 {
 				'Loaded LoRA adapter \'{0}\' from {1} (base model: {2})', info.id, info.path, info.baseModel));
 		} catch (err) {
 			notificationService.error(localize('zonecog.aphroditeAdapterLoadError',
->>>>>>> origin/main
 				'Failed to load LoRA adapter: {0}', err instanceof Error ? err.message : String(err)));
 		}
 	}
 }
 
 /**
-<<<<<<< HEAD
- * Action to swap the active Aphrodite model
-=======
  * Action to hot-swap the active Aphrodite model, choosing from currently
  * available models (or loaded LoRA adapters) reported by the engine.
->>>>>>> origin/main
  */
 class ZoneCogAphroditeSwapModelAction extends Action2 {
 
@@ -1522,11 +1487,7 @@ class ZoneCogAphroditeSwapModelAction extends Action2 {
 	constructor() {
 		super({
 			id: ZoneCogAphroditeSwapModelAction.ID,
-<<<<<<< HEAD
-			title: { value: localize('zonecog.aphroditeSwapModel', 'Swap Active Model'), original: 'Swap Active Model' },
-=======
 			title: { value: localize('zonecog.aphroditeSwapModel', 'Hot-Swap Active Model'), original: 'Hot-Swap Active Model' },
->>>>>>> origin/main
 			category: ZONECOG_CATEGORY,
 			icon: Codicon.arrowSwap,
 			f1: true,
@@ -1539,42 +1500,6 @@ class ZoneCogAphroditeSwapModelAction extends Action2 {
 		const notificationService = accessor.get(INotificationService);
 		const quickInputService = accessor.get(IQuickInputService);
 
-<<<<<<< HEAD
-		let modelId: string | undefined;
-
-		if (aphroditeService.isConnected()) {
-			try {
-				const models = await aphroditeService.listModels();
-				if (models.length > 0) {
-					const picked = await quickInputService.pick(
-						models.map(m => ({ label: m.id, description: m.loaded ? localize('zonecog.aphroditeModelLoaded', 'loaded') : undefined })),
-						{ placeHolder: localize('zonecog.aphroditeSelectModel', 'Select a model to switch to') }
-					);
-					modelId = picked?.label;
-				}
-			} catch {
-				// Fall through to manual input below when listing models fails.
-			}
-		}
-
-		if (!modelId) {
-			modelId = await quickInputService.input({
-				prompt: localize('zonecog.aphroditeModelIdPrompt', 'Enter model ID to switch to'),
-				placeHolder: localize('zonecog.aphroditeModelIdPlaceholder', 'e.g., llama-3.1-70b'),
-			});
-		}
-
-		if (!modelId) { return; }
-
-		try {
-			await aphroditeService.switchModel(modelId);
-			notificationService.info(localize('zonecog.aphroditeModelSwapped',
-				'Active Aphrodite model switched to: {0}', modelId));
-		} catch (err) {
-			notificationService.error(localize('zonecog.aphroditeSwapModelError',
-				'Failed to switch model: {0}', err instanceof Error ? err.message : String(err)));
-		}
-=======
 		if (!aphroditeService.isConnected()) {
 			notificationService.warn(localize('zonecog.aphroditeNotConnectedWarnSwap',
 				'Aphrodite Engine is not connected. Use "Connect to Aphrodite Engine" first.'));
@@ -1626,36 +1551,22 @@ class ZoneCogAphroditeSwapModelAction extends Action2 {
 		await aphroditeService.switchModel(targetModel);
 		notificationService.info(localize('zonecog.aphroditeSwapped',
 			'Active model swapped: {0} -> {1}', currentModel, targetModel));
->>>>>>> origin/main
 	}
 }
 
 /**
-<<<<<<< HEAD
- * Action to view Aphrodite request telemetry
- */
-class ZoneCogAphroditePerformanceAction extends Action2 {
-=======
  * Action to display the Aphrodite inference telemetry dashboard: aggregate
  * latency/throughput/error-rate stats and a per-model breakdown.
  */
 class ZoneCogAphroditeShowPerformanceAction extends Action2 {
->>>>>>> origin/main
 
 	static ID = 'zonecog.aphrodite.showPerformance';
 	constructor() {
 		super({
-<<<<<<< HEAD
-			id: ZoneCogAphroditePerformanceAction.ID,
-			title: { value: localize('zonecog.aphroditePerformance', 'Show Aphrodite Performance Telemetry'), original: 'Show Aphrodite Performance Telemetry' },
-			category: ZONECOG_CATEGORY,
-			icon: Codicon.pulse,
-=======
 			id: ZoneCogAphroditeShowPerformanceAction.ID,
 			title: { value: localize('zonecog.aphroditeShowPerformance', 'Show Aphrodite Performance Telemetry'), original: 'Show Aphrodite Performance Telemetry' },
 			category: ZONECOG_CATEGORY,
 			icon: Codicon.dashboard,
->>>>>>> origin/main
 			f1: true,
 			menu: { id: MenuId.CommandPalette },
 		});
@@ -1665,17 +1576,6 @@ class ZoneCogAphroditeShowPerformanceAction extends Action2 {
 		const aphroditeService = accessor.get(IAphroditeService);
 		const notificationService = accessor.get(INotificationService);
 
-<<<<<<< HEAD
-		const telemetry = aphroditeService.getTelemetry();
-
-		notificationService.info(localize('zonecog.aphroditePerformanceInfo',
-			'Aphrodite Performance Telemetry:\nRequests: {0}\nErrors: {1}\nAvg Latency: {2}ms\nTokens/sec: {3}\nError Rate: {4}%',
-			telemetry.requestCount,
-			telemetry.errorCount,
-			telemetry.averageLatencyMs.toFixed(1),
-			telemetry.tokensPerSecond.toFixed(2),
-			(telemetry.errorRate * 100).toFixed(1)
-=======
 		const summary = aphroditeService.getTelemetrySummary();
 
 		if (summary.totalRequests === 0) {
@@ -1693,7 +1593,6 @@ class ZoneCogAphroditeShowPerformanceAction extends Action2 {
 			summary.totalRequests, summary.successCount, summary.errorCount, (summary.successRate * 100).toFixed(0),
 			summary.avgLatencyMs.toFixed(0), summary.p95LatencyMs.toFixed(0), summary.totalTokens,
 			byModelLines || '  (none)'
->>>>>>> origin/main
 		));
 	}
 }
@@ -1912,11 +1811,7 @@ registerAction2(ZoneCogAphroditeStatusAction);
 registerAction2(ZoneCogAphroditeCompleteAction);
 registerAction2(ZoneCogAphroditeLoadAdapterAction);
 registerAction2(ZoneCogAphroditeSwapModelAction);
-<<<<<<< HEAD
-registerAction2(ZoneCogAphroditePerformanceAction);
-=======
 registerAction2(ZoneCogAphroditeShowPerformanceAction);
->>>>>>> origin/main
 
 // Phase 6 actions
 registerAction2(ZoneCogListWorkflowsAction);
