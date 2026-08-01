@@ -109,6 +109,9 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	// Speculative decoding config
 	private _speculativeConfig: SpeculativeDecodingConfig | undefined;
 
+	/** Whether the caller has ever explicitly set a model (vs. the untouched `DEFAULT_CONFIG.model` placeholder). */
+	private _modelExplicitlySet: boolean = false;
+
 	private readonly _onDidReceiveStreamToken = this._register(new Emitter<AphroditeStreamToken>());
 	readonly onDidReceiveStreamToken: Event<AphroditeStreamToken> = this._onDidReceiveStreamToken.event;
 
@@ -144,6 +147,12 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	async initialize(config: Partial<AphroditeConfig>): Promise<void> {
 		this.membraneService.recordActivity('cerebral');
+		if (config.model !== undefined) {
+			this._modelExplicitlySet = true;
+			if (config.model !== this._config.model) {
+				this._deactivateCurrentAdapter();
+			}
+		}
 		this._config = { ...this._config, ...config };
 		this.logService.info(`[AphroditeService] Initializing with config: ${JSON.stringify(this._config)}`);
 
@@ -174,6 +183,12 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	}
 
 	updateConfig(config: Partial<AphroditeConfig>): void {
+		if (config.model !== undefined) {
+			this._modelExplicitlySet = true;
+			if (config.model !== this._config.model) {
+				this._deactivateCurrentAdapter();
+			}
+		}
 		this._config = { ...this._config, ...config };
 		this.logService.info('[AphroditeService] Config updated');
 	}
@@ -191,7 +206,10 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	private async _completeInternal(request: AphroditeCompletionRequest, modelOverride?: string, testId?: string, variantId?: string): Promise<AphroditeCompletionResponse> {
 		this.membraneService.recordActivity('cerebral');
 		const requestId = request.requestId ?? this._generateRequestId();
-		const model = modelOverride ?? this._config.model;
+		// A modelOverride (fallback chain / A-B routing) targets a specific model
+		// explicitly, so it takes priority; otherwise a swapped-in LoRA adapter is itself
+		// the "model" Aphrodite dispatches on, and takes priority over the base config model.
+		const model = modelOverride ?? this._currentAdapter?.id ?? this._config.model;
 		const abortController = new AbortController();
 		this._pendingRequests.set(requestId, abortController);
 
@@ -199,7 +217,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 		try {
 			const response = await this._makeRequest('/v1/completions', {
-				model,
+				model: this._resolveWireModel(model),
 				prompt: request.prompt,
 				max_tokens: request.maxTokens ?? this._config.maxTokens,
 				temperature: request.temperature ?? this._config.temperature,
@@ -256,13 +274,19 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 	}
 
 	async completeWithFallback(request: AphroditeCompletionRequest): Promise<AphroditeCompletionResponse> {
-		const chain = [this._config.model, ...this._fallbackChain.filter(m => m !== this._config.model)];
+		const primaryModel = this._currentAdapter?.id ?? this._config.model;
+		const chain = [primaryModel, ...this._fallbackChain.filter(m => m !== primaryModel)];
 		const errors: string[] = [];
 
 		for (const model of chain) {
 			try {
 				return await this._completeInternal(request, model);
 			} catch (error) {
+				if (this._isAbortError(error)) {
+					// User-initiated cancellation (cancelRequest/cancelAllRequests) must end
+					// the whole operation, not just the in-flight attempt against this model.
+					throw error;
+				}
 				errors.push(`${model}: ${error instanceof Error ? error.message : String(error)}`);
 			}
 		}
@@ -290,6 +314,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 				method: 'POST',
 				headers: this._getHeaders(),
 				body: JSON.stringify({
+					model: this._resolveWireModel(this._currentAdapter?.id ?? this._config.model),
 					prompt: request.prompt,
 					max_tokens: request.maxTokens ?? this._config.maxTokens,
 					temperature: request.temperature ?? this._config.temperature,
@@ -379,6 +404,7 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 				method: 'POST',
 				headers: this._getHeaders(),
 				body: JSON.stringify({
+					model: this._resolveWireModel(this._currentAdapter?.id ?? this._config.model),
 					prompt: request.prompt,
 					max_tokens: request.maxTokens ?? this._config.maxTokens,
 					temperature: request.temperature ?? this._config.temperature,
@@ -539,7 +565,14 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	async switchModel(modelId: string): Promise<void> {
 		this.membraneService.recordActivity('cerebral');
+		if (modelId !== this._config.model) {
+			// A LoRA adapter swapped in for the previous base model is not valid for the new
+			// one; otherwise _completeInternal()/streamComplete() would keep dispatching to
+			// the stale adapter instead of the hot-swapped model.
+			this._deactivateCurrentAdapter();
+		}
 		this._config.model = modelId;
+		this._modelExplicitlySet = true;
 		// In a real implementation, this would send a request to load the model
 		this.logService.info(`[AphroditeService] Switched to model: ${modelId}`);
 	}
@@ -1058,6 +1091,39 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	private _generateRequestId(): string {
 		return `req_${++this._requestIdCounter}_${Date.now()}`;
+	}
+
+	/**
+	 * Resolve the model identifier to send on the wire. The untouched `DEFAULT_CONFIG.model`
+	 * placeholder is never sent (letting the engine pick its own default, matching pre-A.1
+	 * behavior) unless the caller has explicitly configured a model or a LoRA adapter is
+	 * active, since Aphrodite validates `model` against served names and would otherwise
+	 * reject the literal placeholder as an unknown model.
+	 */
+	private _resolveWireModel(model: string): string | undefined {
+		if (model === this._config.model && !this._modelExplicitlySet && this._currentAdapter === undefined) {
+			return undefined;
+		}
+		return model;
+	}
+
+	private _isAbortError(error: unknown): boolean {
+		return error instanceof Error && error.name === 'AbortError';
+	}
+
+	/**
+	 * Clear the swapped-in LoRA adapter so it stops overriding the base model. A swapped
+	 * adapter is only valid against the base model it was swapped in for; an explicit model
+	 * change (initialize/updateConfig/switchModel) must not be silently overridden by a
+	 * stale adapter. There's no dedicated "unswap" engine endpoint in this API surface, so
+	 * this only updates local state.
+	 */
+	private _deactivateCurrentAdapter(): void {
+		if (!this._currentAdapter) {
+			return;
+		}
+		this._currentAdapter = undefined;
+		this._onDidChangeAdapter.fire(undefined);
 	}
 
 	private _getHeaders(): Record<string, string> {

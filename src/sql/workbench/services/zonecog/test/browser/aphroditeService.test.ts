@@ -336,6 +336,30 @@ suite('AphroditeService', () => {
 			const telemetry = aphroditeService.getTelemetry();
 			assert.strictEqual(telemetry.length, 2);
 		});
+
+		test('cancelling a request should stop the fallback chain instead of trying the next model', async () => {
+			aphroditeService.setFallbackChain(['model-b', 'model-c']);
+
+			const promise = aphroditeService.completeWithFallback({ prompt: 'test', requestId: 'cancel-me' });
+			// The synchronous portion of _completeInternal() (including pending-request
+			// registration) runs before the underlying fetch call suspends, so this
+			// reliably cancels the in-flight attempt rather than racing it.
+			aphroditeService.cancelRequest('cancel-me');
+
+			try {
+				await promise;
+				assert.fail('Should have thrown');
+			} catch (error) {
+				assert.ok(error);
+			}
+
+			// Cancellation must end the whole operation: only the aborted attempt is
+			// recorded, the fallback chain must not have been walked further.
+			const telemetry = aphroditeService.getTelemetry();
+			assert.strictEqual(telemetry.length, 1);
+			assert.strictEqual(telemetry[0].model, 'default');
+			assert.strictEqual(telemetry[0].success, false);
+		});
 	});
 
 	suite('LoRA adapters', () => {
