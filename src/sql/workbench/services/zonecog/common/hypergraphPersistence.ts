@@ -141,6 +141,31 @@ export interface IHypergraphPersistenceService {
 	 */
 	getStats(): Promise<PersistenceStats>;
 
+	// -- Export ---------------------------------------------------------------
+
+	/**
+	 * Export the current in-memory hypergraph as a Neo4j Cypher script.
+	 *
+	 * Each node becomes a `CREATE` statement labeled with its `node_type`;
+	 * each hyperedge (which may connect any number of nodes, not just two) is
+	 * reified as its own `:HyperLink` node with ordered `:PARTICIPATES`
+	 * relationships to every node in its `outgoing` list, since Cypher
+	 * relationships are strictly binary.
+	 */
+	exportToCypher(): string;
+
+	/**
+	 * Export the current in-memory hypergraph as OpenCog AtomSpace Scheme.
+	 *
+	 * Each node becomes an atom declaration named by its own `node_type`
+	 * (mirroring the generic Node/Link atom mapping already used by
+	 * `IAtomSpaceTransportService`, which does not remap `node_type`/
+	 * `link_type` to canonical OpenCog atom names) carrying a truth value
+	 * derived from `salience_score`; each link becomes a Scheme form over
+	 * `ConceptNode` references to its outgoing node ids.
+	 */
+	exportToAtomSpaceScheme(): string;
+
 	/**
 	 * Dispose of the service and release any resources.
 	 */

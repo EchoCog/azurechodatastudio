@@ -61,6 +61,7 @@ class TestCommandHandlers:
             "last_request_id": None,
             "protocol_version": "1.0",
             "backend": "local",
+            "persisted": False,
         }
 
     def test_ingest_schema_from_file(self, tmp_path: Path) -> None:
@@ -172,6 +173,7 @@ class TestParser:
         assert set(subparsers_action.choices) == {  # type: ignore[attr-defined]
             "health",
             "status",
+            "list-atoms",
             "ingest-schema",
             "ingest-table",
             "ingest-atoms",

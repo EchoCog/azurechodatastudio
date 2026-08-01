@@ -271,7 +271,7 @@ export class AAROrchestrationView extends ViewPane {
 			// Status indicator
 			const status = append(agentEl, $('.zonecog-aar-agent-status'));
 			// allow-any-unicode-next-line
-			status.textContent = agent.active ? '●' : '○';
+			status.textContent = agent.active ? '●' : 'o';
 		}
 	}
 
@@ -385,7 +385,7 @@ export class CognitiveWorkflowsView extends ViewPane {
 		// Status indicator
 		const status = append(item, $('.zonecog-workflow-status'));
 		// allow-any-unicode-next-line
-		status.textContent = workflow.enabled ? '●' : '○';
+		status.textContent = workflow.enabled ? '●' : 'o';
 		status.title = workflow.enabled ? 'Enabled' : 'Disabled';
 
 		// Workflow info
@@ -446,7 +446,7 @@ export class CognitiveWorkflowsView extends ViewPane {
 
 			const statusIcon = append(item, $('.zonecog-execution-status'));
 			// allow-any-unicode-next-line
-			statusIcon.textContent = exec.status === 'completed' ? '✓' : exec.status === 'failed' ? '✗' : '○';
+			statusIcon.textContent = exec.status === 'completed' ? '✓' : exec.status === 'failed' ? '✗' : 'o';
 
 			const info = append(item, $('.zonecog-execution-info'));
 			const name = append(info, $('.zonecog-execution-name'));

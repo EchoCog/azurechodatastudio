@@ -54,6 +54,8 @@ class TestBridgeAppHealth:
         assert result["protocol_version"] == "1.0"
         assert result["backend"] == "local"
         assert "reason" in result["capabilities"]
+        assert "list-atoms" in result["capabilities"]
+        assert "persist" not in result["capabilities"]
 
 
 class TestBridgeAppStatus:
@@ -63,6 +65,7 @@ class TestBridgeAppStatus:
         assert result["status"] == "ok"
         assert result["processed_batches"] == 0
         assert result["last_request_id"] is None
+        assert result["persisted"] is False
 
     def test_status_increments_after_ingest(self) -> None:
         bridge = BridgeApp()
@@ -242,6 +245,16 @@ class TestBridgeAppReason:
         assert bridge.processed_batches == before + 1
 
 
+class TestBridgeAppListAtoms:
+    def test_list_atoms_reflects_ingested_data(self) -> None:
+        bridge = BridgeApp()
+        req = IngestTableRequest(schema="dbo", table="t", primary_key="id", rows=[{"id": 1}])
+        bridge.ingest_table(req)
+        result = bridge.list_atoms()
+        assert result["status"] == "ok"
+        assert len(result["nodes"]) >= 1
+
+
 # ---------------------------------------------------------------------------
 # AtomSpaceAdapter unit tests
 # ---------------------------------------------------------------------------
@@ -283,6 +296,125 @@ class TestAtomSpaceAdapterLocal:
         batch: Dict[str, Any] = {"nodes": [], "links": []}
         result = adapter.reason(batch, mode=None)
         assert result["mode"] == "default"
+
+
+class TestAtomSpaceAdapterPersistence:
+    def setup_method(self) -> None:
+        os.environ.pop("ATOMSPACE_URL", None)
+        os.environ["ATOMSPACE_MODE"] = "local"
+
+    def teardown_method(self) -> None:
+        os.environ.pop("ATOMSPACE_PERSIST_PATH", None)
+
+    def test_upsert_without_persist_path_stays_in_memory_only(self) -> None:
+        os.environ.pop("ATOMSPACE_PERSIST_PATH", None)
+        adapter = AtomSpaceAdapter()
+        batch = map_rows_to_atoms("dbo", "t", [{"id": 1}], primary_key="id")
+        result = adapter.upsert(batch)
+        assert result["persisted"] is False
+
+    def test_upsert_persists_to_sqlite_file(self, tmp_path: Any) -> None:
+        db_path = str(tmp_path / "atoms.db")
+        os.environ["ATOMSPACE_PERSIST_PATH"] = db_path
+        adapter = AtomSpaceAdapter()
+        batch = map_rows_to_atoms("dbo", "t", [{"id": 1, "name": "x"}], primary_key="id")
+        result = adapter.upsert(batch)
+        assert result["persisted"] is True
+
+        # A fresh adapter pointed at the same file reloads the persisted graph.
+        reloaded = AtomSpaceAdapter()
+        assert reloaded._nodes == adapter._nodes
+        assert reloaded._links == adapter._links
+        assert len(reloaded._nodes) == len(batch["nodes"])
+
+    def test_reload_survives_process_restart_simulation(self, tmp_path: Any) -> None:
+        db_path = str(tmp_path / "atoms.db")
+        os.environ["ATOMSPACE_PERSIST_PATH"] = db_path
+
+        first = AtomSpaceAdapter()
+        batch1 = map_rows_to_atoms("dbo", "orders", [{"id": 1}], primary_key="id")
+        first.upsert(batch1)
+        del first  # simulate process exit
+
+        second = AtomSpaceAdapter()
+        batch2 = map_rows_to_atoms("dbo", "orders", [{"id": 2}], primary_key="id")
+        second.upsert(batch2)
+
+        third = AtomSpaceAdapter()
+        assert len(third._nodes) == len(batch1["nodes"]) + len(batch2["nodes"])
+
+    def test_upsert_from_worker_thread_does_not_raise(self, tmp_path: Any) -> None:
+        # Regression test: FastAPI's sync route handlers run each request in
+        # a worker threadpool, distinct from the thread that constructed the
+        # adapter/store. sqlite3's default check_same_thread=True would raise
+        # ProgrammingError here.
+        import concurrent.futures
+
+        db_path = str(tmp_path / "atoms.db")
+        os.environ["ATOMSPACE_PERSIST_PATH"] = db_path
+        adapter = AtomSpaceAdapter()
+        batch = map_rows_to_atoms("dbo", "t", [{"id": 1}], primary_key="id")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            result = pool.submit(adapter.upsert, batch).result()
+
+        assert result["persisted"] is True
+        assert len(adapter._nodes) == len(batch["nodes"])
+
+    def test_concurrent_upserts_from_multiple_threads_all_persist(self, tmp_path: Any) -> None:
+        import concurrent.futures
+
+        db_path = str(tmp_path / "atoms.db")
+        os.environ["ATOMSPACE_PERSIST_PATH"] = db_path
+        adapter = AtomSpaceAdapter()
+        batches = [
+            map_rows_to_atoms("dbo", "t", [{"id": i}], primary_key="id") for i in range(8)
+        ]
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(adapter.upsert, batches))
+
+        assert all(r["status"] == "ok" for r in results)
+        reloaded = AtomSpaceAdapter()
+        assert len(reloaded._nodes) == sum(len(b["nodes"]) for b in batches)
+
+    def test_http_mode_with_persist_path_set_reports_not_persisted(self, tmp_path: Any) -> None:
+        # ATOMSPACE_PERSIST_PATH only takes effect in `local` mode; in `http`
+        # mode no SqliteAtomStore is ever created, so `persisted` must be
+        # False even though the env var happens to be set.
+        os.environ["ATOMSPACE_MODE"] = "http"
+        os.environ["ATOMSPACE_URL"] = "http://127.0.0.1:1"
+        os.environ["ATOMSPACE_PERSIST_PATH"] = str(tmp_path / "atoms.db")
+        try:
+            adapter = AtomSpaceAdapter()
+            assert adapter.persisted is False
+        finally:
+            os.environ.pop("ATOMSPACE_URL", None)
+            os.environ["ATOMSPACE_MODE"] = "local"
+
+
+class TestAtomSpaceAdapterListAtoms:
+    def setup_method(self) -> None:
+        os.environ.pop("ATOMSPACE_URL", None)
+        os.environ.pop("ATOMSPACE_PERSIST_PATH", None)
+        os.environ["ATOMSPACE_MODE"] = "local"
+
+    def test_list_atoms_reflects_upserts(self) -> None:
+        adapter = AtomSpaceAdapter()
+        batch = map_rows_to_atoms("dbo", "t", [{"id": 1}], primary_key="id")
+        adapter.upsert(batch)
+        listed = adapter.list_atoms()
+        assert listed["status"] == "ok"
+        assert listed["backend"] == "local"
+        assert listed["persisted"] is False
+        assert len(listed["nodes"]) == len(batch["nodes"])
+        assert len(listed["links"]) == len(batch["links"])
+
+    def test_list_atoms_empty_by_default(self) -> None:
+        adapter = AtomSpaceAdapter()
+        listed = adapter.list_atoms()
+        assert listed["nodes"] == []
+        assert listed["links"] == []
 
 
 class TestAtomSpaceAdapterInvalidConfiguration:
@@ -452,6 +584,7 @@ class TestFastAPIEndpoints:
         data = response.json()
         assert data["status"] == "ok"
         assert data["processed_batches"] == 0
+        assert data["persisted"] is False
 
     def test_ingest_schema_endpoint(self) -> None:
         payload = {
@@ -501,6 +634,18 @@ class TestFastAPIEndpoints:
         assert data["upsert"]["nodes"] == len(batch["nodes"])
         assert data["upsert"]["links"] == len(batch["links"])
 
+    def test_atoms_endpoint_reflects_ingested_data(self) -> None:
+        batch = map_rows_to_atoms("dbo", "orders", [{"id": 1, "amount": 10}], primary_key="id")
+        self.client.post("/ingest/atoms", json={"atoms": batch})
+        response = self.client.get("/atoms")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        returned_uuids = {node["uuid"] for node in data["nodes"]}
+        assert {node["uuid"] for node in batch["nodes"]} <= returned_uuids
+        assert len(data["nodes"]) >= len(batch["nodes"])
+        assert len(data["links"]) >= len(batch["links"])
+
     def test_reason_endpoint(self) -> None:
         batch = map_rows_to_atoms("dbo", "orders", [{"id": 1, "qty": 5}], primary_key="id")
         payload = {"atoms": batch, "mode": "default"}
@@ -527,3 +672,42 @@ class TestFastAPIEndpoints:
 
         status = self.client.get("/status").json()
         assert status["processed_batches"] == 2
+
+
+@pytest.mark.skipif(not _has_fastapi, reason="FastAPI not available")
+class TestFastAPIEndpointsWithPersistence:
+    """Regression coverage for the exact scenario Cursor Bugbot flagged: FastAPI's
+    sync route handlers execute each request in a worker threadpool, distinct
+    from the thread that constructs `app_impl`/`AtomSpaceAdapter`/`SqliteAtomStore`
+    at import time. Real HTTP requests (not direct in-process calls) must
+    round-trip through persistence without raising."""
+
+    def setup_method(self) -> None:
+        import azure_integration.data_studio_bridge as bridge_module
+
+        self.bridge_module = bridge_module
+        self._original_app_impl = bridge_module.app_impl
+
+    def teardown_method(self) -> None:
+        self.bridge_module.app_impl = self._original_app_impl
+        os.environ.pop("ATOMSPACE_PERSIST_PATH", None)
+
+    def test_ingest_and_list_atoms_over_http_with_persistence_enabled(self, tmp_path: Any) -> None:
+        os.environ["ATOMSPACE_PERSIST_PATH"] = str(tmp_path / "atoms.db")
+        self.bridge_module.app_impl = self.bridge_module.BridgeApp()
+        client = TestClient(self.bridge_module.app)  # type: ignore[arg-type]
+
+        batch = map_rows_to_atoms("dbo", "orders", [{"id": 1, "amount": 10}], primary_key="id")
+        ingest_response = client.post("/ingest/atoms", json={"atoms": batch})
+        assert ingest_response.status_code == 200
+        assert ingest_response.json()["upsert"]["persisted"] is True
+
+        atoms_response = client.get("/atoms")
+        assert atoms_response.status_code == 200
+        assert atoms_response.json()["persisted"] is True
+
+        status_response = client.get("/status")
+        assert status_response.json()["persisted"] is True
+
+        health_response = client.get("/health")
+        assert "persist" in health_response.json()["capabilities"]

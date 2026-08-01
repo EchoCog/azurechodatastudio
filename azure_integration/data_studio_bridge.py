@@ -17,6 +17,7 @@ except ImportError:  # pragma: no cover
     Field = None  # type: ignore
     uvicorn = None  # type: ignore
 
+from azure_integration.atomspace_store import SqliteAtomStore
 from azure_integration.atomspace_transport import AtomSpaceTransportError, HttpAtomSpaceTransport
 from azure_integration.sql_to_atomspace import AtomBatch, map_rows_to_atoms, map_schema_to_atoms, merge_batches
 
@@ -63,13 +64,16 @@ class StatusResponse(BaseModel):  # type: ignore
     last_request_id: Optional[str]
     protocol_version: str
     backend: str
+    persisted: bool
 
 
 class AtomSpaceAdapter:
     def __init__(self) -> None:
         self.mode = os.environ.get("ATOMSPACE_MODE", "local")
         self.endpoint = os.environ.get("ATOMSPACE_URL")
+        self.persist_path = os.environ.get("ATOMSPACE_PERSIST_PATH")
         self._transport: Optional[HttpAtomSpaceTransport] = None
+        self._store: Optional[SqliteAtomStore] = None
         self._nodes: Dict[str, Dict[str, Any]] = {}
         self._links: Dict[str, Dict[str, Any]] = {}
         if self.mode == "http" and not self.endpoint:
@@ -79,6 +83,16 @@ class AtomSpaceAdapter:
             self._transport = HttpAtomSpaceTransport(self.endpoint)
         elif self.mode != "local":
             raise ValueError(f"Unsupported ATOMSPACE_MODE: {self.mode}")
+        if self.mode == "local" and self.persist_path:
+            self._store = SqliteAtomStore(self.persist_path)
+            self._nodes, self._links = self._store.load_all()
+
+    @property
+    def persisted(self) -> bool:
+        """Whether upserts are actually being written through to a durable
+        store — not just whether ATOMSPACE_PERSIST_PATH happens to be set,
+        since persistence only applies in `local` mode."""
+        return self._store is not None
 
     def upsert(self, batch: AtomBatch) -> Dict[str, Any]:
         if self.mode == "local":
@@ -86,9 +100,13 @@ class AtomSpaceAdapter:
             links = batch.get("links", [])
             self._store_atoms(self._nodes, nodes, "node")
             self._store_atoms(self._links, links, "link")
+            if self._store is not None:
+                self._store.upsert_nodes(nodes)
+                self._store.upsert_links(links)
             return {
                 "status": "ok",
                 "backend": "local",
+                "persisted": self.persisted,
                 "nodes": len(nodes),
                 "links": len(links),
                 "total_nodes": len(self._nodes),
@@ -136,6 +154,15 @@ class AtomSpaceAdapter:
             except AtomSpaceTransportError as exc:
                 raise RuntimeError(str(exc)) from exc
         raise RuntimeError(f"Unsupported AtomSpace backend: {self.mode}")
+
+    def list_atoms(self) -> Dict[str, Any]:
+        return {
+            "status": "ok",
+            "backend": self.mode,
+            "persisted": self.persisted,
+            "nodes": list(self._nodes.values()),
+            "links": list(self._links.values()),
+        }
 
     @staticmethod
     def _store_atoms(target: Dict[str, Dict[str, Any]], atoms: List[Dict[str, Any]], kind: str) -> None:
@@ -207,12 +234,15 @@ class BridgeApp:
         self.last_request_id: Optional[str] = None
 
     def health(self) -> Dict[str, Any]:
+        capabilities = ["ingest-schema", "ingest-table", "ingest-atoms", "reason", "list-atoms"]
+        if self.adapter.persisted:
+            capabilities.append("persist")
         return {
             "status": "ok",
             "time": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "protocol_version": PROTOCOL_VERSION,
             "backend": self.adapter.mode,
-            "capabilities": ["ingest-schema", "ingest-table", "ingest-atoms", "reason"],
+            "capabilities": capabilities,
         }
 
     def ingest_schema(self, req: IngestSchemaRequest) -> Dict[str, Any]:
@@ -243,6 +273,9 @@ class BridgeApp:
         self.last_request_id = str(uuid.uuid4())
         return {"cognitive": cog, "adapter": res}
 
+    def list_atoms(self) -> Dict[str, Any]:
+        return self.adapter.list_atoms()
+
     def status(self) -> Dict[str, Any]:
         return {
             "status": "ok",
@@ -250,6 +283,7 @@ class BridgeApp:
             "last_request_id": self.last_request_id,
             "protocol_version": PROTOCOL_VERSION,
             "backend": self.adapter.mode,
+            "persisted": self.adapter.persisted,
         }
 
 
@@ -277,6 +311,10 @@ if FastAPI:
     @app.post("/reason")
     def post_reason(req: ReasonRequest) -> Dict[str, Any]:
         return app_impl.reason(req)
+
+    @app.get("/atoms")
+    def get_atoms() -> Dict[str, Any]:
+        return app_impl.list_atoms()
 
     @app.get("/status", response_model=StatusResponse)  # type: ignore
     def get_status() -> Dict[str, Any]:
