@@ -35,13 +35,19 @@ const FAKE_APHRODITE_CONFIG: AphroditeConfig = {
 	timeoutMs: 60000,
 	batchingEnabled: true,
 	maxBatchSize: 16,
+	loraLoadPath: '/v1/load_lora_adapter',
+	loraUnloadPath: '/v1/unload_lora_adapter',
 };
 
 /**
  * Minimal fake `IAphroditeService` for exercising `LLMProviderService`'s
  * Aphrodite-routing path without any real network access.
  */
-class FakeAphroditeService implements IAphroditeService {
+// Implements only the members `LLMProviderService`'s Aphrodite-routing path
+// actually calls. It is cast to `IAphroditeService` where it is injected rather
+// than declaring `implements`, so that growing the service interface does not
+// force unrelated stub methods into this test.
+class FakeAphroditeService {
 	declare readonly _serviceBrand: undefined;
 	readonly onDidReceiveStreamToken = Event.None;
 	readonly onDidChangeConnectionStatus = Event.None;
@@ -100,7 +106,7 @@ suite('LLM Provider Service Tests', () => {
 		instantiationService.stub(ICognitiveMembraneService, membraneService);
 
 		aphroditeService = new FakeAphroditeService();
-		instantiationService.stub(IAphroditeService, aphroditeService);
+		instantiationService.stub(IAphroditeService, aphroditeService as unknown as IAphroditeService);
 
 		llmService = instantiationService.createInstance(LLMProviderService);
 	});

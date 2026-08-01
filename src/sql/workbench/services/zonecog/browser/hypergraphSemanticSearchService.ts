@@ -628,7 +628,11 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 		// Start new timer if enabled
 		if (enabled) {
 			this._autoReindexTimer = setInterval(() => {
-				this._performAutoReindex();
+				// Nothing awaits this background pass, so swallow-and-log rather
+				// than let a rejection escape as an unhandled promise rejection.
+				this._performAutoReindex().catch(err => {
+					this.logService.error(`HypergraphSemanticSearchService: auto-reindex failed: ${err}`);
+				});
 			}, AUTO_REINDEX_INTERVAL_MS);
 		}
 

@@ -29,8 +29,6 @@ import {
 	LoRAAdapterInfo,
 	AphroditePerformanceMetrics,
 	ABTestConfig,
-	ABTestVariant,
-	ABTestResults,
 	ModelFallbackConfig,
 	ModelFallbackState,
 	StructuredOutputConfig,
@@ -59,9 +57,6 @@ const DEFAULT_CONFIG: AphroditeConfig = {
 	loraLoadPath: '/v1/load_lora_adapter',
 	loraUnloadPath: '/v1/unload_lora_adapter',
 };
-
-/** Maximum telemetry history entries to retain. */
-const MAX_TELEMETRY_HISTORY = 1000;
 
 /** Default performance metrics window in seconds. */
 const DEFAULT_METRICS_WINDOW_SECONDS = 300;
@@ -95,8 +90,6 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	// Extended A/B testing state
 	private _activeABTest: ABTestConfig | undefined;
-	private _abTestTelemetry: Map<string, AphroditeRequestTelemetry[]> = new Map();
-
 	// Extended model fallback state
 	private _fallbackConfig: ModelFallbackConfig | undefined;
 	private _fallbackState: ModelFallbackState = {
@@ -284,74 +277,6 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 
 	getFallbackChain(): string[] {
 		return [...this._fallbackChain];
-	}
-
-	/**
-	 * Complete with automatic fallback chain (extended, uses ModelFallbackConfig).
-	 */
-	private async _completeWithFallback(
-		request: AphroditeCompletionRequest,
-		model: string,
-		signal: AbortSignal,
-		config: AphroditeConfig
-	): Promise<AphroditeCompletionResponse> {
-		const modelsToTry = this._getModelsToTry(model);
-
-		let lastError: Error | undefined;
-		for (const tryModel of modelsToTry) {
-			try {
-				const response = await this._makeRequest('/v1/completions', {
-					prompt: request.prompt,
-					model: tryModel,
-					max_tokens: request.maxTokens ?? config.maxTokens,
-					temperature: request.temperature ?? config.temperature,
-					top_p: config.topP,
-					top_k: config.topK,
-					frequency_penalty: config.frequencyPenalty,
-					presence_penalty: config.presencePenalty,
-					stop: request.stopSequences,
-					stream: false,
-				}, signal);
-
-				const generationTimeMs = Date.now();
-
-				return {
-					text: response.choices[0]?.text ?? '',
-					promptTokens: response.usage?.prompt_tokens ?? 0,
-					completionTokens: response.usage?.completion_tokens ?? 0,
-					totalTokens: response.usage?.total_tokens ?? 0,
-					finishReason: response.choices[0]?.finish_reason ?? 'stop',
-					generationTimeMs,
-					model: response.model ?? tryModel,
-				};
-			} catch (err) {
-				lastError = err as Error;
-				this.logService.warn(`[AphroditeService] Model ${tryModel} failed, trying next...`);
-			}
-		}
-
-		throw lastError ?? new Error('All models failed');
-	}
-
-	/**
-	 * Get the list of models to try based on fallback config.
-	 */
-	private _getModelsToTry(primaryModel: string): string[] {
-		if (!this._fallbackConfig) {
-			return [primaryModel];
-		}
-
-		if (this._fallbackState.usingFallback) {
-			// Check if we should try to re-enable primary
-			if (this._fallbackConfig.autoReenablePrimary &&
-				this._fallbackState.primaryReenableAt &&
-				Date.now() >= this._fallbackState.primaryReenableAt) {
-				return [this._fallbackConfig.primary, ...this._fallbackConfig.fallbacks];
-			}
-			return this._fallbackConfig.fallbacks;
-		}
-
-		return [this._fallbackConfig.primary, ...this._fallbackConfig.fallbacks];
 	}
 
 	async *streamComplete(request: AphroditeCompletionRequest): AsyncIterable<AphroditeStreamToken> {
@@ -1173,89 +1098,6 @@ export class AphroditeService extends Disposable implements IAphroditeService {
 			chunks.push(array.slice(i, i + size));
 		}
 		return chunks;
-	}
-
-	private _selectModelVariant(): { model: string; adapterId?: string; configOverrides?: Partial<AphroditeConfig> } {
-		// If A/B test is active, select a variant based on weights
-		if (this._activeABTest?.active) {
-			const variant = this._selectABTestVariant();
-			if (variant) {
-				return {
-					model: variant.model,
-					adapterId: variant.adapterId,
-					configOverrides: variant.configOverrides,
-				};
-			}
-		}
-
-		// Use current adapter if loaded
-		const adapterId = this._currentAdapter?.id;
-
-		// Use fallback state if configured
-		if (this._fallbackConfig) {
-			return {
-				model: this._fallbackState.activeModel,
-				adapterId,
-			};
-		}
-
-		return {
-			model: this._config.model,
-			adapterId,
-		};
-	}
-
-	private _selectABTestVariant(): ABTestVariant | undefined {
-		if (!this._activeABTest?.active) {
-			return undefined;
-		}
-
-		const totalWeight = this._activeABTest.variants.reduce((sum, v) => sum + v.weight, 0);
-		const random = Math.random() * totalWeight;
-
-		let cumulative = 0;
-		for (const variant of this._activeABTest.variants) {
-			cumulative += variant.weight;
-			if (random < cumulative) {
-				return variant;
-			}
-		}
-
-		return this._activeABTest.variants[0];
-	}
-
-	private _recordModelSuccess(): void {
-		if (!this._fallbackConfig) {
-			return;
-		}
-
-		if (this._fallbackState.usingFallback) {
-			return;
-		}
-
-		this._fallbackState.primaryFailureCount = 0;
-	}
-
-	private _recordModelFailure(): void {
-		if (!this._fallbackConfig) {
-			return;
-		}
-
-		if (this._fallbackState.usingFallback) {
-			return;
-		}
-
-		this._fallbackState.primaryFailureCount++;
-
-		if (this._fallbackState.primaryFailureCount >= this._fallbackConfig.retriesBeforeFallback) {
-			this._fallbackState.usingFallback = true;
-			this._fallbackState.activeModel = this._fallbackConfig.fallbacks[0] ?? this._fallbackConfig.primary;
-			this._fallbackState.primaryDisabledAt = Date.now();
-			this._fallbackState.primaryReenableAt = Date.now() + this._fallbackConfig.primaryReenableDelayMs;
-
-			this._onDidChangeFallbackState.fire(this._fallbackState);
-			this.logService.warn(`[AphroditeService] Switched to fallback model: ${this._fallbackState.activeModel}`);
-		}
 	}
 
 	private _computePromptCacheKey(prompt: string): string {
