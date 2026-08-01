@@ -1,0 +1,854 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* Zone-Cog Cognitive Dashboard Styles */
+
+/* Main container */
+.zonecog-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 8px;
+	overflow: auto;
+}
+
+/* Section headers */
+.zonecog-section {
+	margin-bottom: 16px;
+}
+
+.zonecog-section-header {
+	font-weight: 600;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 8px;
+	color: var(--vscode-foreground);
+	opacity: 0.8;
+}
+
+/* Cognitive state widget */
+.zonecog-cognitive-state {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px;
+}
+
+.zonecog-stat-card {
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	padding: 12px;
+}
+
+.zonecog-stat-label {
+	font-size: 10px;
+	text-transform: uppercase;
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: 4px;
+}
+
+.zonecog-stat-value {
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.zonecog-stat-value.positive {
+	color: var(--vscode-testing-iconPassed);
+}
+
+.zonecog-stat-value.warning {
+	color: var(--vscode-editorWarning-foreground);
+}
+
+.zonecog-stat-value.negative {
+	color: var(--vscode-testing-iconFailed);
+}
+
+/* Membrane health indicators */
+.zonecog-membrane-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 8px;
+}
+
+.zonecog-membrane-card {
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	padding: 12px;
+	text-align: center;
+}
+
+.zonecog-membrane-card.healthy {
+	border-color: var(--vscode-testing-iconPassed);
+}
+
+.zonecog-membrane-card.unhealthy {
+	border-color: var(--vscode-testing-iconFailed);
+}
+
+.zonecog-membrane-icon {
+	font-size: 24px;
+	margin-bottom: 4px;
+}
+
+.zonecog-membrane-name {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: capitalize;
+}
+
+.zonecog-membrane-status {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-membrane-count {
+	font-size: 9px;
+	margin-top: 4px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ECAN attention view */
+.zonecog-ecan-container {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.zonecog-ecan-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.zonecog-ecan-label {
+	flex: 0 0 100px;
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.zonecog-ecan-track {
+	flex: 1;
+	height: 8px;
+	background: var(--vscode-progressBar-background);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.zonecog-ecan-fill {
+	height: 100%;
+	background: var(--vscode-progressBar-foreground);
+	border-radius: 4px;
+	transition: width 0.3s ease;
+}
+
+.zonecog-ecan-value {
+	flex: 0 0 40px;
+	font-size: 10px;
+	text-align: right;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Working memory list */
+.zonecog-wm-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.zonecog-wm-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-wm-category {
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-size: 9px;
+	font-weight: 600;
+	text-transform: uppercase;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+}
+
+.zonecog-wm-content {
+	flex: 1;
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.zonecog-wm-relevance {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Cognitive load gauge */
+.zonecog-load-gauge {
+	position: relative;
+	height: 20px;
+	background: var(--vscode-progressBar-background);
+	border-radius: 10px;
+	overflow: hidden;
+}
+
+.zonecog-load-fill {
+	position: absolute;
+	top: 0;
+	left: 0;
+	height: 100%;
+	background: linear-gradient(90deg, 
+		var(--vscode-testing-iconPassed) 0%, 
+		var(--vscode-editorWarning-foreground) 60%, 
+		var(--vscode-testing-iconFailed) 100%
+	);
+	border-radius: 10px;
+	transition: width 0.3s ease;
+}
+
+.zonecog-load-text {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--vscode-editor-foreground);
+}
+
+/* Cognitive loop status */
+.zonecog-loop-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-loop-indicator {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+}
+
+.zonecog-loop-indicator.running {
+	background: var(--vscode-testing-iconPassed);
+	animation: pulse 1.5s ease infinite;
+}
+
+.zonecog-loop-indicator.paused {
+	background: var(--vscode-editorWarning-foreground);
+}
+
+.zonecog-loop-indicator.stopped {
+	background: var(--vscode-descriptionForeground);
+}
+
+@keyframes pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
+}
+
+.zonecog-loop-label {
+	flex: 1;
+	font-size: 11px;
+}
+
+.zonecog-loop-stats {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Empty state */
+.zonecog-empty-message {
+	text-align: center;
+	padding: 24px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+}
+
+/* Hypergraph visualization placeholder */
+.zonecog-hypergraph-canvas {
+	width: 100%;
+	height: 200px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.zonecog-hypergraph-placeholder {
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+}
+
+/* Node count badge */
+.zonecog-node-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 18px;
+	height: 18px;
+	padding: 0 6px;
+	border-radius: 9px;
+	font-size: 10px;
+	font-weight: 600;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+}
+
+/* Action buttons */
+.zonecog-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.zonecog-action-button {
+	flex: 1;
+	padding: 6px 12px;
+	border: none;
+	border-radius: 4px;
+	font-size: 11px;
+	cursor: pointer;
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.zonecog-action-button:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.zonecog-action-button.secondary {
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+}
+
+.zonecog-action-button.secondary:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* ECAN Stats Grid */
+.zonecog-ecan-stats {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+/* Attention bars */
+.zonecog-attention-bars {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.zonecog-attention-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.zonecog-attention-label {
+	flex: 0 0 80px;
+	font-size: 10px;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.zonecog-attention-fill {
+	flex: 1;
+	height: 6px;
+	background: var(--vscode-progressBar-foreground);
+	border-radius: 3px;
+	transition: width 0.3s ease;
+}
+
+.zonecog-attention-fill.important {
+	background: var(--vscode-editorWarning-foreground);
+}
+
+.zonecog-attention-value {
+	flex: 0 0 40px;
+	font-size: 9px;
+	text-align: right;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Working memory */
+.zonecog-working-memory {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.zonecog-memory-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-memory-item.high-activation {
+	border-color: var(--vscode-editorWarning-foreground);
+}
+
+.zonecog-memory-item.low-activation {
+	opacity: 0.6;
+}
+
+.zonecog-memory-icon {
+	font-size: 16px;
+}
+
+.zonecog-memory-content {
+	flex: 1;
+	min-width: 0;
+}
+
+.zonecog-memory-label {
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.zonecog-memory-meta {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-memory-activation {
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+/* Empty state */
+.zonecog-empty-state {
+	padding: 16px;
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+}
+
+/* ========================================= */
+/* DTESN Network View Styles               */
+/* ========================================= */
+
+.zonecog-dtesn-stats {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+.zonecog-dtesn-layers {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.zonecog-dtesn-layer {
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	padding: 10px;
+}
+
+.zonecog-dtesn-layer-header {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	margin-bottom: 4px;
+}
+
+.zonecog-dtesn-layer-details {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: 6px;
+}
+
+.zonecog-dtesn-layer-bar {
+	height: 4px;
+	background: var(--vscode-progressBar-background);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.zonecog-dtesn-layer-fill {
+	height: 100%;
+	background: var(--vscode-progressBar-foreground);
+	border-radius: 2px;
+	transition: width 0.3s ease;
+}
+
+.zonecog-dtesn-layer-fill.chaotic {
+	background: var(--vscode-testing-iconFailed);
+}
+
+.zonecog-dtesn-layer-fill.stable {
+	background: var(--vscode-testing-iconPassed);
+}
+
+/* ========================================= */
+/* AAR Orchestration View Styles           */
+/* ========================================= */
+
+.zonecog-aar-stats {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+.zonecog-aar-agents {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.zonecog-aar-agent {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-aar-agent.active {
+	border-color: var(--vscode-testing-iconPassed);
+}
+
+.zonecog-aar-agent.inactive {
+	opacity: 0.7;
+}
+
+.zonecog-aar-agent-icon {
+	font-size: 20px;
+}
+
+.zonecog-aar-agent-info {
+	flex: 1;
+	min-width: 0;
+}
+
+.zonecog-aar-agent-name {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.zonecog-aar-agent-details {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-aar-agent-status {
+	font-size: 12px;
+	color: var(--vscode-testing-iconPassed);
+}
+
+.zonecog-aar-agent.inactive .zonecog-aar-agent-status {
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ========================================= */
+/* Cognitive Workflows View Styles         */
+/* ========================================= */
+
+.zonecog-workflow-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+
+.zonecog-workflow-item {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-workflow-item.enabled {
+	border-left: 3px solid var(--vscode-testing-iconPassed);
+}
+
+.zonecog-workflow-item.disabled {
+	opacity: 0.6;
+	border-left: 3px solid var(--vscode-descriptionForeground);
+}
+
+.zonecog-workflow-status {
+	font-size: 14px;
+	width: 16px;
+	text-align: center;
+}
+
+.zonecog-workflow-item.enabled .zonecog-workflow-status {
+	color: var(--vscode-testing-iconPassed);
+}
+
+.zonecog-workflow-item.disabled .zonecog-workflow-status {
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-workflow-info {
+	flex: 1;
+	min-width: 0;
+}
+
+.zonecog-workflow-name {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	margin-bottom: 2px;
+}
+
+.zonecog-workflow-desc {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.zonecog-workflow-stats {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+
+.zonecog-workflow-history {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.zonecog-execution-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-execution-item.completed {
+	border-left: 3px solid var(--vscode-testing-iconPassed);
+}
+
+.zonecog-execution-item.failed {
+	border-left: 3px solid var(--vscode-testing-iconFailed);
+}
+
+.zonecog-execution-item.running {
+	border-left: 3px solid var(--vscode-editorWarning-foreground);
+}
+
+.zonecog-execution-item.cancelled {
+	border-left: 3px solid var(--vscode-descriptionForeground);
+}
+
+.zonecog-execution-status {
+	font-size: 14px;
+	width: 16px;
+	text-align: center;
+}
+
+.zonecog-execution-item.completed .zonecog-execution-status {
+	color: var(--vscode-testing-iconPassed);
+}
+
+.zonecog-execution-item.failed .zonecog-execution-status {
+	color: var(--vscode-testing-iconFailed);
+}
+
+.zonecog-execution-item.running .zonecog-execution-status {
+	color: var(--vscode-editorWarning-foreground);
+	animation: pulse 1s ease infinite;
+}
+
+.zonecog-execution-info {
+	flex: 1;
+	min-width: 0;
+}
+
+.zonecog-execution-name {
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.zonecog-execution-details {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Thinking process view */
+.zonecog-thinking-phases {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.zonecog-thinking-idle {
+	font-size: 11px;
+	font-style: italic;
+	color: var(--vscode-descriptionForeground);
+	padding: 8px;
+}
+
+.zonecog-thinking-phase {
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-thinking-phase-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 4px;
+}
+
+.zonecog-thinking-phase-name {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.zonecog-thinking-phase-duration {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-thinking-phase-content {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.zonecog-thinking-response {
+	margin-top: 8px;
+}
+
+.zonecog-thinking-response-label {
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: 4px;
+}
+
+.zonecog-thinking-response-text {
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	white-space: pre-wrap;
+	word-break: break-word;
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-thinking-recent {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.zonecog-thinking-recent-item {
+	padding: 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-thinking-recent-meta {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+	margin-bottom: 2px;
+}
+
+.zonecog-thinking-recent-preview {
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Hypergraph explorer view */
+.zonecog-hypergraph-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.zonecog-hypergraph-canvas {
+	flex: 1;
+	min-height: 100px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+}
+
+.zonecog-hypergraph-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 6px 2px;
+}
+
+.zonecog-hypergraph-legend-entry {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-hypergraph-legend-swatch {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+}

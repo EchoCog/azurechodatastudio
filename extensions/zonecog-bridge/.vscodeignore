@@ -1,0 +1,9 @@
+.gitignore
+.vscodeignore
+node_modules/**
+src/**
+test/**
+tsconfig.json
+yarn.lock
+**/*.map
+*.vsix

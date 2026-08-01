@@ -119,11 +119,22 @@ suite('Test class NotebookEditor:', () => {
 	let notebookEditorStub: NotebookEditorStub;
 	let editorResolverService: IEditorResolverService;
 
+	let previousUnexpectedErrorHandler: (e: any) => void;
+
 	setup(async () => {
 		// setup services
 		({ instantiationService, workbenchThemeService, notebookService, testTitle, extensionService, cellTextEditorGuid, queryTextEditor, untitledNotebookInput, notebookEditorStub, editorResolverService } = setupServices({ instantiationService, workbenchThemeService }));
 		// Create notebookEditor
 		notebookEditor = createNotebookEditor(instantiationService, workbenchThemeService, notebookService);
+		previousUnexpectedErrorHandler = errorHandler.getUnexpectedErrorHandler();
+	});
+
+	teardown(() => {
+		// Several tests in this suite install assert-throwing unexpected-error
+		// handlers; restore the previous handler so they cannot leak into
+		// unrelated suites and fail whatever test happens to be running when a
+		// later unexpected error fires.
+		errorHandler.setUnexpectedErrorHandler(previousUnexpectedErrorHandler);
 	});
 
 	test('Verifies that create() calls createEditor() and sets the provided parent object as the \'_overlay\' field', () => {
@@ -510,7 +521,10 @@ suite('Test class NotebookEditor:', () => {
 			} finally { }
 		};
 		notebookEditor['_triggerInputChange']();
-		assert.notStrictEqual(unexpectedErrorCalled, true, '_triggerInputChange did not raise an error when an exception occurred Notebook model should be defined after findState.change->notebookEditor._onFindReplaceStateChange call');
+		// _triggerInputChange reports the rejection via promise.catch -> onUnexpectedError,
+		// so the verifier only runs after pending continuations are flushed.
+		await new Promise<void>(resolve => setTimeout(resolve, 0));
+		assert.strictEqual(unexpectedErrorCalled, true, '_triggerInputChange must raise an error through onUnexpectedError when _onFindStateChange throws');
 	});
 
 	test(`Verifies _onFindStateChange callback sets notebookModel when it was not previously set'`, async () => {

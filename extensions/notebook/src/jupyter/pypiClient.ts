@@ -22,7 +22,12 @@ export class PyPiClient implements IPyPiClient {
 
 	public async fetchPypiPackage(packageName: string): Promise<any> {
 		return new Promise<any>((resolve, reject) => {
-			request.get(this.getLink(packageName), { timeout: this.RequestTimeout }, (error, response, body) => {
+			const trimmedPackageName = packageName?.trim();
+			if (!trimmedPackageName) {
+				return reject(constants.PackageNotFoundError);
+			}
+
+			request.get(this.getLink(trimmedPackageName), { timeout: this.RequestTimeout }, (error, response, body) => {
 				if (error) {
 					return reject(error);
 				}

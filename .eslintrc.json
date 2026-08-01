@@ -1596,6 +1596,23 @@
 					"off"
 				]
 			}
+		},
+		{
+			// Compiled TypeScript outputs (.js files alongside .ts sources) have
+			// "use strict"; before the copyright block comment because TypeScript
+			// always emits it first in CommonJS output. The canonical TypeScript
+			// sources (.ts files) already have the copyright header checked by
+			// this rule. TypeScript-generated module helpers also use != instead
+			// of !== and emit "use strict" directives in CommonJS modules.
+			// This override must be last so it takes precedence over all others.
+			"files": [
+				"**/*.js"
+			],
+			"rules": {
+				"header/header": "off",
+				"eqeqeq": "off",
+				"strict": "off"
+			}
 		}
 	]
 }

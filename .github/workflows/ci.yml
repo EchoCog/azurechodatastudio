@@ -154,6 +154,9 @@ jobs:
         id: electron-extension-unit-tests
         run: DISPLAY=:10 ./scripts/test-extensions-unit.sh
 
+      - name: Run ZoneCog Smoke Tests # {{SQL CARBON EDIT}} Verify ZoneCog services for release readiness
+        run: ./scripts/test-zonecog-smoke.sh
+
       # {{SQL CARBON EDIT}} Add coveralls. We merge first to get around issue where parallel builds weren't being combined correctly
       - name: Combine code coverage files
         run: node test/combineCoverage
@@ -300,3 +303,4 @@ jobs:
 
       - name: Run Trusted Types Checks
         run: yarn tsec-compile-check
+

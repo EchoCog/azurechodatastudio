@@ -1,0 +1,126 @@
+{
+  "name": "zonecog-bridge",
+  "displayName": "Zone-Cog Cognitive Bridge",
+  "description": "Connect VS Code or Azure Data Studio to the standalone ZoneCog cognitive service.",
+  "publisher": "EchoCog",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EchoCog/azurechodatastudio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/EchoCog/azurechodatastudio/issues"
+  },
+  "homepage": "https://github.com/EchoCog/azurechodatastudio/tree/main/extensions/zonecog-bridge",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#111321",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.79.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "zonecog",
+    "cognitive",
+    "atomspace",
+    "sql",
+    "reasoning"
+  ],
+  "main": "./out/extension.js",
+  "files": [
+    "out/**/*.js",
+    "media/icon.png",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "activationEvents": [
+    "onCommand:zonecog.checkBridgeHealth",
+    "onCommand:zonecog.ingestSchema",
+    "onCommand:zonecog.ingestActiveTable",
+    "onCommand:zonecog.runCognitiveAnalysis",
+    "onCommand:zonecog.setBridgeAuthToken"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": true,
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "zonecog.checkBridgeHealth",
+        "title": "Check Cognitive Bridge Health",
+        "category": "Zone-Cog"
+      },
+      {
+        "command": "zonecog.ingestSchema",
+        "title": "Ingest Database Schema",
+        "category": "Zone-Cog"
+      },
+      {
+        "command": "zonecog.ingestActiveTable",
+        "title": "Ingest Table Data",
+        "category": "Zone-Cog"
+      },
+      {
+        "command": "zonecog.runCognitiveAnalysis",
+        "title": "Run Cognitive Analysis",
+        "category": "Zone-Cog"
+      },
+      {
+        "command": "zonecog.setBridgeAuthToken",
+        "title": "Set Cognitive Bridge Auth Token",
+        "category": "Zone-Cog"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Zone-Cog Bridge",
+      "properties": {
+        "zonecog.bridge.baseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:7807",
+          "format": "uri",
+          "description": "Base URL for the ZoneCog cognitive service. In remote workspaces, loopback addresses refer to the remote extension host."
+        },
+        "zonecog.bridge.requestTimeout": {
+          "type": "integer",
+          "default": 15000,
+          "minimum": 100,
+          "maximum": 300000,
+          "description": "Maximum time in milliseconds to wait for a bridge response."
+        },
+        "zonecog.bridge.maxResponseBytes": {
+          "type": "integer",
+          "default": 1048576,
+          "minimum": 1024,
+          "maximum": 16777216,
+          "description": "Maximum accepted bridge response size in bytes."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "test": "yarn compile && node --test test/*.test.js",
+    "vscode:prepublish": "yarn compile",
+    "package": "npx --yes @vscode/vsce package --no-dependencies",
+    "package:dry-run": "npx --yes @vscode/vsce package --no-dependencies --out zonecog-bridge-dry-run.vsix && node -e \"require('fs').unlinkSync('zonecog-bridge-dry-run.vsix')\""
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/vscode": "1.79.1",
+    "typescript": "5.4.5"
+  }
+}

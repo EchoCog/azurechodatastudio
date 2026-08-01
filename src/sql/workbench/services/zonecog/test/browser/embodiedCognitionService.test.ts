@@ -1,0 +1,392 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import * as assert from 'assert';
+import * as sinon from 'sinon';
+import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
+import { EmbodiedCognitionService } from 'sql/workbench/services/zonecog/browser/embodiedCognitionService';
+import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
+import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
+import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
+import { ILogService, NullLogService } from 'vs/platform/log/common/log';
+
+suite('EmbodiedCognitionService Tests', () => {
+
+	let instantiationService: TestInstantiationService;
+	let embodiedService: IEmbodiedCognitionService;
+	let hypergraphStore: IHypergraphStore;
+	let clock: sinon.SinonFakeTimers;
+
+	setup(() => {
+		// A non-zero start time keeps `timestamp > 0` / `lastUpdate > 0`
+		// assertions meaningful -- the real Unix epoch (0) would make them
+		// trivially fail even though production timestamps are unaffected.
+		clock = sinon.useFakeTimers(1_700_000_000_000);
+
+		instantiationService = new TestInstantiationService();
+		instantiationService.stub(ILogService, new NullLogService());
+
+		hypergraphStore = instantiationService.createInstance(HypergraphStore);
+		instantiationService.stub(IHypergraphStore, hypergraphStore);
+
+		const membraneService = instantiationService.createInstance(CognitiveMembraneService);
+		instantiationService.stub(ICognitiveMembraneService, membraneService);
+
+		embodiedService = instantiationService.createInstance(EmbodiedCognitionService);
+	});
+
+	teardown(() => {
+		clock.restore();
+	});
+
+	// -- Sensory percepts ----------------------------------------------------
+
+	test('should record a sensory percept', () => {
+		const percept = embodiedService.perceive('schema', 'orders table', '{"columns":["id","total"]}', 0.8);
+
+		assert.ok(percept.id);
+		assert.strictEqual(percept.modality, 'schema');
+		assert.strictEqual(percept.summary, 'orders table');
+		assert.strictEqual(percept.salience, 0.8);
+		assert.ok(percept.timestamp > 0);
+	});
+
+	test('should persist percepts in hypergraph', () => {
+		embodiedService.perceive('query', 'SELECT * FROM orders', 'SELECT * FROM orders');
+
+		const nodes = hypergraphStore.getNodesByType('SensoryPercept');
+		assert.strictEqual(nodes.length, 1);
+		assert.strictEqual(nodes[0].content, 'SELECT * FROM orders');
+	});
+
+	test('should clamp salience to [0, 1]', () => {
+		const low = embodiedService.perceive('schema', 'test', '', -0.5);
+		assert.strictEqual(low.salience, 0);
+
+		const high = embodiedService.perceive('schema', 'test2', '', 2.0);
+		assert.strictEqual(high.salience, 1);
+	});
+
+	test('should filter percepts by modality', () => {
+		embodiedService.perceive('schema', 's1', '');
+		embodiedService.perceive('query', 'q1', '');
+		embodiedService.perceive('schema', 's2', '');
+
+		assert.strictEqual(embodiedService.getRecentPercepts('schema').length, 2);
+		assert.strictEqual(embodiedService.getRecentPercepts('query').length, 1);
+		assert.strictEqual(embodiedService.getRecentPercepts().length, 3);
+	});
+
+	test('should limit percept buffer size', () => {
+		// MAX_PERCEPTS is 200; add 205 and verify oldest are evicted
+		for (let i = 0; i < 205; i++) {
+			embodiedService.perceive('interaction', `click-${i}`, '');
+		}
+		assert.strictEqual(embodiedService.getRecentPercepts(undefined, 300).length, 200);
+	});
+
+	test('should fire onDidPerceive event', () => {
+		let eventCount = 0;
+		embodiedService.onDidPerceive(() => eventCount++);
+
+		embodiedService.perceive('file', 'test.sql', '');
+		assert.strictEqual(eventCount, 1);
+	});
+
+	// -- Motor actions -------------------------------------------------------
+
+	test('should produce a motor action', () => {
+		const action = embodiedService.act('query_suggestion', 'Optimize query', 'SELECT ...', 0.9);
+
+		assert.ok(action.id);
+		assert.strictEqual(action.kind, 'query_suggestion');
+		assert.strictEqual(action.label, 'Optimize query');
+		assert.strictEqual(action.confidence, 0.9);
+	});
+
+	test('should persist actions in hypergraph', () => {
+		embodiedService.act('insight', 'Found pattern', 'details', 0.7);
+
+		const nodes = hypergraphStore.getNodesByType('MotorAction');
+		assert.strictEqual(nodes.length, 1);
+	});
+
+	test('should link actions to source percepts', () => {
+		const p1 = embodiedService.perceive('query', 'q1', '');
+		const p2 = embodiedService.perceive('result', 'r1', '');
+		embodiedService.act('insight', 'cross-ref', '', 0.6, [p1.id, p2.id]);
+
+		const actionNodes = hypergraphStore.getNodesByType('MotorAction');
+		assert.strictEqual(actionNodes.length, 1);
+
+		const links = hypergraphStore.getLinksByType('MotivatedBy');
+		assert.strictEqual(links.length, 2);
+	});
+
+	test('should filter actions by kind', () => {
+		embodiedService.act('query_suggestion', 'a1', '', 0.5);
+		embodiedService.act('insight', 'a2', '', 0.5);
+		embodiedService.act('query_suggestion', 'a3', '', 0.5);
+
+		assert.strictEqual(embodiedService.getRecentActions('query_suggestion').length, 2);
+		assert.strictEqual(embodiedService.getRecentActions('insight').length, 1);
+	});
+
+	test('should fire onDidAct event', () => {
+		let eventCount = 0;
+		embodiedService.onDidAct(() => eventCount++);
+
+		embodiedService.act('alert', 'test', '', 0.5);
+		assert.strictEqual(eventCount, 1);
+	});
+
+	// -- Proprioception ------------------------------------------------------
+
+	test('should report proprioceptive state', () => {
+		const state = embodiedService.getProprioceptiveState();
+
+		assert.strictEqual(state.activeSensoryChannels, 0);
+		assert.strictEqual(state.attentionalFocus, null);
+		assert.ok(state.healthy);
+		assert.ok(state.lastUpdate > 0);
+	});
+
+	test('should track active sensory channels', () => {
+		embodiedService.perceive('schema', 's', '');
+		embodiedService.perceive('query', 'q', '');
+
+		const state = embodiedService.getProprioceptiveState();
+		assert.strictEqual(state.activeSensoryChannels, 2);
+	});
+
+	test('should set and clear attentional focus', () => {
+		embodiedService.setAttentionalFocus('orders table');
+		assert.strictEqual(embodiedService.getProprioceptiveState().attentionalFocus, 'orders table');
+
+		embodiedService.setAttentionalFocus(null);
+		assert.strictEqual(embodiedService.getProprioceptiveState().attentionalFocus, null);
+	});
+
+	test('should fire proprioception events on state changes', () => {
+		let eventCount = 0;
+		embodiedService.onDidUpdateProprioception(() => eventCount++);
+
+		embodiedService.perceive('schema', 's', '');
+		assert.ok(eventCount >= 1);
+
+		const before = eventCount;
+		embodiedService.setAttentionalFocus('test');
+		assert.ok(eventCount > before);
+	});
+
+	// -- Environment snapshot ------------------------------------------------
+
+	test('should provide environment snapshot', () => {
+		embodiedService.perceive('schema', 'orders', '');
+		embodiedService.perceive('schema', 'products', '');
+		embodiedService.perceive('query', 'SELECT *', '');
+		embodiedService.act('insight', 'pattern', '', 0.5);
+
+		const env = embodiedService.getEnvironmentSnapshot();
+		assert.strictEqual(env.knownSchemas.length, 2);
+		assert.strictEqual(env.recentQueryPatterns.length, 1);
+		assert.strictEqual(env.totalPercepts, 3);
+		assert.strictEqual(env.totalActions, 1);
+	});
+
+	// -- Reset ---------------------------------------------------------------
+
+	test('should reset all state', () => {
+		embodiedService.perceive('schema', 's', '');
+		embodiedService.act('insight', 'i', '', 0.5);
+		embodiedService.setAttentionalFocus('test');
+
+		embodiedService.reset();
+
+		assert.strictEqual(embodiedService.getRecentPercepts().length, 0);
+		assert.strictEqual(embodiedService.getRecentActions().length, 0);
+		assert.strictEqual(embodiedService.getProprioceptiveState().attentionalFocus, null);
+	});
+
+	// -- Interaction pattern recognition --------------------------------------
+
+	test('should detect no patterns with no interaction percepts', () => {
+		embodiedService.perceive('schema', 's', '');
+		assert.strictEqual(embodiedService.detectInteractionPatterns().length, 0);
+	});
+
+	test('should detect no patterns below the occurrence threshold', () => {
+		embodiedService.perceive('interaction', 'open-editor', '');
+		embodiedService.perceive('interaction', 'run-query', '');
+
+		assert.strictEqual(embodiedService.detectInteractionPatterns(3).length, 0);
+	});
+
+	test('should detect a frequency pattern for a recurring interaction', () => {
+		for (let i = 0; i < 4; i++) {
+			embodiedService.perceive('interaction', 'open-editor', '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const freq = patterns.filter(p => p.kind === 'frequency');
+
+		assert.strictEqual(freq.length, 1);
+		assert.strictEqual(freq[0].occurrences, 4);
+		assert.ok(freq[0].confidence > 0 && freq[0].confidence <= 1);
+		assert.ok(freq[0].description.includes('open-editor'));
+	});
+
+	test('should detect a sequence pattern for a habitual bigram', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'select-table', '');
+			embodiedService.perceive('interaction', 'run-query', '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const seq = patterns.filter(p => p.kind === 'sequence');
+
+		assert.strictEqual(seq.length, 1);
+		assert.strictEqual(seq[0].occurrences, 3);
+		assert.ok(seq[0].description.includes('select-table'));
+		assert.ok(seq[0].description.includes('run-query'));
+	});
+
+	test('should not report a sequence pattern for identical consecutive summaries', () => {
+		for (let i = 0; i < 4; i++) {
+			embodiedService.perceive('interaction', 'click', '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(patterns.filter(p => p.kind === 'sequence').length, 0);
+	});
+
+	test('should detect a temporal cadence pattern for regularly-spaced interactions', () => {
+		// A fake clock ticked by a fixed amount between percepts gives exactly
+		// regular gaps deterministically -- no reliance on real wall-clock time.
+		for (let i = 0; i < 5; i++) {
+			embodiedService.perceive('interaction', `step-${i}`, '');
+			clock.tick(10);
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const temporal = patterns.filter(p => p.kind === 'temporal');
+
+		assert.strictEqual(temporal.length, 1);
+		assert.strictEqual(temporal[0].confidence, 1);
+		assert.strictEqual(temporal[0].occurrences, 4);
+	});
+
+	test('should not report a cadence pattern for simultaneous (zero-gap) percepts', () => {
+		// The fake clock never advances, so these percepts share an identical
+		// timestamp deterministically -- a burst, not a rhythm -- and must not
+		// be scored as a perfect cadence.
+		for (let i = 0; i < 4; i++) {
+			embodiedService.perceive('interaction', `burst-${i}`, '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		const temporal = patterns.filter(p => p.kind === 'temporal');
+		assert.strictEqual(temporal.length, 0);
+	});
+
+	test('should not report a cadence pattern for irregular gaps', () => {
+		// One perceive() up front, then a tick before each subsequent one, so
+		// all 4 gap values below are actually used as inter-arrival intervals
+		// (5 percepts -> 4 gaps), rather than ticking away the last entry.
+		const gaps = [5, 40, 8, 45];
+		embodiedService.perceive('interaction', 'jitter-start', '');
+		for (const gap of gaps) {
+			clock.tick(gap);
+			embodiedService.perceive('interaction', `jitter-${gap}`, '');
+		}
+
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(patterns.filter(p => p.kind === 'temporal').length, 0);
+	});
+
+	test('should not report a cadence pattern below the occurrence threshold', () => {
+		embodiedService.perceive('interaction', 'a', '');
+		embodiedService.perceive('interaction', 'b', '');
+		embodiedService.perceive('interaction', 'c', '');
+
+		// 3 percepts -> 2 gaps, below minOccurrences=3; must not be reported
+		// even if the two gaps happen to look regular.
+		const patterns = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(patterns.filter(p => p.kind === 'temporal').length, 0);
+	});
+
+	test('should persist detected patterns in the hypergraph', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+
+		embodiedService.detectInteractionPatterns(3);
+
+		const nodes = hypergraphStore.getNodesByType('InteractionPattern');
+		assert.ok(nodes.length > 0);
+	});
+
+	test('should fire onDidDetectInteractionPattern for each new pattern', () => {
+		let eventCount = 0;
+		embodiedService.onDidDetectInteractionPattern(() => eventCount++);
+
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		embodiedService.detectInteractionPatterns(3);
+
+		assert.ok(eventCount > 0);
+	});
+
+	test('should accumulate pattern history across detection runs', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		embodiedService.detectInteractionPatterns(3);
+
+		const history = embodiedService.getInteractionPatterns();
+		assert.ok(history.length > 0);
+	});
+
+	test('should not re-report an already-known pattern on an unchanged history', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+
+		const first = embodiedService.detectInteractionPatterns(3);
+		assert.ok(first.length > 0);
+		const historySizeAfterFirst = embodiedService.getInteractionPatterns().length;
+
+		// No new percepts recorded -- re-running detection must not duplicate
+		// history entries or report the same patterns as newly detected.
+		const second = embodiedService.detectInteractionPatterns(3);
+		assert.strictEqual(second.length, 0);
+		assert.strictEqual(embodiedService.getInteractionPatterns().length, historySizeAfterFirst);
+	});
+
+	test('should report a pattern again once its occurrence count changes', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		const first = embodiedService.detectInteractionPatterns(3);
+		assert.ok(first.some(p => p.kind === 'frequency'));
+
+		embodiedService.perceive('interaction', 'save-file', '');
+		const second = embodiedService.detectInteractionPatterns(3);
+		assert.ok(second.some(p => p.kind === 'frequency' && p.occurrences === 4));
+	});
+
+	test('should clear interaction patterns on reset', () => {
+		for (let i = 0; i < 3; i++) {
+			embodiedService.perceive('interaction', 'save-file', '');
+		}
+		embodiedService.detectInteractionPatterns(3);
+		assert.ok(embodiedService.getInteractionPatterns().length > 0);
+
+		embodiedService.reset();
+		assert.strictEqual(embodiedService.getInteractionPatterns().length, 0);
+	});
+});
