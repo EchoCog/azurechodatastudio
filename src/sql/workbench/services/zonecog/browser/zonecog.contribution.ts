@@ -66,6 +66,10 @@ import { IAtomSpaceTransportService } from 'sql/workbench/services/zonecog/commo
 import { AtomSpaceTransportService } from 'sql/workbench/services/zonecog/browser/atomSpaceTransportService';
 import { IAutognosisService } from 'sql/workbench/services/zonecog/common/autognosis';
 import { AutognosisService } from 'sql/workbench/services/zonecog/browser/autognosisService';
+import { IAtomSpaceBackendService } from 'sql/workbench/services/zonecog/common/atomSpaceBackend';
+import { AtomSpaceBackendService } from 'sql/workbench/services/zonecog/browser/atomSpaceBackendService';
+import { IHyperonService } from 'sql/workbench/services/zonecog/common/hyperon';
+import { HyperonService } from 'sql/workbench/services/zonecog/browser/hyperonService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -200,3 +204,19 @@ registerSingleton(IAtomSpaceTransportService, AtomSpaceTransportService, Instant
 // self-assessments; closes Phase 5.3 "Autognosis self-monitoring
 // capabilities")
 registerSingleton(IAutognosisService, AutognosisService, InstantiationType.Eager);
+
+// Register the AtomSpace Backend service (OpenCog Hyperon AtomSpace-native
+// storage: HypergraphNode ↔ Node/Link atom mapping, truth value conversion,
+// BindLink/GetLink pattern matching, AtomSpace-Rocks-backed persistence with
+// lazy loading, streaming pagination, and gzip network compression; closes
+// Phase B.1 "AtomSpace native storage interface" and B.3 "Persistent
+// AtomSpace store")
+registerSingleton(IAtomSpaceBackendService, AtomSpaceBackendService, InstantiationType.Eager);
+
+// Register the Hyperon service (embedded MeTTa interpreter: S-expression
+// programs with nondeterministic rewrite rules, match/if/quote special
+// forms, grounded arithmetic, bidirectional TypeScript ↔ MeTTa atom
+// binding, hypergraph import, and MeTTa-native PLN deduction integrated
+// with the PLN reasoning service; closes Phase B.2 "Hyperon MeTTa
+// integration")
+registerSingleton(IHyperonService, HyperonService, InstantiationType.Eager);

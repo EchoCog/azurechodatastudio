@@ -215,6 +215,40 @@ autognosisService.onDidCompleteSelfAssessment(a => {
 | `zonecog.autognosis.selfAssess` | Perform a self-assessment now and show the verdict and narrative |
 | `zonecog.autognosis.showHistory` | Show recent self-assessments and the confidence trend |
 
+### OpenCog Hyperon AtomSpace Backend (Phase B)
+
+`IAtomSpaceBackendService` / `AtomSpaceBackendService` provides AtomSpace-native
+storage (B.1 + B.3): a content-addressed atom table where identity follows
+AtomSpace semantics (nodes by `(type, name)`, links by `(type, outgoing)`),
+`HypergraphNode` ↔ Node/Link atom mapping with lossless round trips (hypergraph
+identity carried in atom `values`), salience ↔ `TruthValue` conversion
+(`strength`/`confidence` with count-based revision on upsert), and a recursive
+pattern matcher exposing GetLink (`get()` — variable groundings with type
+restrictions) and BindLink (`bind()` — rewrite-template instantiation)
+semantics. The persistent layer connects to an AtomSpace-Rocks-backed bridge
+over HTTP with capability negotiation, lazy `loadAtom`, cursor-paginated
+`fetchAtomPage`/`streamAtoms` (falling back to local pages when disconnected),
+and `persistAll` with gzip compression for network transfer.
+
+`IHyperonService` / `HyperonService` embeds a MeTTa interpreter (B.2):
+S-expression programs with `(= pattern result)` nondeterministic rewrite
+rules, `match`/`if`/`quote` special forms, grounded arithmetic/comparison/
+logic operations, a persistent atom space, and bidirectional
+TypeScript ↔ MeTTa binding (`jsToAtom`/`atomToJs`). `importHypergraph()`
+projects the hypergraph store into MeTTa facts, and `runPLNDeduction()`
+executes the PLN deduction rule natively in MeTTa — persisting conclusions
+as `Inferred` hypergraph links and registering their truth values with
+`PLNReasoningService` so URE forward chaining builds on MeTTa-derived
+results.
+
+On the Python side (B.4), `azure_integration/atomspace_transport.py` adds
+bidirectional incremental sync (`sync` with `AtomDeltaTracker` delta
+updates), paged retrieval (`fetch_atoms`/`fetch_all_atoms`),
+AtomSpace-native reasoning via REST (`reason_native`), pattern-match
+queries (`query`), and distributed query federation across multiple remote
+AtomSpaces (`FederatedAtomSpaceClient` — merged, uuid-deduplicated fan-out
+reads with per-endpoint provenance and error isolation).
+
 ### Thinking Protocol Phases
 
 The full Zone-Cog cognitive sequence (depth-adaptive):
@@ -450,6 +484,8 @@ services/zonecog/
 │   ├── schemaPerception.ts        # ISchemaPerceptionService interface
 │   ├── aphrodite.ts               # IAphroditeService interface (LLM engine)
 │   ├── cognitiveAgents.ts         # Cognitive agent interfaces
+│   ├── atomSpaceBackend.ts        # IAtomSpaceBackendService (Hyperon AtomSpace)
+│   ├── hyperon.ts                 # IHyperonService (MeTTa) interface and types
 │   └── cognitiveWorkflowAutomation.ts # Workflow DSL and automation
 ├── browser/
 │   ├── zonecogService.ts          # ZoneCogService implementation
@@ -470,6 +506,8 @@ services/zonecog/
 │   ├── performanceAdvisorAgent.ts # Performance advisor agent
 │   ├── dataPatternAgent.ts        # Data pattern agent
 │   ├── cognitiveWorkflowAutomationService.ts # Workflow engine
+│   ├── atomSpaceBackendService.ts # AtomSpace-native storage + persistence
+│   ├── hyperonService.ts          # MeTTa interpreter + native PLN deduction
 │   └── zonecog.contribution.ts    # DI service registration
 ├── test/
 │   └── browser/
