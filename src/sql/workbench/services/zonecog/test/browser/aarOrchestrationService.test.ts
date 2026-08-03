@@ -229,4 +229,329 @@ suite('AAR Orchestration Service Tests', () => {
 		assert.ok(!result.success, 'Expired task should fail');
 		assert.ok(result.error?.includes('expired'));
 	});
+
+	// --- Distributed AAR Orchestration Tests (Phase C.3: FlareCog) ---
+
+	test('should have empty remote nodes initially', () => {
+		const nodes = aarService.getRemoteNodes();
+		assert.strictEqual(nodes.length, 0);
+	});
+
+	test('should register remote cognitive node', () => {
+		const node = {
+			nodeId: 'remote-node-1',
+			nodeName: 'Remote Node 1',
+			address: 'remote-host',
+			port: 8765,
+			capabilities: ['agent', 'hypergraph'],
+		};
+
+		aarService.registerRemoteNode(node);
+		const nodes = aarService.getRemoteNodes();
+
+		assert.strictEqual(nodes.length, 1);
+		assert.strictEqual(nodes[0].nodeId, 'remote-node-1');
+		assert.strictEqual(nodes[0].status, 'unknown');
+	});
+
+	test('should not register duplicate remote nodes', () => {
+		const node = {
+			nodeId: 'remote-node-1',
+			nodeName: 'Remote Node 1',
+			address: 'remote-host',
+			port: 8765,
+			capabilities: [],
+		};
+
+		aarService.registerRemoteNode(node);
+		aarService.registerRemoteNode(node);
+
+		const nodes = aarService.getRemoteNodes();
+		assert.strictEqual(nodes.length, 1);
+	});
+
+	test('should unregister remote cognitive node', () => {
+		aarService.registerRemoteNode({
+			nodeId: 'remote-node-1',
+			nodeName: 'Remote Node 1',
+			address: 'remote-host',
+			port: 8765,
+			capabilities: [],
+		});
+
+		aarService.unregisterRemoteNode('remote-node-1');
+		const nodes = aarService.getRemoteNodes();
+		assert.strictEqual(nodes.length, 0);
+	});
+
+	test('should spawn remote agent', async () => {
+		aarService.registerRemoteNode({
+			nodeId: 'remote-node-1',
+			nodeName: 'Remote Node 1',
+			address: 'remote-host',
+			port: 8765,
+			capabilities: ['agent'],
+		});
+
+		const agent = await aarService.spawnRemoteAgent({
+			targetNodeId: 'remote-node-1',
+			agentConfig: {
+				id: 'remote-agent-1',
+				name: 'Remote Agent 1',
+				role: 'custom',
+				capabilities: ['test'],
+				active: true,
+			},
+		});
+
+		assert.ok(agent);
+		assert.strictEqual(agent.agentId, 'remote-agent-1');
+		assert.strictEqual(agent.nodeId, 'remote-node-1');
+	});
+
+	test('should return undefined when spawning agent on unknown node', async () => {
+		const agent = await aarService.spawnRemoteAgent({
+			targetNodeId: 'unknown-node',
+			agentConfig: {
+				id: 'remote-agent-1',
+				name: 'Remote Agent 1',
+				role: 'custom',
+				capabilities: ['test'],
+				active: true,
+			},
+		});
+
+		assert.strictEqual(agent, undefined);
+	});
+
+	test('should get remote agents for a node', async () => {
+		aarService.registerRemoteNode({
+			nodeId: 'remote-node-1',
+			nodeName: 'Remote Node 1',
+			address: 'remote-host',
+			port: 8765,
+			capabilities: ['agent'],
+		});
+
+		await aarService.spawnRemoteAgent({
+			targetNodeId: 'remote-node-1',
+			agentConfig: {
+				id: 'remote-agent-1',
+				name: 'Remote Agent 1',
+				role: 'custom',
+				capabilities: [],
+				active: true,
+			},
+		});
+
+		const agents = aarService.getRemoteAgents('remote-node-1');
+		assert.strictEqual(agents.length, 1);
+		assert.strictEqual(agents[0].agentId, 'remote-agent-1');
+	});
+
+	test('should migrate agent between nodes', async () => {
+		// Register two remote nodes
+		aarService.registerRemoteNode({
+			nodeId: 'node-1',
+			nodeName: 'Node 1',
+			address: 'host1',
+			port: 8765,
+			capabilities: ['agent'],
+		});
+		aarService.registerRemoteNode({
+			nodeId: 'node-2',
+			nodeName: 'Node 2',
+			address: 'host2',
+			port: 8766,
+			capabilities: ['agent'],
+		});
+
+		// Spawn agent on node-1
+		await aarService.spawnRemoteAgent({
+			targetNodeId: 'node-1',
+			agentConfig: {
+				id: 'migrating-agent',
+				name: 'Migrating Agent',
+				role: 'custom',
+				capabilities: [],
+				active: true,
+			},
+		});
+
+		// Migrate to node-2
+		const result = await aarService.migrateAgent({
+			agentId: 'migrating-agent',
+			sourceNodeId: 'node-1',
+			targetNodeId: 'node-2',
+			reason: 'load-balancing',
+		});
+
+		assert.ok(result);
+		assert.strictEqual(result.success, true);
+		assert.strictEqual(result.agentId, 'migrating-agent');
+		assert.strictEqual(result.newNodeId, 'node-2');
+	});
+
+	test('should fail migration for unknown agent', async () => {
+		aarService.registerRemoteNode({
+			nodeId: 'node-1',
+			nodeName: 'Node 1',
+			address: 'host1',
+			port: 8765,
+			capabilities: [],
+		});
+		aarService.registerRemoteNode({
+			nodeId: 'node-2',
+			nodeName: 'Node 2',
+			address: 'host2',
+			port: 8766,
+			capabilities: [],
+		});
+
+		const result = await aarService.migrateAgent({
+			agentId: 'unknown-agent',
+			sourceNodeId: 'node-1',
+			targetNodeId: 'node-2',
+			reason: 'test',
+		});
+
+		assert.ok(result);
+		assert.strictEqual(result.success, false);
+	});
+
+	test('should send message to remote agent', async () => {
+		aarService.registerRemoteNode({
+			nodeId: 'remote-node-1',
+			nodeName: 'Remote Node 1',
+			address: 'remote-host',
+			port: 8765,
+			capabilities: ['agent'],
+		});
+
+		await aarService.spawnRemoteAgent({
+			targetNodeId: 'remote-node-1',
+			agentConfig: {
+				id: 'remote-agent-1',
+				name: 'Remote Agent 1',
+				role: 'custom',
+				capabilities: [],
+				active: true,
+			},
+		});
+
+		const success = await aarService.sendDistributedMessage({
+			id: 'msg-1',
+			sourceAgentId: BUILTIN_AGENT_IDS.ORCHESTRATOR,
+			targetAgentId: 'remote-agent-1',
+			targetNodeId: 'remote-node-1',
+			payload: { action: 'test' },
+			timestamp: Date.now(),
+		});
+
+		assert.ok(success);
+	});
+
+	test('should propose consensus', async () => {
+		const result = await aarService.proposeConsensus({
+			id: 'consensus-1',
+			topic: 'test-decision',
+			options: ['option-a', 'option-b', 'option-c'],
+			deadline: Date.now() + 5000,
+			requiredQuorum: 0.5,
+		});
+
+		assert.ok(result);
+		assert.ok(result.selectedOption);
+		assert.ok(result.votes instanceof Map);
+	});
+
+	test('should vote on consensus proposal', async () => {
+		const proposal = {
+			id: 'consensus-2',
+			topic: 'another-decision',
+			options: ['yes', 'no'],
+			deadline: Date.now() + 5000,
+			requiredQuorum: 0.5,
+		};
+
+		// Start consensus
+		await aarService.proposeConsensus(proposal);
+
+		// Vote on it
+		const voted = await aarService.voteOnConsensus('consensus-2', 'yes');
+		assert.ok(voted);
+	});
+
+	test('should get distributed orchestration stats', () => {
+		aarService.registerRemoteNode({
+			nodeId: 'remote-node-1',
+			nodeName: 'Remote Node 1',
+			address: 'remote-host',
+			port: 8765,
+			capabilities: [],
+		});
+
+		const stats = aarService.getDistributedStats();
+
+		assert.strictEqual(stats.remoteNodeCount, 1);
+		assert.strictEqual(typeof stats.remoteAgentCount, 'number');
+		assert.strictEqual(typeof stats.messagesSent, 'number');
+		assert.strictEqual(typeof stats.consensusProposals, 'number');
+	});
+
+	test('should fire onDidRegisterRemoteNode event', () => {
+		let firedNode: unknown;
+		aarService.onDidRegisterRemoteNode(node => { firedNode = node; });
+
+		aarService.registerRemoteNode({
+			nodeId: 'event-test-node',
+			nodeName: 'Event Test Node',
+			address: 'event-host',
+			port: 8765,
+			capabilities: [],
+		});
+
+		assert.ok(firedNode);
+	});
+
+	test('should fire onDidSpawnRemoteAgent event', async () => {
+		let firedAgent: unknown;
+		aarService.onDidSpawnRemoteAgent(agent => { firedAgent = agent; });
+
+		aarService.registerRemoteNode({
+			nodeId: 'spawn-event-node',
+			nodeName: 'Spawn Event Node',
+			address: 'spawn-host',
+			port: 8765,
+			capabilities: ['agent'],
+		});
+
+		await aarService.spawnRemoteAgent({
+			targetNodeId: 'spawn-event-node',
+			agentConfig: {
+				id: 'spawn-event-agent',
+				name: 'Spawn Event Agent',
+				role: 'custom',
+				capabilities: [],
+				active: true,
+			},
+		});
+
+		assert.ok(firedAgent);
+	});
+
+	test('should fire onDidReachConsensus event', async () => {
+		let firedResult: unknown;
+		aarService.onDidReachConsensus(result => { firedResult = result; });
+
+		await aarService.proposeConsensus({
+			id: 'event-consensus',
+			topic: 'event-test',
+			options: ['a', 'b'],
+			deadline: Date.now() + 5000,
+			requiredQuorum: 0.5,
+		});
+
+		assert.ok(firedResult);
+	});
 });

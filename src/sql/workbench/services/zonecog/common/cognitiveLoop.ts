@@ -65,6 +65,86 @@ export interface CognitiveLoopState {
 }
 
 // ---------------------------------------------------------------------------
+// Distributed Cognitive Loop types (Phase C: FlareCog)
+// ---------------------------------------------------------------------------
+
+/**
+ * A remote cognitive node participating in the distributed loop.
+ */
+export interface DistributedLoopNode {
+	/** Node ID. */
+	nodeId: string;
+	/** Node name. */
+	nodeName: string;
+	/** Whether the node is synchronized with the cluster. */
+	synchronized: boolean;
+	/** Node's current iteration number. */
+	currentIteration: number;
+	/** Last sync timestamp. */
+	lastSyncTime: number;
+	/** Node's cognitive load (0-1). */
+	cognitiveLoad: number;
+	/** Whether the node is the cluster leader. */
+	isLeader: boolean;
+}
+
+/**
+ * Cluster-wide synchronization state.
+ */
+export interface ClusterSyncState {
+	/** Whether distributed mode is active. */
+	distributedMode: boolean;
+	/** This node's ID. */
+	localNodeId: string;
+	/** Whether this node is the cluster leader. */
+	isLeader: boolean;
+	/** Current cluster leader's node ID. */
+	leaderId: string | undefined;
+	/** All participating nodes. */
+	nodes: DistributedLoopNode[];
+	/** Cluster-wide iteration number. */
+	clusterIteration: number;
+	/** Last cluster sync timestamp. */
+	lastClusterSync: number;
+	/** Number of sync failures. */
+	syncFailures: number;
+	/** Number of successful failovers. */
+	failoversCompleted: number;
+}
+
+/**
+ * Global attention state aggregated across the cluster.
+ */
+export interface GlobalECANState {
+	/** Top salient node IDs across the cluster. */
+	globalAttentionalFocus: string[];
+	/** Per-node attention contributions. */
+	nodeContributions: Map<string, string[]>;
+	/** Global attention threshold. */
+	globalAttentionThreshold: number;
+	/** Last aggregation timestamp. */
+	lastAggregationTime: number;
+}
+
+/**
+ * Collective intelligence aggregation result.
+ */
+export interface CollectiveIntelligenceResult {
+	/** Aggregation ID. */
+	id: string;
+	/** Query or topic being aggregated. */
+	topic: string;
+	/** Per-node contributions. */
+	nodeContributions: Map<string, unknown>;
+	/** Aggregated collective result. */
+	collectiveResult: unknown;
+	/** Confidence in the collective result (0-1). */
+	confidence: number;
+	/** Aggregation timestamp. */
+	timestamp: number;
+}
+
+// ---------------------------------------------------------------------------
 // Service interface
 // ---------------------------------------------------------------------------
 
@@ -97,6 +177,15 @@ export interface ICognitiveLoopService {
 
 	/** Fired when the loop state changes (start/stop/pause). */
 	readonly onDidChangeState: Event<CognitiveLoopState>;
+
+	/** Fired when cluster sync state changes. */
+	readonly onDidChangeClusterSync: Event<ClusterSyncState>;
+
+	/** Fired when global attention is updated. */
+	readonly onDidUpdateGlobalAttention: Event<GlobalECANState>;
+
+	/** Fired when collective intelligence is aggregated. */
+	readonly onDidAggregateCollectiveIntelligence: Event<CollectiveIntelligenceResult>;
 
 	// -- Lifecycle ------------------------------------------------------------
 
@@ -148,4 +237,78 @@ export interface ICognitiveLoopService {
 	 * Reset the loop: stop if running, clear iteration history and counters.
 	 */
 	reset(): void;
+
+	// -- Distributed Cognitive Loop (Phase C: FlareCog) -----------------------
+
+	/**
+	 * Enable distributed mode and join the cognitive cluster.
+	 * @param nodeId This node's unique identifier.
+	 * @param nodeName Human-readable name for this node.
+	 */
+	enableDistributedMode(nodeId: string, nodeName: string): void;
+
+	/**
+	 * Disable distributed mode and leave the cluster.
+	 */
+	disableDistributedMode(): void;
+
+	/**
+	 * Register a remote node in the cluster.
+	 */
+	registerClusterNode(node: Omit<DistributedLoopNode, 'synchronized' | 'currentIteration' | 'lastSyncTime' | 'cognitiveLoad'>): void;
+
+	/**
+	 * Unregister a remote node from the cluster.
+	 */
+	unregisterClusterNode(nodeId: string): void;
+
+	/**
+	 * Get the current cluster sync state.
+	 */
+	getClusterSyncState(): ClusterSyncState;
+
+	/**
+	 * Synchronize loop iteration with the cluster.
+	 */
+	syncWithCluster(): Promise<void>;
+
+	/**
+	 * Propose this node as the cluster leader.
+	 */
+	proposeAsLeader(): Promise<boolean>;
+
+	/**
+	 * Handle failover when the current leader fails.
+	 */
+	handleLeaderFailover(): Promise<void>;
+
+	/**
+	 * Get the global ECAN state aggregated across the cluster.
+	 */
+	getGlobalECANState(): GlobalECANState;
+
+	/**
+	 * Contribute local attention focus to global ECAN.
+	 */
+	contributeToGlobalAttention(nodeIds: string[]): void;
+
+	/**
+	 * Aggregate collective intelligence from all cluster nodes.
+	 * @param topic The query or topic to aggregate intelligence for.
+	 * @param localContribution This node's contribution.
+	 */
+	aggregateCollectiveIntelligence(topic: string, localContribution: unknown): Promise<CollectiveIntelligenceResult>;
+
+	/**
+	 * Get distributed loop statistics.
+	 */
+	getDistributedStats(): {
+		nodeCount: number;
+		synchronizedNodeCount: number;
+		clusterIterations: number;
+		syncFailures: number;
+		failoversCompleted: number;
+		globalAttentionUpdates: number;
+		collectiveAggregations: number;
+	};
 }
