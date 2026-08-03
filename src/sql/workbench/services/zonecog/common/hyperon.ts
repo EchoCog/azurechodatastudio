@@ -172,7 +172,7 @@ export interface IHyperonService {
 
 	/**
 	 * Execute the PLN deduction rule natively in MeTTa over the current
-	 * hypergraph (A→B, B→C ⊢ A→C with the full strength formula using node
+	 * hypergraph (A→B, B→C |- A→C with the full strength formula using node
 	 * salience priors), persist each surviving conclusion as an `Inferred`
 	 * hypergraph link, and register its truth value with the PLN reasoning
 	 * service so subsequent URE passes build on the MeTTa-derived results.

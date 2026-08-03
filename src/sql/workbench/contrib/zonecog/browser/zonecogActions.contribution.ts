@@ -1074,6 +1074,91 @@ class ZoneCogPersistenceStatsAction extends Action2 {
 	}
 }
 
+/**
+ * Action to archive low-salience nodes out of the live hypergraph into
+ * cold-tier IndexedDB storage.
+ */
+class ZoneCogPersistenceArchiveAction extends Action2 {
+
+	static ID = 'zonecog.persistenceArchive';
+	constructor() {
+		super({
+			id: ZoneCogPersistenceArchiveAction.ID,
+			title: { value: localize('zonecog.persistenceArchive', 'Archive Low-Salience Nodes'), original: 'Archive Low-Salience Nodes' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.archive,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+
+		try {
+			const result = await persistenceService.archiveLowSalienceNodes();
+			notificationService.info(localize('zonecog.persistenceArchived',
+				'Archived {0} node(s) and {1} link(s) to cold storage.',
+				result.archivedNodeCount,
+				result.archivedLinkCount
+			));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceArchiveError',
+				'Failed to archive low-salience nodes: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to lazily restore a single archived node back into the live hypergraph.
+ */
+class ZoneCogPersistenceRestoreArchivedAction extends Action2 {
+
+	static ID = 'zonecog.persistenceRestoreArchived';
+	constructor() {
+		super({
+			id: ZoneCogPersistenceRestoreArchivedAction.ID,
+			title: { value: localize('zonecog.persistenceRestoreArchived', 'Restore Archived Node'), original: 'Restore Archived Node' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.desktopDownload,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		try {
+			const archived = await persistenceService.listArchivedNodes();
+			if (archived.length === 0) {
+				notificationService.info(localize('zonecog.persistenceNoArchivedNodes', 'No nodes are currently archived.'));
+				return;
+			}
+
+			const pick = await quickInputService.pick(
+				archived.map(n => ({ label: n.id, description: `${n.node_type} · salience ${n.salience_score.toFixed(3)}`, detail: n.content })),
+				{ placeHolder: localize('zonecog.persistenceRestoreArchivedPick', 'Select an archived node to restore') }
+			);
+			if (!pick) { return; }
+
+			const restored = await persistenceService.restoreArchivedNode(pick.label);
+			if (!restored) {
+				notificationService.info(localize('zonecog.persistenceRestoreArchivedNotFound', 'Node "{0}" is no longer archived.', pick.label));
+				return;
+			}
+			notificationService.info(localize('zonecog.persistenceRestoredArchived',
+				'Restored node "{0}" to the live hypergraph.', restored.id));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceRestoreArchivedError',
+				'Failed to restore archived node: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
 // Register all actions
 registerAction2(ZoneCogTestAction);
 registerAction2(ZoneCogToggleThinkingAction);
@@ -1099,6 +1184,8 @@ registerAction2(ZoneCogAARArenaStatusAction);
 registerAction2(ZoneCogPersistenceSaveAction);
 registerAction2(ZoneCogPersistenceLoadAction);
 registerAction2(ZoneCogPersistenceStatsAction);
+registerAction2(ZoneCogPersistenceArchiveAction);
+registerAction2(ZoneCogPersistenceRestoreArchivedAction);
 
 // =============================================================================
 // Phase 5 actions - Schema Perception, Aphrodite Engine
