@@ -413,11 +413,13 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 
 	async clearStorage(): Promise<void> {
 		const db = await this._getDb();
-		const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_SNAPSHOTS], 'readwrite');
+		const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_SNAPSHOTS, STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
 		await Promise.all([
 			idbClear(tx.objectStore(STORE_NODES)),
 			idbClear(tx.objectStore(STORE_LINKS)),
 			idbClear(tx.objectStore(STORE_SNAPSHOTS)),
+			idbClear(tx.objectStore(STORE_ARCHIVE_NODES)),
+			idbClear(tx.objectStore(STORE_ARCHIVE_LINKS)),
 		]);
 		await new Promise<void>((resolve, reject) => {
 			tx.oncomplete = () => resolve();
@@ -545,11 +547,22 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			}
 		}
 
-		const tx = db.transaction([STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
+		// Move the records: write into the cold tier and delete from the hot
+		// tier in the same transaction, so a later load() (which rebuilds
+		// memory from the hot IndexedDB stores) can't resurrect them.
+		const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
+		const nodeStore = tx.objectStore(STORE_NODES);
+		const linkStore = tx.objectStore(STORE_LINKS);
 		const archiveNodeStore = tx.objectStore(STORE_ARCHIVE_NODES);
 		const archiveLinkStore = tx.objectStore(STORE_ARCHIVE_LINKS);
-		for (const node of toArchive) { await idbPut(archiveNodeStore, node); }
-		for (const link of linksToArchive) { await idbPut(archiveLinkStore, link); }
+		for (const node of toArchive) {
+			await idbPut(archiveNodeStore, node);
+			await idbDelete(nodeStore, node.id);
+		}
+		for (const link of linksToArchive) {
+			await idbPut(archiveLinkStore, link);
+			await idbDelete(linkStore, link.id);
+		}
 		await new Promise<void>((resolve, reject) => {
 			tx.oncomplete = () => resolve();
 			tx.onerror = () => reject(tx.error);
@@ -577,6 +590,17 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			if (link) { links.push(link); }
 		}
 
+		// A link is only safe to drop from cold storage once no *other*
+		// still-archived node references it - otherwise that other node
+		// would lose its only durable copy of a link it hasn't been
+		// restored alongside.
+		const otherArchivedNodes = (await idbGetAll<HypergraphNode>(db, STORE_ARCHIVE_NODES)).filter(n => n.id !== nodeId);
+		const stillReferencedInArchive = new Set<string>();
+		for (const other of otherArchivedNodes) {
+			for (const lid of other.links) { stillReferencedInArchive.add(lid); }
+		}
+		const linksToDropFromArchive = links.filter(l => !stillReferencedInArchive.has(l.id));
+
 		this.hypergraphStore.addNode(node);
 		for (const link of links) {
 			if (!this.hypergraphStore.getLink(link.id)) {
@@ -584,15 +608,24 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			}
 		}
 
-		const tx = db.transaction([STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
+		// Write the restored records into the hot tier and remove the node
+		// (plus any link no other archived node still needs) from the cold
+		// tier, so the restore is durable without requiring a separate
+		// save() call before the next load().
+		const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
+		await idbPut(tx.objectStore(STORE_NODES), node);
+		for (const link of links) { await idbPut(tx.objectStore(STORE_LINKS), link); }
 		await idbDelete(tx.objectStore(STORE_ARCHIVE_NODES), nodeId);
-		for (const link of links) { await idbDelete(tx.objectStore(STORE_ARCHIVE_LINKS), link.id); }
+		for (const link of linksToDropFromArchive) { await idbDelete(tx.objectStore(STORE_ARCHIVE_LINKS), link.id); }
 		await new Promise<void>((resolve, reject) => {
 			tx.oncomplete = () => resolve();
 			tx.onerror = () => reject(tx.error);
 		});
 
-		this.logService.info(`HypergraphPersistenceService: restored archived node "${nodeId}" (${links.length} link(s))`);
+		this.logService.info(
+			`HypergraphPersistenceService: restored archived node "${nodeId}" ` +
+			`(${links.length} link(s), ${linksToDropFromArchive.length} removed from cold storage)`
+		);
 		this.membraneService.recordActivity('autonomic');
 		return node;
 	}

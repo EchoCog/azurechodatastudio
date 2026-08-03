@@ -530,6 +530,68 @@ suite('Hypergraph Persistence Service Tests', () => {
 		const stats = await persistenceService.getStats();
 		assert.strictEqual(stats.archivedNodeCount, 1);
 	});
+
+	test('should remove archived nodes and links from the hot store so load() does not resurrect them', async () => {
+		hypergraphStore.addNode({
+			id: 'hot-then-cold', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addNode({
+			id: 'stays-hot', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.9,
+		});
+		await persistenceService.save();
+
+		await persistenceService.archiveLowSalienceNodes(0.05);
+
+		hypergraphStore.clear();
+		const loaded = await persistenceService.load();
+		assert.ok(loaded);
+		assert.strictEqual(hypergraphStore.getNode('hot-then-cold'), undefined, 'archived node must not resurrect from the hot store');
+		assert.ok(hypergraphStore.getNode('stays-hot'), 'node above the threshold should still load normally');
+	});
+
+	test('should persist a restored node into the hot store without requiring an explicit save', async () => {
+		hypergraphStore.addNode({
+			id: 'durable-restore', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.01,
+		});
+		await persistenceService.archiveLowSalienceNodes(0.05);
+		await persistenceService.restoreArchivedNode('durable-restore');
+
+		hypergraphStore.clear();
+		const loaded = await persistenceService.load();
+		assert.ok(loaded);
+		assert.ok(hypergraphStore.getNode('durable-restore'), 'restored node should survive a load() without an intervening save()');
+	});
+
+	test('should clear archived nodes and links together with the hot tier', async () => {
+		hypergraphStore.addNode({
+			id: 'clear-cold', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.01,
+		});
+		await persistenceService.archiveLowSalienceNodes(0.05);
+
+		await persistenceService.clearStorage();
+
+		const archived = await persistenceService.listArchivedNodes();
+		assert.strictEqual(archived.length, 0);
+		assert.strictEqual(mockDb.getStore('archiveNodes').getSize(), 0);
+	});
+
+	test('should keep a cold link archived while another archived node still references it', async () => {
+		hypergraphStore.addNode({
+			id: 'shared-a', node_type: 'T', content: '', links: ['shared-link'], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addNode({
+			id: 'shared-b', node_type: 'T', content: '', links: ['shared-link'], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addLink({ id: 'shared-link', link_type: 'L', outgoing: ['shared-a', 'shared-b'], metadata: {} });
+		await persistenceService.archiveLowSalienceNodes(0.05);
+
+		await persistenceService.restoreArchivedNode('shared-a');
+		assert.strictEqual(mockDb.getStore('archiveLinks').getSize(), 1, 'link should stay archived while shared-b still needs it');
+
+		await persistenceService.restoreArchivedNode('shared-b');
+		assert.strictEqual(mockDb.getStore('archiveLinks').getSize(), 0, 'link should be dropped from cold storage once no archived node needs it');
+		assert.ok(hypergraphStore.getLink('shared-link'), 'both endpoints restored, link should be live');
+	});
 });
 
 // ---------------------------------------------------------------------------
