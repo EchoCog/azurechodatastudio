@@ -70,6 +70,24 @@ class MockIDBObjectStore {
 		return req;
 	}
 
+	get(key: string): { onsuccess: (() => void) | null; onerror: ((e: unknown) => void) | null; result: IDBRecord | undefined } {
+		const result = this._data.get(String(key));
+		const req = {
+			onsuccess: null as (() => void) | null,
+			onerror: null as ((e: unknown) => void) | null,
+			result,
+		};
+		scheduleCallback(() => req.onsuccess?.());
+		return req;
+	}
+
+	delete(key: string): { onsuccess: (() => void) | null; onerror: ((e: unknown) => void) | null } {
+		this._data.delete(String(key));
+		const req = { onsuccess: null as (() => void) | null, onerror: null as ((e: unknown) => void) | null };
+		scheduleCallback(() => req.onsuccess?.());
+		return req;
+	}
+
 	count(): { onsuccess: (() => void) | null; onerror: ((e: unknown) => void) | null; result: number } {
 		const result = this._data.size;
 		const req = {
@@ -126,6 +144,8 @@ class MockIDBDatabase {
 		['nodes', new MockIDBObjectStore('id')],
 		['links', new MockIDBObjectStore('id')],
 		['snapshots', new MockIDBObjectStore('id')],
+		['archiveNodes', new MockIDBObjectStore('id')],
+		['archiveLinks', new MockIDBObjectStore('id')],
 	]);
 
 	objectStoreNames = { contains: (_name: string) => true };
@@ -416,6 +436,99 @@ suite('Hypergraph Persistence Service Tests', () => {
 		persistenceService.exportToCypher();
 
 		assert.ok(membraneService.getActivity('autonomic') > before);
+	});
+
+	// --- Tiered storage (hybrid hot/cold hypergraph) tests ---
+
+	test('should archive nodes below the salience threshold and remove them from the live store', async () => {
+		hypergraphStore.addNode({
+			id: 'cold-node', node_type: 'T', content: 'stale', links: [], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addNode({
+			id: 'hot-node', node_type: 'T', content: 'active', links: [], metadata: {}, salience_score: 0.9,
+		});
+
+		const result = await persistenceService.archiveLowSalienceNodes(0.05);
+
+		assert.strictEqual(result.archivedNodeCount, 1);
+		assert.strictEqual(result.archivedLinkCount, 0);
+		assert.strictEqual(hypergraphStore.getNode('cold-node'), undefined);
+		assert.ok(hypergraphStore.getNode('hot-node'), 'hot node should remain live');
+
+		const archived = await persistenceService.listArchivedNodes();
+		assert.strictEqual(archived.length, 1);
+		assert.strictEqual(archived[0].id, 'cold-node');
+	});
+
+	test('should archive a link only when every outgoing node is also archived', async () => {
+		hypergraphStore.addNode({
+			id: 'cold-a', node_type: 'T', content: '', links: ['fully-cold'], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addNode({
+			id: 'cold-b', node_type: 'T', content: '', links: ['fully-cold'], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addNode({
+			id: 'hot-c', node_type: 'T', content: '', links: ['partially-hot'], metadata: {}, salience_score: 0.9,
+		});
+		hypergraphStore.addNode({
+			id: 'cold-d', node_type: 'T', content: '', links: ['partially-hot'], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addLink({ id: 'fully-cold', link_type: 'L', outgoing: ['cold-a', 'cold-b'], metadata: {} });
+		hypergraphStore.addLink({ id: 'partially-hot', link_type: 'L', outgoing: ['hot-c', 'cold-d'], metadata: {} });
+
+		const result = await persistenceService.archiveLowSalienceNodes(0.05);
+
+		assert.strictEqual(result.archivedNodeCount, 3);
+		assert.strictEqual(result.archivedLinkCount, 1);
+		assert.ok(hypergraphStore.getLink('fully-cold') === undefined, 'link fully within the archived set should be archived');
+		assert.ok(hypergraphStore.getLink('partially-hot'), 'link with a remaining hot endpoint should stay live');
+	});
+
+	test('should report zero archived when nothing is below the threshold', async () => {
+		hypergraphStore.addNode({
+			id: 'hot-only', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.9,
+		});
+
+		const result = await persistenceService.archiveLowSalienceNodes(0.05);
+		assert.strictEqual(result.archivedNodeCount, 0);
+		assert.strictEqual(result.archivedLinkCount, 0);
+	});
+
+	test('should lazily restore a single archived node and its own links back into the live store', async () => {
+		hypergraphStore.addNode({
+			id: 'r-a', node_type: 'T', content: '', links: ['r-link'], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addNode({
+			id: 'r-b', node_type: 'T', content: '', links: ['r-link'], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addLink({ id: 'r-link', link_type: 'L', outgoing: ['r-a', 'r-b'], metadata: {} });
+		await persistenceService.archiveLowSalienceNodes(0.05);
+		assert.strictEqual(hypergraphStore.getNode('r-a'), undefined);
+
+		const restored = await persistenceService.restoreArchivedNode('r-a');
+
+		assert.ok(restored);
+		assert.strictEqual(restored!.id, 'r-a');
+		assert.ok(hypergraphStore.getNode('r-a'), 'node should be back in the live store');
+		assert.ok(hypergraphStore.getLink('r-link'), 'the restored node\'s own link should come back with it');
+
+		const archived = await persistenceService.listArchivedNodes();
+		assert.ok(!archived.some(n => n.id === 'r-a'), 'restored node should be removed from cold storage');
+	});
+
+	test('should return undefined restoring a node id that was never archived', async () => {
+		const restored = await persistenceService.restoreArchivedNode('never-archived');
+		assert.strictEqual(restored, undefined);
+	});
+
+	test('should include archived node count in persistence stats', async () => {
+		hypergraphStore.addNode({
+			id: 'stat-cold', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.01,
+		});
+		await persistenceService.archiveLowSalienceNodes(0.05);
+
+		const stats = await persistenceService.getStats();
+		assert.strictEqual(stats.archivedNodeCount, 1);
 	});
 });
 

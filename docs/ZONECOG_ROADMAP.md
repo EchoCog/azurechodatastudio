@@ -270,6 +270,15 @@
 - [ ] FlareCog distributed cognitive processing (Phase C) — cross-machine peer discovery, distributed hypergraph federation, and multi-node AAR orchestration remain future work; today's federation/collaboration services are same-machine-only via `BroadcastChannel` (see §3.4, §4.4).
 - [x] Autognosis self-monitoring capabilities — `IAutognosisService`/`AutognosisService` (meta-cognitive layer that synthesizes membrane triad health, embodiment proprioception, and cognitive analytics into a first-person `SelfAssessment` with a verdict, self-confidence score, and detected anomalies; self-wires to `IZoneCogService.onDidProcessQuery` so every processed query triggers a fresh assessment, persisted as `SelfAssessment` hypergraph nodes; `Zone-Cog: Perform Self-Assessment` and `Zone-Cog: Show Self-Assessment History` Command Palette actions)
 
+### 5.4 Enhanced Persistence Layer (Phase E, issue #81)
+
+- [x] Neo4j Cypher export — `HypergraphPersistenceService.exportToCypher()` / `nodesAndLinksToCypher()`
+- [x] OpenCog AtomSpace Scheme export — `HypergraphPersistenceService.exportToAtomSpaceScheme()` / `nodesAndLinksToAtomSpaceScheme()`
+- [x] Tiered (hot/cold) storage with automatic archival of low-salience nodes — `archiveLowSalienceNodes()` moves nodes below a salience threshold (and any links whose every endpoint is also archived) from the live `IHypergraphStore` into a new IndexedDB cold tier (`archiveNodes`/`archiveLinks` stores, DB version 2), shrinking the in-memory working set for large graphs
+- [x] Lazy loading for large graphs — `restoreArchivedNode()` pulls a single archived node (and its own directly-referenced links) back into the live hypergraph on demand, without materializing the rest of the cold tier; `listArchivedNodes()` browses cold-tier contents without loading them. Exposed via `Zone-Cog: Archive Low-Salience Nodes` / `Zone-Cog: Restore Archived Node` Command Palette actions
+- [ ] RocksDB backend option (`E.1`) — would require a new WASM RocksDB dependency and build-system integration; the roadmap's own risk assessment already earmarks IndexedDB as the fallback, so this remains future work
+- [ ] Incremental backup/restore and cloud storage integration (remainder of `E.3`) — future work
+
 ---
 
 ## Dependencies & Prerequisites

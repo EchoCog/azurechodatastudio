@@ -7,6 +7,7 @@ import {
 	IHypergraphPersistenceService,
 	HypergraphSnapshot,
 	PersistenceStats,
+	ArchiveStats,
 } from 'sql/workbench/services/zonecog/common/hypergraphPersistence';
 import { IHypergraphStore, HypergraphNode, HypergraphLink, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { Disposable } from 'vs/base/common/lifecycle';
@@ -18,13 +19,20 @@ import { ILogService } from 'vs/platform/log/common/log';
 // ---------------------------------------------------------------------------
 
 const DB_NAME = 'zonecog-hypergraph';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const STORE_NODES = 'nodes';
 const STORE_LINKS = 'links';
 const STORE_SNAPSHOTS = 'snapshots';
+/** Cold tier: nodes archived out of the live hypergraph by salience. */
+const STORE_ARCHIVE_NODES = 'archiveNodes';
+/** Cold tier: links archived alongside fully-archived nodes. */
+const STORE_ARCHIVE_LINKS = 'archiveLinks';
 
 const MIN_AUTO_SAVE_INTERVAL_MS = 10_000;
+
+/** Nodes with salience strictly below this are eligible for archival by default. */
+const DEFAULT_ARCHIVE_SALIENCE_THRESHOLD = 0.05;
 
 /**
  * Rough per-record size estimates used for `estimatedBytes` in storage stats.
@@ -55,6 +63,12 @@ function openDatabase(): Promise<IDBDatabase> {
 			if (!db.objectStoreNames.contains(STORE_SNAPSHOTS)) {
 				db.createObjectStore(STORE_SNAPSHOTS, { keyPath: 'id' });
 			}
+			if (!db.objectStoreNames.contains(STORE_ARCHIVE_NODES)) {
+				db.createObjectStore(STORE_ARCHIVE_NODES, { keyPath: 'id' });
+			}
+			if (!db.objectStoreNames.contains(STORE_ARCHIVE_LINKS)) {
+				db.createObjectStore(STORE_ARCHIVE_LINKS, { keyPath: 'id' });
+			}
 		};
 		req.onsuccess = () => resolve(req.result);
 		req.onerror = () => reject(req.error ?? new Error('Failed to open IndexedDB'));
@@ -83,6 +97,24 @@ function idbGetAll<T>(db: IDBDatabase, storeName: string): Promise<T[]> {
 		const store = tx.objectStore(storeName);
 		const req = store.getAll();
 		req.onsuccess = () => resolve(req.result as T[]);
+		req.onerror = () => reject(req.error);
+	});
+}
+
+function idbGet<T>(db: IDBDatabase, storeName: string, key: IDBValidKey): Promise<T | undefined> {
+	return new Promise<T | undefined>((resolve, reject) => {
+		const tx = db.transaction(storeName, 'readonly');
+		const store = tx.objectStore(storeName);
+		const req = store.get(key);
+		req.onsuccess = () => resolve(req.result as T | undefined);
+		req.onerror = () => reject(req.error);
+	});
+}
+
+function idbDelete(store: IDBObjectStore, key: IDBValidKey): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
+		const req = store.delete(key);
+		req.onsuccess = () => resolve();
 		req.onerror = () => reject(req.error);
 	});
 }
@@ -232,10 +264,12 @@ export function nodesAndLinksToAtomSpaceScheme(nodes: ReadonlyArray<HypergraphNo
  * the browser's built-in IndexedDB for durable cross-session persistence.
  *
  * IndexedDB schema:
- *   DB: "zonecog-hypergraph" (version 1)
- *   - nodes     -> HypergraphNode records keyed by id
- *   - links     -> HypergraphLink records keyed by id
- *   - snapshots -> HypergraphSnapshot metadata keyed by id
+ *   DB: "zonecog-hypergraph" (version 2)
+ *   - nodes        -> HypergraphNode records keyed by id (hot tier)
+ *   - links        -> HypergraphLink records keyed by id (hot tier)
+ *   - snapshots    -> HypergraphSnapshot metadata keyed by id
+ *   - archiveNodes -> HypergraphNode records keyed by id (cold tier)
+ *   - archiveLinks -> HypergraphLink records keyed by id (cold tier)
  */
 export class HypergraphPersistenceService extends Disposable implements IHypergraphPersistenceService {
 
@@ -440,14 +474,16 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 				lastSaveTime: this._lastSaveTime,
 				lastLoadTime: this._lastLoadTime,
 				estimatedBytes: 0,
+				archivedNodeCount: 0,
 			};
 		}
 
 		const db = await this._getDb();
-		const [nodeCount, linkCount, snapshotCount] = await Promise.all([
+		const [nodeCount, linkCount, snapshotCount, archivedNodeCount] = await Promise.all([
 			idbCount(db, STORE_NODES),
 			idbCount(db, STORE_LINKS),
 			idbCount(db, STORE_SNAPSHOTS),
+			idbCount(db, STORE_ARCHIVE_NODES),
 		]);
 
 		// Rough size estimate based on average record sizes
@@ -461,6 +497,7 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			lastSaveTime: this._lastSaveTime,
 			lastLoadTime: this._lastLoadTime,
 			estimatedBytes,
+			archivedNodeCount,
 		};
 	}
 
@@ -478,6 +515,91 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 		const { nodes, links } = this._collectGraph();
 		this.membraneService.recordActivity('autonomic');
 		return nodesAndLinksToAtomSpaceScheme(nodes, links);
+	}
+
+	// -------------------------------------------------------------------------
+	// Tiered storage (hybrid hot/cold hypergraph)
+	// -------------------------------------------------------------------------
+
+	async archiveLowSalienceNodes(threshold = DEFAULT_ARCHIVE_SALIENCE_THRESHOLD): Promise<ArchiveStats> {
+		const db = await this._getDb();
+		const toArchive = this.hypergraphStore.getAllNodes().filter(n => n.salience_score < threshold);
+		if (toArchive.length === 0) {
+			return { archivedNodeCount: 0, archivedLinkCount: 0 };
+		}
+
+		const archiveIds = new Set(toArchive.map(n => n.id));
+
+		// Only archive a link when every one of its outgoing nodes is also
+		// being archived in this pass, so links with a remaining hot endpoint
+		// stay live rather than dangling.
+		const candidateLinkIds = new Set<string>();
+		for (const node of toArchive) {
+			for (const lid of node.links) { candidateLinkIds.add(lid); }
+		}
+		const linksToArchive: HypergraphLink[] = [];
+		for (const lid of candidateLinkIds) {
+			const link = this.hypergraphStore.getLink(lid);
+			if (link && link.outgoing.every(id => archiveIds.has(id))) {
+				linksToArchive.push(link);
+			}
+		}
+
+		const tx = db.transaction([STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
+		const archiveNodeStore = tx.objectStore(STORE_ARCHIVE_NODES);
+		const archiveLinkStore = tx.objectStore(STORE_ARCHIVE_LINKS);
+		for (const node of toArchive) { await idbPut(archiveNodeStore, node); }
+		for (const link of linksToArchive) { await idbPut(archiveLinkStore, link); }
+		await new Promise<void>((resolve, reject) => {
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(tx.error);
+		});
+
+		for (const link of linksToArchive) { this.hypergraphStore.removeLink(link.id); }
+		for (const node of toArchive) { this.hypergraphStore.removeNode(node.id); }
+
+		this.logService.info(
+			`HypergraphPersistenceService: archived ${toArchive.length} node(s), ` +
+			`${linksToArchive.length} link(s) below salience ${threshold}`
+		);
+		this.membraneService.recordActivity('autonomic');
+		return { archivedNodeCount: toArchive.length, archivedLinkCount: linksToArchive.length };
+	}
+
+	async restoreArchivedNode(nodeId: string): Promise<HypergraphNode | undefined> {
+		const db = await this._getDb();
+		const node = await idbGet<HypergraphNode>(db, STORE_ARCHIVE_NODES, nodeId);
+		if (!node) { return undefined; }
+
+		const links: HypergraphLink[] = [];
+		for (const linkId of node.links) {
+			const link = await idbGet<HypergraphLink>(db, STORE_ARCHIVE_LINKS, linkId);
+			if (link) { links.push(link); }
+		}
+
+		this.hypergraphStore.addNode(node);
+		for (const link of links) {
+			if (!this.hypergraphStore.getLink(link.id)) {
+				this.hypergraphStore.addLink(link);
+			}
+		}
+
+		const tx = db.transaction([STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
+		await idbDelete(tx.objectStore(STORE_ARCHIVE_NODES), nodeId);
+		for (const link of links) { await idbDelete(tx.objectStore(STORE_ARCHIVE_LINKS), link.id); }
+		await new Promise<void>((resolve, reject) => {
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(tx.error);
+		});
+
+		this.logService.info(`HypergraphPersistenceService: restored archived node "${nodeId}" (${links.length} link(s))`);
+		this.membraneService.recordActivity('autonomic');
+		return node;
+	}
+
+	async listArchivedNodes(): Promise<HypergraphNode[]> {
+		const db = await this._getDb();
+		return idbGetAll<HypergraphNode>(db, STORE_ARCHIVE_NODES);
 	}
 
 	// -------------------------------------------------------------------------

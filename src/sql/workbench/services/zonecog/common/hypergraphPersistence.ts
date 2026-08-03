@@ -5,6 +5,7 @@
 
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { Event } from 'vs/base/common/event';
+import { HypergraphNode } from 'sql/workbench/services/zonecog/common/zonecogService';
 
 export const IHypergraphPersistenceService = createDecorator<IHypergraphPersistenceService>('hypergraphPersistenceService');
 
@@ -46,6 +47,19 @@ export interface PersistenceStats {
 	lastLoadTime: number;
 	/** Estimated storage size in bytes (best-effort). */
 	estimatedBytes: number;
+	/** Number of nodes currently held in cold-tier archive storage. */
+	archivedNodeCount: number;
+}
+
+/**
+ * Result of an {@link IHypergraphPersistenceService.archiveLowSalienceNodes}
+ * pass.
+ */
+export interface ArchiveStats {
+	/** Number of nodes moved from the live hypergraph into cold storage. */
+	archivedNodeCount: number;
+	/** Number of links moved alongside them (every outgoing id also archived). */
+	archivedLinkCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +179,36 @@ export interface IHypergraphPersistenceService {
 	 * `ConceptNode` references to its outgoing node ids.
 	 */
 	exportToAtomSpaceScheme(): string;
+
+	// -- Tiered storage (hybrid hot/cold hypergraph) --------------------------
+
+	/**
+	 * Move nodes whose `salience_score` is below `threshold` out of the live
+	 * in-memory hypergraph and into cold-tier IndexedDB storage, shrinking
+	 * the working set for large graphs. A link is archived alongside its
+	 * nodes only when every one of its `outgoing` ids is also being archived
+	 * in the same pass; links with a remaining hot endpoint are left live.
+	 * Archived nodes/links are removed from the in-memory `IHypergraphStore`
+	 * but remain durably retrievable via {@link restoreArchivedNode}.
+	 *
+	 * @param threshold Salience cutoff, exclusive. Defaults to a low,
+	 *   service-defined constant if omitted.
+	 */
+	archiveLowSalienceNodes(threshold?: number): Promise<ArchiveStats>;
+
+	/**
+	 * Lazily restore a single archived node - and any links archived
+	 * alongside it that this node itself references - back into the live
+	 * in-memory hypergraph, without loading the rest of the cold tier.
+	 * @returns The restored node, or undefined if no archived node has this id.
+	 */
+	restoreArchivedNode(nodeId: string): Promise<HypergraphNode | undefined>;
+
+	/**
+	 * List all archived (cold-tier) node records without loading them into
+	 * the live hypergraph.
+	 */
+	listArchivedNodes(): Promise<HypergraphNode[]>;
 
 	/**
 	 * Dispose of the service and release any resources.
