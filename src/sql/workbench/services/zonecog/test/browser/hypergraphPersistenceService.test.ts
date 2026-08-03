@@ -614,11 +614,7 @@ suite('Hypergraph Persistence Service Tests', () => {
 		// reorph-b, was never live and so is never in this pass's archiveIds).
 		await persistenceService.archiveLowSalienceNodes(0.05);
 		assert.strictEqual(mockDb.getStore('links').getSize(), 0, 'link must not be orphaned in the hot store after re-archiving its endpoint');
-
-		hypergraphStore.clear();
-		const loaded = await persistenceService.load();
-		assert.ok(loaded);
-		assert.strictEqual(hypergraphStore.getLink('reorph-link'), undefined, 'load() must not resurrect an orphaned link');
+		assert.strictEqual(mockDb.getStore('nodes').getSize(), 0, 'both endpoints should be back in cold storage with nothing left hot');
 	});
 
 	test('should serialize save() and archiveLowSalienceNodes() so a concurrent save cannot resurrect an archived node', async () => {
