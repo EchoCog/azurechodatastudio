@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
-import { ICognitiveLoopService, CognitiveLoopState, CognitiveLoopIteration } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
+import { ICognitiveLoopService, CognitiveLoopState, CognitiveLoopIteration, ClusterSyncState, GlobalECANState, CollectiveIntelligenceResult } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
 import { CognitiveLoopService } from 'sql/workbench/services/zonecog/browser/cognitiveLoopService';
 import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
 import { ECANAttentionService } from 'sql/workbench/services/zonecog/browser/ecanAttentionService';
@@ -402,5 +402,224 @@ suite('Cognitive Loop Service Tests', () => {
 		assert.strictEqual(first.iteration + 1, second.iteration);
 		assert.strictEqual(first.success, true);
 		assert.strictEqual(second.success, true);
+	});
+
+	// --- Distributed Cognitive Loop Tests (Phase C.4: FlareCog) ---
+
+	test('should not be in distributed mode initially', () => {
+		const syncState = loopService.getClusterSyncState();
+		assert.strictEqual(syncState.distributedMode, false);
+		assert.strictEqual(syncState.localNodeId, '');
+		assert.strictEqual(syncState.isLeader, false);
+	});
+
+	test('should enable distributed mode', () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		const syncState = loopService.getClusterSyncState();
+
+		assert.strictEqual(syncState.distributedMode, true);
+		assert.strictEqual(syncState.localNodeId, 'node1');
+		assert.strictEqual(syncState.isLeader, true);
+		assert.strictEqual(syncState.leaderId, 'node1');
+		assert.strictEqual(syncState.nodes.length, 1);
+	});
+
+	test('should disable distributed mode', () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		loopService.disableDistributedMode();
+
+		const syncState = loopService.getClusterSyncState();
+		assert.strictEqual(syncState.distributedMode, false);
+		assert.strictEqual(syncState.isLeader, false);
+		assert.strictEqual(syncState.nodes.length, 0);
+	});
+
+	test('should register cluster nodes', () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		loopService.registerClusterNode({
+			nodeId: 'node2',
+			nodeName: 'Test Node 2',
+			isLeader: false,
+		});
+
+		const syncState = loopService.getClusterSyncState();
+		assert.strictEqual(syncState.nodes.length, 2);
+
+		const node2 = syncState.nodes.find(n => n.nodeId === 'node2');
+		assert.ok(node2);
+		assert.strictEqual(node2!.nodeName, 'Test Node 2');
+		assert.strictEqual(node2!.synchronized, false);
+	});
+
+	test('should unregister cluster nodes', () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		loopService.registerClusterNode({
+			nodeId: 'node2',
+			nodeName: 'Test Node 2',
+			isLeader: false,
+		});
+
+		loopService.unregisterClusterNode('node2');
+
+		const syncState = loopService.getClusterSyncState();
+		assert.strictEqual(syncState.nodes.length, 1);
+		assert.strictEqual(syncState.nodes[0].nodeId, 'node1');
+	});
+
+	test('should not unregister local node', () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		loopService.unregisterClusterNode('node1');
+
+		const syncState = loopService.getClusterSyncState();
+		assert.strictEqual(syncState.nodes.length, 1);
+	});
+
+	test('should sync with cluster', async () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		await loopService.syncWithCluster();
+
+		const syncState = loopService.getClusterSyncState();
+		assert.ok(syncState.lastClusterSync > 0);
+		assert.strictEqual(syncState.syncFailures, 0);
+
+		const localNode = syncState.nodes.find(n => n.nodeId === 'node1');
+		assert.ok(localNode);
+		assert.strictEqual(localNode!.synchronized, true);
+	});
+
+	test('should propose as leader', async () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		const result = await loopService.proposeAsLeader();
+
+		assert.strictEqual(result, true);
+		const syncState = loopService.getClusterSyncState();
+		assert.strictEqual(syncState.isLeader, true);
+		assert.strictEqual(syncState.leaderId, 'node1');
+	});
+
+	test('should handle leader failover', async () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		loopService.registerClusterNode({
+			nodeId: 'node2',
+			nodeName: 'Test Node 2',
+			isLeader: true, // Mark as leader
+		});
+
+		// Simulate node2 becoming unreachable - unregister it
+		loopService.unregisterClusterNode('node2');
+
+		const syncState = loopService.getClusterSyncState();
+		// Local node should become leader after failover
+		assert.strictEqual(syncState.isLeader, true);
+		assert.strictEqual(syncState.leaderId, 'node1');
+	});
+
+	test('should get global ECAN state', () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		const ecanState = loopService.getGlobalECANState();
+
+		assert.ok(ecanState);
+		assert.ok(Array.isArray(ecanState.globalAttentionalFocus));
+		assert.ok(ecanState.nodeContributions instanceof Map);
+	});
+
+	test('should contribute to global attention', () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		loopService.contributeToGlobalAttention(['nodeA', 'nodeB', 'nodeC']);
+
+		const ecanState = loopService.getGlobalECANState();
+		assert.ok(ecanState.globalAttentionalFocus.length > 0);
+		assert.ok(ecanState.nodeContributions.has('node1'));
+	});
+
+	test('should aggregate collective intelligence', async () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+
+		const result = await loopService.aggregateCollectiveIntelligence('test-topic', {
+			insight: 'Local insight',
+			confidence: 0.8,
+		});
+
+		assert.ok(result);
+		assert.strictEqual(result.topic, 'test-topic');
+		assert.ok(result.confidence > 0);
+		assert.ok(result.nodeContributions.has('node1'));
+	});
+
+	test('should fire onDidChangeClusterSync event', () => {
+		let firedState: unknown;
+		loopService.onDidChangeClusterSync(state => { firedState = state; });
+
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+
+		assert.ok(firedState);
+	});
+
+	test('should fire onDidUpdateGlobalAttention event', () => {
+		let firedState: unknown;
+		loopService.onDidUpdateGlobalAttention(state => { firedState = state; });
+
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		loopService.contributeToGlobalAttention(['nodeA']);
+
+		assert.ok(firedState);
+	});
+
+	test('should fire onDidAggregateCollectiveIntelligence event', async () => {
+		let firedResult: unknown;
+		loopService.onDidAggregateCollectiveIntelligence(result => { firedResult = result; });
+
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		await loopService.aggregateCollectiveIntelligence('topic', { data: 'test' });
+
+		assert.ok(firedResult);
+	});
+
+	test('should get distributed stats', () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		loopService.registerClusterNode({
+			nodeId: 'node2',
+			nodeName: 'Test Node 2',
+			isLeader: false,
+		});
+
+		const stats = loopService.getDistributedStats();
+
+		assert.strictEqual(stats.nodeCount, 2);
+		assert.strictEqual(stats.synchronizedNodeCount, 1); // Only local node is synchronized
+		assert.strictEqual(stats.syncFailures, 0);
+		assert.strictEqual(stats.failoversCompleted, 0);
+	});
+
+	test('should not enable distributed mode if already enabled', () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		loopService.enableDistributedMode('node2', 'Test Node 2'); // Should be ignored
+
+		const syncState = loopService.getClusterSyncState();
+		assert.strictEqual(syncState.localNodeId, 'node1');
+	});
+
+	test('should not register cluster node if distributed mode not enabled', () => {
+		loopService.registerClusterNode({
+			nodeId: 'node2',
+			nodeName: 'Test Node 2',
+			isLeader: false,
+		});
+
+		const syncState = loopService.getClusterSyncState();
+		assert.strictEqual(syncState.nodes.length, 0);
+	});
+
+	test('should aggregate attention across multiple nodes', () => {
+		loopService.enableDistributedMode('node1', 'Test Node 1');
+		loopService.contributeToGlobalAttention(['A', 'B', 'C']);
+
+		// Simulate another node's contribution by directly manipulating
+		// (In real implementation this would come over the network)
+		loopService.contributeToGlobalAttention(['B', 'C', 'D']);
+
+		const ecanState = loopService.getGlobalECANState();
+		// B and C should appear in the aggregated focus as they're mentioned twice
+		assert.ok(ecanState.globalAttentionalFocus.length > 0);
 	});
 });

@@ -211,6 +211,150 @@ export interface AARActiveTask {
 }
 
 // ---------------------------------------------------------------------------
+// Distributed AAR types (Phase C: FlareCog)
+// ---------------------------------------------------------------------------
+
+/**
+ * A remote cognitive node that can host agents.
+ */
+export interface RemoteCognitiveNode {
+	/** Node ID. */
+	id: string;
+	/** Node name. */
+	name: string;
+	/** Network address. */
+	address: string;
+	/** Whether the node is online. */
+	online: boolean;
+	/** Last heartbeat timestamp. */
+	lastHeartbeat: number;
+	/** Agents currently running on this node. */
+	hostedAgents: string[];
+	/** Node's current load (0-1). */
+	load: number;
+	/** Maximum agents this node can host. */
+	maxAgents: number;
+}
+
+/**
+ * A remote agent running on another cognitive node.
+ */
+export interface RemoteAgent extends AARAgent {
+	/** The node hosting this agent. */
+	hostNodeId: string;
+	/** Whether communication is healthy. */
+	communicationHealthy: boolean;
+	/** Last communication timestamp. */
+	lastCommunication: number;
+	/** Pending messages to this agent. */
+	pendingMessages: number;
+}
+
+/**
+ * Request to spawn an agent on a remote node.
+ */
+export interface AgentSpawnRequest {
+	/** Requested agent configuration. */
+	agent: Omit<AARAgent, 'lastActivationTime' | 'totalTasksProcessed'>;
+	/** Target node ID (or undefined for automatic selection). */
+	targetNodeId?: string;
+	/** Required node capabilities. */
+	requiredCapabilities?: string[];
+	/** Priority (0-1). */
+	priority: number;
+}
+
+/**
+ * Result of an agent spawn request.
+ */
+export interface AgentSpawnResult {
+	/** Whether the spawn was successful. */
+	success: boolean;
+	/** The spawned agent (if successful). */
+	agent?: RemoteAgent;
+	/** The node where the agent was spawned. */
+	nodeId?: string;
+	/** Error message (if failed). */
+	error?: string;
+}
+
+/**
+ * Request to migrate an agent to another node.
+ */
+export interface AgentMigrationRequest {
+	/** Agent ID to migrate. */
+	agentId: string;
+	/** Source node ID. */
+	sourceNodeId: string;
+	/** Target node ID (or undefined for automatic selection). */
+	targetNodeId?: string;
+	/** Migration reason. */
+	reason: 'load-balancing' | 'node-failure' | 'manual' | 'optimization';
+}
+
+/**
+ * Result of an agent migration.
+ */
+export interface AgentMigrationResult {
+	/** Whether migration was successful. */
+	success: boolean;
+	/** Agent ID. */
+	agentId: string;
+	/** Source node. */
+	sourceNodeId: string;
+	/** Target node. */
+	targetNodeId: string;
+	/** Migration duration (ms). */
+	durationMs: number;
+	/** Error message (if failed). */
+	error?: string;
+}
+
+/**
+ * A distributed agent communication message.
+ */
+export interface DistributedAgentMessage {
+	/** Message ID. */
+	id: string;
+	/** Sender agent ID. */
+	fromAgentId: string;
+	/** Recipient agent ID. */
+	toAgentId: string;
+	/** Message type. */
+	type: 'request' | 'response' | 'event' | 'heartbeat';
+	/** Message payload. */
+	payload: unknown;
+	/** Timestamp. */
+	timestamp: number;
+	/** Correlation ID for request-response matching. */
+	correlationId?: string;
+}
+
+/**
+ * A proposal for multi-agent consensus.
+ */
+export interface ConsensusProposal {
+	/** Proposal ID. */
+	id: string;
+	/** Proposing agent ID. */
+	proposerId: string;
+	/** Proposal type. */
+	type: 'decision' | 'action' | 'state-change';
+	/** Proposal content. */
+	proposal: unknown;
+	/** Agents that must vote. */
+	voters: string[];
+	/** Votes received (agent ID -> vote). */
+	votes: Map<string, boolean>;
+	/** Quorum required (0-1). */
+	quorum: number;
+	/** Deadline for voting. */
+	deadline: number;
+	/** Status. */
+	status: 'pending' | 'accepted' | 'rejected' | 'expired';
+}
+
+// ---------------------------------------------------------------------------
 // Service interface
 // ---------------------------------------------------------------------------
 
@@ -241,6 +385,15 @@ export interface IAAROrchestrationService {
 
 	/** Fired when a task completes (success or failure). */
 	readonly onDidCompleteTask: Event<AARTaskResult>;
+
+	/** Fired when a remote node joins or leaves. */
+	readonly onDidChangeRemoteNode: Event<RemoteCognitiveNode>;
+
+	/** Fired when an agent is migrated. */
+	readonly onDidMigrateAgent: Event<AgentMigrationResult>;
+
+	/** Fired when a consensus proposal is resolved. */
+	readonly onDidResolveConsensus: Event<ConsensusProposal>;
 
 	// -- Agent management ----------------------------------------------------
 
@@ -356,4 +509,80 @@ export interface IAAROrchestrationService {
 	 * new orchestration tasks without causing backpressure.
 	 */
 	isLoopReadyForOrchestration(): boolean;
+
+	// -- Distributed AAR (Phase C: FlareCog) ---------------------------------
+
+	/**
+	 * Register a remote cognitive node.
+	 */
+	registerRemoteNode(node: Omit<RemoteCognitiveNode, 'hostedAgents' | 'load'>): boolean;
+
+	/**
+	 * Unregister a remote node (also unregisters its hosted agents).
+	 */
+	unregisterRemoteNode(nodeId: string): boolean;
+
+	/**
+	 * Get all registered remote nodes.
+	 */
+	getRemoteNodes(): RemoteCognitiveNode[];
+
+	/**
+	 * Get all online remote nodes.
+	 */
+	getOnlineRemoteNodes(): RemoteCognitiveNode[];
+
+	/**
+	 * Spawn an agent on a remote node.
+	 */
+	spawnRemoteAgent(request: AgentSpawnRequest): Promise<AgentSpawnResult>;
+
+	/**
+	 * Migrate an agent to another node.
+	 */
+	migrateAgent(request: AgentMigrationRequest): Promise<AgentMigrationResult>;
+
+	/**
+	 * Send a message to a distributed agent.
+	 */
+	sendAgentMessage(message: Omit<DistributedAgentMessage, 'id' | 'timestamp'>): Promise<void>;
+
+	/**
+	 * Get all remote agents.
+	 */
+	getRemoteAgents(): RemoteAgent[];
+
+	/**
+	 * Propose a consensus decision among agents.
+	 */
+	proposeConsensus(
+		type: ConsensusProposal['type'],
+		proposal: unknown,
+		voters: string[],
+		quorum?: number,
+		deadlineMs?: number
+	): Promise<ConsensusProposal>;
+
+	/**
+	 * Vote on a consensus proposal.
+	 */
+	voteOnConsensus(proposalId: string, agentId: string, vote: boolean): boolean;
+
+	/**
+	 * Get pending consensus proposals.
+	 */
+	getPendingConsensusProposals(): ConsensusProposal[];
+
+	/**
+	 * Get distributed orchestration statistics.
+	 */
+	getDistributedStats(): {
+		remoteNodeCount: number;
+		onlineNodeCount: number;
+		remoteAgentCount: number;
+		messagesSent: number;
+		messagesReceived: number;
+		migrationCount: number;
+		consensusProposalsResolved: number;
+	};
 }

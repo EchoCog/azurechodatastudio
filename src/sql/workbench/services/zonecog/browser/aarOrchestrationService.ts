@@ -12,6 +12,14 @@ import {
 	AARTask,
 	AARTaskResult,
 	AARActiveTask,
+	RemoteCognitiveNode,
+	RemoteAgent,
+	AgentSpawnRequest,
+	AgentSpawnResult,
+	AgentMigrationRequest,
+	AgentMigrationResult,
+	DistributedAgentMessage,
+	ConsensusProposal,
 } from 'sql/workbench/services/zonecog/common/aarOrchestration';
 import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
@@ -22,6 +30,7 @@ import { IZoneCogService } from 'sql/workbench/services/zonecog/common/zonecogSe
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ILogService } from 'vs/platform/log/common/log';
+import { generateUuid } from 'vs/base/common/uuid';
 
 // ---------------------------------------------------------------------------
 // Built-in agent IDs
@@ -44,6 +53,12 @@ const DEFAULT_PIPELINE: string[] = [
 	BUILTIN_AGENT_IDS.ACTOR,
 	BUILTIN_AGENT_IDS.REFLECTOR,
 ];
+
+/** Default consensus quorum (majority). */
+const DEFAULT_CONSENSUS_QUORUM = 0.51;
+
+/** Default consensus deadline (30 seconds). */
+const DEFAULT_CONSENSUS_DEADLINE_MS = 30000;
 
 // ---------------------------------------------------------------------------
 // AAR Orchestration Service implementation
@@ -84,6 +99,15 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 	/** Per-agent async handlers for cognitive processing. */
 	private readonly _agentHandlers = new Map<string, (payload: unknown, context: Map<string, unknown>) => Promise<unknown>>();
 
+	// Distributed AAR state (Phase C: FlareCog)
+	private readonly _remoteNodes = new Map<string, RemoteCognitiveNode>();
+	private readonly _remoteAgents = new Map<string, RemoteAgent>();
+	private readonly _consensusProposals = new Map<string, ConsensusProposal>();
+	private _messagesSent = 0;
+	private _messagesReceived = 0;
+	private _migrationCount = 0;
+	private _consensusProposalsResolved = 0;
+
 	private readonly _onDidChangeAgent = this._register(new Emitter<AARAgent>());
 	readonly onDidChangeAgent: Event<AARAgent> = this._onDidChangeAgent.event;
 
@@ -92,6 +116,15 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 
 	private readonly _onDidCompleteTask = this._register(new Emitter<AARTaskResult>());
 	readonly onDidCompleteTask: Event<AARTaskResult> = this._onDidCompleteTask.event;
+
+	private readonly _onDidChangeRemoteNode = this._register(new Emitter<RemoteCognitiveNode>());
+	readonly onDidChangeRemoteNode: Event<RemoteCognitiveNode> = this._onDidChangeRemoteNode.event;
+
+	private readonly _onDidMigrateAgent = this._register(new Emitter<AgentMigrationResult>());
+	readonly onDidMigrateAgent: Event<AgentMigrationResult> = this._onDidMigrateAgent.event;
+
+	private readonly _onDidResolveConsensus = this._register(new Emitter<ConsensusProposal>());
+	readonly onDidResolveConsensus: Event<ConsensusProposal> = this._onDidResolveConsensus.event;
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
@@ -532,5 +565,384 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 		const loopState = this._loopService.getState();
 		// Ready if the loop is running and not paused
 		return loopState.running && !loopState.paused;
+	}
+
+	// -------------------------------------------------------------------------
+	// Distributed AAR (Phase C: FlareCog)
+	// -------------------------------------------------------------------------
+
+	registerRemoteNode(node: Omit<RemoteCognitiveNode, 'hostedAgents' | 'load'>): boolean {
+		if (this._remoteNodes.has(node.id)) {
+			this.logService.warn(`AAROrchestrationService: remote node '${node.id}' already registered`);
+			return false;
+		}
+
+		const fullNode: RemoteCognitiveNode = {
+			...node,
+			hostedAgents: [],
+			load: 0,
+		};
+
+		this._remoteNodes.set(node.id, fullNode);
+		this._onDidChangeRemoteNode.fire(fullNode);
+		this.membraneService.recordActivity('somatic');
+		this.logService.info(`AAROrchestrationService: registered remote node '${node.name}' (${node.id})`);
+		return true;
+	}
+
+	unregisterRemoteNode(nodeId: string): boolean {
+		const node = this._remoteNodes.get(nodeId);
+		if (!node) {
+			return false;
+		}
+
+		// Unregister all hosted agents
+		for (const agentId of node.hostedAgents) {
+			this._remoteAgents.delete(agentId);
+			this._agents.delete(agentId);
+			this._agentHandlers.delete(agentId);
+		}
+
+		node.online = false;
+		this._remoteNodes.delete(nodeId);
+		this._onDidChangeRemoteNode.fire(node);
+		this.logService.info(`AAROrchestrationService: unregistered remote node '${nodeId}'`);
+		return true;
+	}
+
+	getRemoteNodes(): RemoteCognitiveNode[] {
+		return Array.from(this._remoteNodes.values());
+	}
+
+	getOnlineRemoteNodes(): RemoteCognitiveNode[] {
+		return Array.from(this._remoteNodes.values()).filter(n => n.online);
+	}
+
+	async spawnRemoteAgent(request: AgentSpawnRequest): Promise<AgentSpawnResult> {
+		this.membraneService.recordActivity('somatic');
+
+		// Select target node
+		let targetNode: RemoteCognitiveNode | undefined;
+
+		if (request.targetNodeId) {
+			targetNode = this._remoteNodes.get(request.targetNodeId);
+			if (!targetNode || !targetNode.online) {
+				return {
+					success: false,
+					error: `Target node '${request.targetNodeId}' not available`,
+				};
+			}
+		} else {
+			// Auto-select node with lowest load that has capacity
+			const candidates = this.getOnlineRemoteNodes()
+				.filter(n => n.hostedAgents.length < n.maxAgents)
+				.sort((a, b) => a.load - b.load);
+
+			targetNode = candidates[0];
+			if (!targetNode) {
+				return {
+					success: false,
+					error: 'No available nodes with capacity',
+				};
+			}
+		}
+
+		// Create remote agent
+		const remoteAgent: RemoteAgent = {
+			...request.agent,
+			lastActivationTime: 0,
+			totalTasksProcessed: 0,
+			hostNodeId: targetNode.id,
+			communicationHealthy: true,
+			lastCommunication: Date.now(),
+			pendingMessages: 0,
+		};
+
+		// Register agent
+		this._remoteAgents.set(remoteAgent.id, remoteAgent);
+		this._agents.set(remoteAgent.id, remoteAgent);
+		targetNode.hostedAgents.push(remoteAgent.id);
+
+		// Create a proxy handler for remote agent execution
+		this._agentHandlers.set(remoteAgent.id, async (payload, ctx) => {
+			return this._executeOnRemoteAgent(remoteAgent, payload, ctx);
+		});
+
+		this._onDidChangeAgent.fire(remoteAgent);
+		this._onDidChangeRemoteNode.fire(targetNode);
+
+		this.logService.info(`AAROrchestrationService: spawned remote agent '${remoteAgent.name}' on node '${targetNode.name}'`);
+
+		return {
+			success: true,
+			agent: remoteAgent,
+			nodeId: targetNode.id,
+		};
+	}
+
+	private async _executeOnRemoteAgent(
+		agent: RemoteAgent,
+		payload: unknown,
+		_ctx: Map<string, unknown>
+	): Promise<unknown> {
+		agent.pendingMessages++;
+		this._messagesSent++;
+
+		// In real implementation, would send message via network
+		// Simulate remote execution
+		await new Promise<void>(resolve => setTimeout(resolve, 50));
+
+		agent.pendingMessages--;
+		agent.lastCommunication = Date.now();
+		this._messagesReceived++;
+
+		// Return simulated result
+		return {
+			remoteExecution: true,
+			agentId: agent.id,
+			nodeId: agent.hostNodeId,
+			payload,
+		};
+	}
+
+	async migrateAgent(request: AgentMigrationRequest): Promise<AgentMigrationResult> {
+		this.membraneService.recordActivity('somatic');
+		const startTime = Date.now();
+
+		const agent = this._remoteAgents.get(request.agentId);
+		if (!agent) {
+			return {
+				success: false,
+				agentId: request.agentId,
+				sourceNodeId: request.sourceNodeId,
+				targetNodeId: request.targetNodeId ?? 'unknown',
+				durationMs: 0,
+				error: `Agent '${request.agentId}' not found`,
+			};
+		}
+
+		const sourceNode = this._remoteNodes.get(request.sourceNodeId);
+		if (!sourceNode) {
+			return {
+				success: false,
+				agentId: request.agentId,
+				sourceNodeId: request.sourceNodeId,
+				targetNodeId: request.targetNodeId ?? 'unknown',
+				durationMs: 0,
+				error: `Source node '${request.sourceNodeId}' not found`,
+			};
+		}
+
+		// Select target node
+		let targetNode: RemoteCognitiveNode | undefined;
+		if (request.targetNodeId) {
+			targetNode = this._remoteNodes.get(request.targetNodeId);
+		} else {
+			// Auto-select node with lowest load
+			const candidates = this.getOnlineRemoteNodes()
+				.filter(n => n.id !== request.sourceNodeId && n.hostedAgents.length < n.maxAgents)
+				.sort((a, b) => a.load - b.load);
+			targetNode = candidates[0];
+		}
+
+		if (!targetNode || !targetNode.online) {
+			return {
+				success: false,
+				agentId: request.agentId,
+				sourceNodeId: request.sourceNodeId,
+				targetNodeId: request.targetNodeId ?? 'unknown',
+				durationMs: Date.now() - startTime,
+				error: 'No suitable target node available',
+			};
+		}
+
+		// Perform migration
+		// Remove from source
+		sourceNode.hostedAgents = sourceNode.hostedAgents.filter(id => id !== request.agentId);
+
+		// Add to target
+		agent.hostNodeId = targetNode.id;
+		targetNode.hostedAgents.push(request.agentId);
+
+		this._migrationCount++;
+		const durationMs = Date.now() - startTime;
+
+		const result: AgentMigrationResult = {
+			success: true,
+			agentId: request.agentId,
+			sourceNodeId: request.sourceNodeId,
+			targetNodeId: targetNode.id,
+			durationMs,
+		};
+
+		this._onDidMigrateAgent.fire(result);
+		this._onDidChangeRemoteNode.fire(sourceNode);
+		this._onDidChangeRemoteNode.fire(targetNode);
+
+		this.logService.info(`AAROrchestrationService: migrated agent '${request.agentId}' from '${request.sourceNodeId}' to '${targetNode.id}' (${request.reason})`);
+
+		return result;
+	}
+
+	async sendAgentMessage(message: Omit<DistributedAgentMessage, 'id' | 'timestamp'>): Promise<void> {
+		this.membraneService.recordActivity('somatic');
+
+		const fullMessage: DistributedAgentMessage = {
+			...message,
+			id: generateUuid(),
+			timestamp: Date.now(),
+		};
+
+		const targetAgent = this._remoteAgents.get(message.toAgentId);
+		if (targetAgent) {
+			targetAgent.pendingMessages++;
+		}
+
+		this._messagesSent++;
+
+		// In real implementation, would route through network
+		// Simulate message delivery
+		await new Promise<void>(resolve => setTimeout(resolve, 10));
+
+		if (targetAgent) {
+			targetAgent.pendingMessages--;
+			targetAgent.lastCommunication = Date.now();
+		}
+
+		this._messagesReceived++;
+		this.logService.trace(`AAROrchestrationService: sent message ${fullMessage.id} from ${message.fromAgentId} to ${message.toAgentId}`);
+	}
+
+	getRemoteAgents(): RemoteAgent[] {
+		return Array.from(this._remoteAgents.values());
+	}
+
+	async proposeConsensus(
+		type: ConsensusProposal['type'],
+		proposal: unknown,
+		voters: string[],
+		quorum: number = DEFAULT_CONSENSUS_QUORUM,
+		deadlineMs: number = DEFAULT_CONSENSUS_DEADLINE_MS
+	): Promise<ConsensusProposal> {
+		this.membraneService.recordActivity('cerebral');
+
+		const consensusProposal: ConsensusProposal = {
+			id: generateUuid(),
+			proposerId: BUILTIN_AGENT_IDS.ORCHESTRATOR,
+			type,
+			proposal,
+			voters,
+			votes: new Map(),
+			quorum,
+			deadline: Date.now() + deadlineMs,
+			status: 'pending',
+		};
+
+		this._consensusProposals.set(consensusProposal.id, consensusProposal);
+
+		// Persist to hypergraph
+		this.hypergraphStore.addNode({
+			id: `consensus-${consensusProposal.id}`,
+			node_type: 'ConsensusProposal',
+			content: JSON.stringify({ type, proposal, voters, quorum }),
+			links: [],
+			metadata: {
+				proposalId: consensusProposal.id,
+				status: 'pending',
+			},
+			salience_score: 0.8,
+		});
+
+		this.logService.info(`AAROrchestrationService: created consensus proposal ${consensusProposal.id} with ${voters.length} voters`);
+
+		// Start deadline timer
+		setTimeout(() => {
+			this._checkConsensusDeadline(consensusProposal.id);
+		}, deadlineMs);
+
+		return consensusProposal;
+	}
+
+	voteOnConsensus(proposalId: string, agentId: string, vote: boolean): boolean {
+		const proposal = this._consensusProposals.get(proposalId);
+		if (!proposal || proposal.status !== 'pending') {
+			return false;
+		}
+
+		if (!proposal.voters.includes(agentId)) {
+			this.logService.warn(`AAROrchestrationService: agent '${agentId}' not authorized to vote on proposal '${proposalId}'`);
+			return false;
+		}
+
+		proposal.votes.set(agentId, vote);
+
+		// Check if quorum reached
+		const yesVotes = Array.from(proposal.votes.values()).filter(v => v).length;
+		const totalVotes = proposal.votes.size;
+		const voteFraction = totalVotes / proposal.voters.length;
+
+		if (voteFraction >= proposal.quorum) {
+			const yesFraction = yesVotes / totalVotes;
+			if (yesFraction > 0.5) {
+				proposal.status = 'accepted';
+			} else {
+				proposal.status = 'rejected';
+			}
+
+			this._consensusProposalsResolved++;
+			this._onDidResolveConsensus.fire(proposal);
+
+			// Update hypergraph
+			this.hypergraphStore.updateNode(`consensus-${proposal.id}`, {
+				metadata: { proposalId: proposal.id, status: proposal.status },
+			});
+
+			this.logService.info(`AAROrchestrationService: consensus proposal ${proposal.id} ${proposal.status} (${yesVotes}/${totalVotes} yes)`);
+		}
+
+		return true;
+	}
+
+	private _checkConsensusDeadline(proposalId: string): void {
+		const proposal = this._consensusProposals.get(proposalId);
+		if (!proposal || proposal.status !== 'pending') {
+			return;
+		}
+
+		if (Date.now() >= proposal.deadline) {
+			proposal.status = 'expired';
+			this._consensusProposalsResolved++;
+			this._onDidResolveConsensus.fire(proposal);
+
+			this.hypergraphStore.updateNode(`consensus-${proposal.id}`, {
+				metadata: { proposalId: proposal.id, status: 'expired' },
+			});
+
+			this.logService.info(`AAROrchestrationService: consensus proposal ${proposal.id} expired`);
+		}
+	}
+
+	getPendingConsensusProposals(): ConsensusProposal[] {
+		return Array.from(this._consensusProposals.values()).filter(p => p.status === 'pending');
+	}
+
+	getDistributedStats(): {
+		remoteNodeCount: number;
+		onlineNodeCount: number;
+		remoteAgentCount: number;
+		messagesSent: number;
+		messagesReceived: number;
+		migrationCount: number;
+		consensusProposalsResolved: number;
+	} {
+		return {
+			remoteNodeCount: this._remoteNodes.size,
+			onlineNodeCount: this.getOnlineRemoteNodes().length,
+			remoteAgentCount: this._remoteAgents.size,
+			messagesSent: this._messagesSent,
+			messagesReceived: this._messagesReceived,
+			migrationCount: this._migrationCount,
+			consensusProposalsResolved: this._consensusProposalsResolved,
+		};
 	}
 }

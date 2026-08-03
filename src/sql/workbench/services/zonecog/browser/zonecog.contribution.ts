@@ -70,6 +70,8 @@ import { IAtomSpaceBackendService } from 'sql/workbench/services/zonecog/common/
 import { AtomSpaceBackendService } from 'sql/workbench/services/zonecog/browser/atomSpaceBackendService';
 import { IHyperonService } from 'sql/workbench/services/zonecog/common/hyperon';
 import { HyperonService } from 'sql/workbench/services/zonecog/browser/hyperonService';
+import { IFlareCogService } from 'sql/workbench/services/zonecog/common/flareCog';
+import { FlareCogService } from 'sql/workbench/services/zonecog/browser/flareCogService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -220,3 +222,11 @@ registerSingleton(IAtomSpaceBackendService, AtomSpaceBackendService, Instantiati
 // with the PLN reasoning service; closes Phase B.2 "Hyperon MeTTa
 // integration")
 registerSingleton(IHyperonService, HyperonService, InstantiationType.Eager);
+
+// Register Phase C services (FlareCog Distributed Cognitive Processing)
+
+// Register the FlareCog service (distributed cognitive coordination: peer
+// discovery, secure transport, workload partitioning strategies, and
+// cross-node cluster management; closes Phase C.1 "Distributed Cognition
+// Protocol")
+registerSingleton(IFlareCogService, FlareCogService, InstantiationType.Eager);
