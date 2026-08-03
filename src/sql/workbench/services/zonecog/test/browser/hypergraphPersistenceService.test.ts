@@ -592,6 +592,49 @@ suite('Hypergraph Persistence Service Tests', () => {
 		assert.strictEqual(mockDb.getStore('archiveLinks').getSize(), 0, 'link should be dropped from cold storage once no archived node needs it');
 		assert.ok(hypergraphStore.getLink('shared-link'), 'both endpoints restored, link should be live');
 	});
+
+	test('should not orphan a shared link in the hot store when its restored endpoint is re-archived', async () => {
+		hypergraphStore.addNode({
+			id: 'reorph-a', node_type: 'T', content: '', links: ['reorph-link'], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addNode({
+			id: 'reorph-b', node_type: 'T', content: '', links: ['reorph-link'], metadata: {}, salience_score: 0.01,
+		});
+		hypergraphStore.addLink({ id: 'reorph-link', link_type: 'L', outgoing: ['reorph-a', 'reorph-b'], metadata: {} });
+		await persistenceService.archiveLowSalienceNodes(0.05);
+
+		// Restore only reorph-a; reorph-b (and thus one endpoint of the link)
+		// stays cold, so the link must not be written into the hot store yet.
+		await persistenceService.restoreArchivedNode('reorph-a');
+		assert.strictEqual(mockDb.getStore('links').getSize(), 0, 'link with a still-cold endpoint should not enter the hot tier');
+
+		// reorph-a is still below the threshold, so a second archive pass
+		// picks it back up. If the link had leaked into the hot store above,
+		// this pass would leave it there forever (its other endpoint,
+		// reorph-b, was never live and so is never in this pass's archiveIds).
+		await persistenceService.archiveLowSalienceNodes(0.05);
+		assert.strictEqual(mockDb.getStore('links').getSize(), 0, 'link must not be orphaned in the hot store after re-archiving its endpoint');
+
+		hypergraphStore.clear();
+		const loaded = await persistenceService.load();
+		assert.ok(loaded);
+		assert.strictEqual(hypergraphStore.getLink('reorph-link'), undefined, 'load() must not resurrect an orphaned link');
+	});
+
+	test('should serialize save() and archiveLowSalienceNodes() so a concurrent save cannot resurrect an archived node', async () => {
+		hypergraphStore.addNode({
+			id: 'race-node', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.01,
+		});
+
+		// Fire both without awaiting the first, mirroring an auto-save
+		// landing while an archive pass is in flight.
+		const savePromise = persistenceService.save('race-save');
+		const archivePromise = persistenceService.archiveLowSalienceNodes(0.05);
+		await Promise.all([savePromise, archivePromise]);
+
+		assert.strictEqual(mockDb.getStore('nodes').getSize(), 0, 'archived node must not be resurrected by a racing save()');
+		assert.strictEqual(hypergraphStore.getNode('race-node'), undefined);
+	});
 });
 
 // ---------------------------------------------------------------------------
