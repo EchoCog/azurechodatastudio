@@ -29,7 +29,7 @@ The system implements the P-System Membrane Architecture:
 | **Somatic** | Extension & UI interaction | Command Palette, bridge extension, LLM calls |
 | **Autonomic** | Health monitoring & validation | `CognitiveMembraneService`, ECAN rent, error tracking |
 
-### Services (12 total)
+### Services (13 total)
 
 | Service | Interface | Implementation |
 |---|---|---|
@@ -45,6 +45,7 @@ The system implements the P-System Membrane Architecture:
 | Interaction Learning | `IUserInteractionLearningService` | `UserInteractionLearningService` |
 | Cognitive Analytics | `ICognitiveAnalyticsService` | `CognitiveAnalyticsService` |
 | AtomSpace Transport | `IAtomSpaceTransportService` | `AtomSpaceTransportService` |
+| Collaboration Backend | `ICollaborationBackendService` | `CollaborationBackendService` |
 
 ### Cognitive Analytics & Telemetry (Phase 6.3)
 
@@ -454,6 +455,39 @@ Available through Command Palette (`Ctrl+Shift+P`):
 - `Zone-Cog: Show Collaborative Session Log` — View the merged transcript of own and peer thinking phases and annotations
 - `Zone-Cog: Annotate Latest Collaborative Phase` — Attach a shared remark to the most recent phase in the transcript (own or a peer's)
 
+### Phase D - Multi-User Cognitive Workspaces
+- `Zone-Cog: Create Multi-User Cognitive Workspace` — Open a session other machines can join; the session code is copied to the clipboard
+- `Zone-Cog: Join Multi-User Cognitive Workspace` — Join by session code as editor, commenter, or observer
+- `Zone-Cog: Show Cognitive Workspace Participants` — See who is present, their role, and where their attention sits
+
+Sessions reach other machines over a WebSocket relay when one is configured
+(`ICollaborationBackendService.configure({ relayUrl })`) and otherwise fall back
+to the same-machine `BroadcastChannel`, so a workspace works with or without a
+relay. Once a session is active the collaborative reasoning transcript moves
+onto it automatically, so thinking phases, annotations, and decisions reach
+every participant rather than only the windows on this machine.
+
+Concurrent edits to shared workspace documents are reconciled with operational
+transformation (`common/collaborationOT.ts`): the session host sequences
+operations, clients transform their outstanding work against the sequenced
+stream, and every replica converges on the same content. Hosting is derived
+rather than claimed — every peer applies the same rule to the same announced
+participant list — so sequencing survives the host leaving without any peer
+being able to seize it.
+
+Access is governed by four roles:
+
+| Role | Manage session | Create/edit documents | Annotate | Vote | Share presence |
+|---|---|---|---|---|---|
+| **Owner** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Editor** | — | ✅ | ✅ | ✅ | ✅ |
+| **Commenter** | — | — | ✅ | ✅ | ✅ |
+| **Observer** | — | — | — | — | ✅ |
+
+Permissions are enforced on inbound messages by the sender's role, not just
+locally, so a tampered client cannot write past its role. Sessions are
+persisted as hypergraph nodes and can be resumed with `recoverSession()`.
+
 ## Panel Views
 
 The Zone-Cog panel (View > Zone-Cog) includes seven dashboard views:
@@ -486,6 +520,8 @@ services/zonecog/
 │   ├── cognitiveAgents.ts         # Cognitive agent interfaces
 │   ├── atomSpaceBackend.ts        # IAtomSpaceBackendService (Hyperon AtomSpace)
 │   ├── hyperon.ts                 # IHyperonService (MeTTa) interface and types
+│   ├── collaborationBackend.ts    # ICollaborationBackendService, roles, wire protocol
+│   ├── collaborationOT.ts         # Operational transformation engine
 │   └── cognitiveWorkflowAutomation.ts # Workflow DSL and automation
 ├── browser/
 │   ├── zonecogService.ts          # ZoneCogService implementation
@@ -508,6 +544,7 @@ services/zonecog/
 │   ├── cognitiveWorkflowAutomationService.ts # Workflow engine
 │   ├── atomSpaceBackendService.ts # AtomSpace-native storage + persistence
 │   ├── hyperonService.ts          # MeTTa interpreter + native PLN deduction
+│   ├── collaborationBackendService.ts # Multi-user sessions, presence, OT sync
 │   └── zonecog.contribution.ts    # DI service registration
 ├── test/
 │   └── browser/
