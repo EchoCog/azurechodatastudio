@@ -5,9 +5,12 @@
 
 import * as assert from 'assert';
 import { CollaborativeReasoningService, ICollaborativeReasoningChannel } from 'sql/workbench/services/zonecog/browser/collaborativeReasoningService';
-import { CollaborativePhaseEvent, CollaborativeAnnotation } from 'sql/workbench/services/zonecog/common/collaborativeReasoning';
+import { CollaborativePhaseEvent, CollaborativeAnnotation, CollaborativeDecisionEvent } from 'sql/workbench/services/zonecog/common/collaborativeReasoning';
 import { IZoneCogService, ICognitiveMembraneService, ThinkingPhase } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
+import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
+import { CollaborationBackendService } from 'sql/workbench/services/zonecog/browser/collaborationBackendService';
+import { CollaborationTransportKind, ICollaborationChannel } from 'sql/workbench/services/zonecog/common/collaborationBackend';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 import { Emitter } from 'vs/base/common/event';
 
@@ -64,17 +67,31 @@ class FakeZoneCogService implements Pick<IZoneCogService, 'onDidCompleteThinking
 	}
 }
 
+/** Backend variant whose session transport is an in-memory hub. */
+class TestCollaborationBackendService extends CollaborationBackendService {
+	constructor(private readonly sessionHub: FakeChannelHub, logService: ILogService, membraneService: ICognitiveMembraneService) {
+		super(logService, new HypergraphStore(logService), membraneService);
+		this.configure({ presenceIntervalMs: 0, joinTimeoutMs: 50 });
+	}
+	protected override _createTransport(): { channel: ICollaborationChannel; kind: CollaborationTransportKind } | undefined {
+		return { channel: this.sessionHub.connect(), kind: 'websocket' };
+	}
+}
+
 /** Service variant whose transport is the in-memory hub. */
 class TestCollaborativeReasoningService extends CollaborativeReasoningService {
 	constructor(
 		private readonly hub: FakeChannelHub | undefined,
 		logService: ILogService,
 		zoneCogService: IZoneCogService,
-		membraneService: ICognitiveMembraneService
+		membraneService: ICognitiveMembraneService,
+		collaborationBackend: CollaborationBackendService
 	) {
-		super(logService, zoneCogService, membraneService);
+		super(logService, zoneCogService, membraneService, collaborationBackend);
 	}
 	protected override _createChannel(): ICollaborativeReasoningChannel | undefined {
+		// Stands in for the BroadcastChannel a browser provides; the shared
+		// multi-user path above it is exercised for real.
 		return this.hub?.connect();
 	}
 }
@@ -85,12 +102,19 @@ function phase(name: string, content = 'content'): ThinkingPhase {
 
 suite('Collaborative Reasoning Service Tests', () => {
 
-	function makeParticipant(hub: FakeChannelHub | undefined): { service: TestCollaborativeReasoningService; zoneCog: FakeZoneCogService } {
+	let sessionHub: FakeChannelHub;
+
+	setup(() => {
+		sessionHub = new FakeChannelHub();
+	});
+
+	function makeParticipant(hub: FakeChannelHub | undefined): { service: TestCollaborativeReasoningService; zoneCog: FakeZoneCogService; backend: TestCollaborationBackendService } {
 		const logService = new NullLogService();
 		const zoneCog = new FakeZoneCogService();
 		const membrane = new CognitiveMembraneService(logService);
-		const service = new TestCollaborativeReasoningService(hub, logService, zoneCog as unknown as IZoneCogService, membrane);
-		return { service, zoneCog };
+		const backend = new TestCollaborationBackendService(sessionHub, logService, membrane);
+		const service = new TestCollaborativeReasoningService(hub, logService, zoneCog as unknown as IZoneCogService, membrane, backend);
+		return { service, zoneCog, backend };
 	}
 
 	test('should be inactive until started', () => {
@@ -242,6 +266,161 @@ suite('Collaborative Reasoning Service Tests', () => {
 		service.clear();
 		assert.strictEqual(service.getSessionLog().length, 0);
 		assert.strictEqual(service.getState().phasesSent, 1);
+	});
+
+	test('phases should carry no attribution outside a multi-user session', () => {
+		const hub = new FakeChannelHub();
+		const { service: a } = makeParticipant(hub);
+		const { service: b, zoneCog: zoneCogB } = makeParticipant(hub);
+		a.startSession();
+		b.startSession();
+		zoneCogB.firePhase(phase('Pattern Recognition'));
+
+		const received = a.getSessionLog().filter(entry => entry.kind === 'phase');
+		assert.strictEqual(received.length, 1);
+		assert.strictEqual((received[0].event as CollaborativePhaseEvent).userId, undefined);
+	});
+
+	test('phases should be attributed to their author inside a multi-user session', async () => {
+		const hub = new FakeChannelHub();
+		const { service: a, backend: backendA } = makeParticipant(hub);
+		const { service: b, zoneCog: zoneCogB, backend: backendB } = makeParticipant(hub);
+		backendB.configure({ displayName: 'Marduk' });
+		const session = await backendA.createSession('Shared Reasoning');
+		await backendB.joinSession(session!.id);
+		a.startSession();
+		b.startSession();
+
+		zoneCogB.firePhase(phase('Pattern Recognition'));
+
+		const received = a.getSessionLog().filter(entry => entry.kind === 'phase');
+		assert.strictEqual(received.length, 1);
+		const event = received[0].event as CollaborativePhaseEvent;
+		assert.strictEqual(event.userId, backendB.getLocalIdentity().userId);
+		assert.strictEqual(event.displayName, 'Marduk');
+	});
+
+	test('should refuse an annotation from a participant without write access', async () => {
+		const hub = new FakeChannelHub();
+		const { service: a, backend: backendA } = makeParticipant(hub);
+		const { service: b, backend: backendB } = makeParticipant(hub);
+		const session = await backendA.createSession('Shared Reasoning');
+		await backendB.joinSession(session!.id, 'observer');
+		a.startSession();
+		b.startSession();
+
+		assert.strictEqual(b.postAnnotation('a', 1, 'Pattern Recognition', 'looks wrong'), false);
+		assert.strictEqual(a.getSessionLog().filter(entry => entry.kind === 'annotation').length, 0);
+	});
+
+	test('should drop an annotation an observer posts straight onto the channel', async () => {
+		const hub = new FakeChannelHub();
+		const { service: a, backend: backendA } = makeParticipant(hub);
+		const { service: b, backend: backendB } = makeParticipant(hub);
+		const session = await backendA.createSession('Shared Reasoning');
+		await backendB.joinSession(session!.id, 'observer');
+		a.startSession();
+		b.startSession();
+
+		// Bypass the local permission check the way a tampered client would,
+		// posting onto the transcript channel the session peers share.
+		const channel = backendB.createChannel('zonecog-collaborative-reasoning');
+		assert.ok(channel);
+		channel!.postMessage({
+			type: 'annotation',
+			peerId: 'tampered',
+			userId: backendB.getLocalIdentity().userId,
+			targetPeerId: 'a',
+			targetQuerySeq: 1,
+			targetPhaseName: 'Pattern Recognition',
+			text: 'looks wrong',
+			timestamp: Date.now()
+		});
+
+		assert.strictEqual(a.getSessionLog().filter(entry => entry.kind === 'annotation').length, 0);
+	});
+
+	test('annotations should be attributed once a session grants access', async () => {
+		const hub = new FakeChannelHub();
+		const { service: a, backend: backendA } = makeParticipant(hub);
+		const { service: b, backend: backendB } = makeParticipant(hub);
+		backendB.configure({ displayName: 'Marduk' });
+		const session = await backendA.createSession('Shared Reasoning');
+		await backendB.joinSession(session!.id, 'commenter');
+		a.startSession();
+		b.startSession();
+
+		assert.strictEqual(b.postAnnotation('a', 1, 'Pattern Recognition', 'agreed'), true);
+		const annotations = a.getSessionLog().filter(entry => entry.kind === 'annotation');
+		assert.strictEqual(annotations.length, 1);
+		const annotation = annotations[0].event as CollaborativeAnnotation;
+		assert.strictEqual(annotation.text, 'agreed');
+		assert.strictEqual(annotation.userId, backendB.getLocalIdentity().userId);
+		assert.strictEqual(annotation.displayName, 'Marduk');
+	});
+
+	test('should settle a contested judgement by vote', async () => {
+		const hub = new FakeChannelHub();
+		const { service: a, backend: backendA } = makeParticipant(hub);
+		const { service: b, backend: backendB } = makeParticipant(hub);
+		const session = await backendA.createSession('Shared Reasoning');
+		await backendB.joinSession(session!.id);
+		a.startSession();
+		b.startSession();
+
+		const raised: string[] = [];
+		a.onDidChangeDecision(event => raised.push(event.topic));
+
+		const decision = a.proposeDecision('Trust the index scan estimate?', ['yes', 'no']);
+		assert.ok(decision);
+		assert.strictEqual(a.getDecisions().length, 1);
+		assert.strictEqual(b.getDecisions().length, 1);
+
+		assert.strictEqual(a.castDecisionVote(decision!.decisionId, 'no'), true);
+		assert.strictEqual(b.castDecisionVote(decision!.decisionId, 'no'), true);
+
+		const outcome = a.resolveDecision(decision!.decisionId);
+		assert.strictEqual(outcome?.winningOption, 'no');
+		assert.strictEqual(outcome?.consensus, true);
+		assert.ok(raised.indexOf('Trust the index scan estimate?') !== -1);
+	});
+
+	test('decisions should appear in the transcript exactly once', async () => {
+		const hub = new FakeChannelHub();
+		const { service: a, backend: backendA } = makeParticipant(hub);
+		await backendA.createSession('Shared Reasoning');
+		a.startSession();
+
+		const decision = a.proposeDecision('Trust the index scan estimate?', ['yes', 'no']);
+		a.castDecisionVote(decision!.decisionId, 'yes');
+		a.resolveDecision(decision!.decisionId);
+
+		const entries = a.getSessionLog().filter(entry => entry.kind === 'decision');
+		assert.strictEqual(entries.length, 1);
+		assert.strictEqual((entries[0].event as CollaborativeDecisionEvent).outcome?.winningOption, 'yes');
+	});
+
+	test('should not raise a decision without a multi-user session', () => {
+		const { service } = makeParticipant(new FakeChannelHub());
+		service.startSession();
+		assert.strictEqual(service.proposeDecision('Trust the estimate?', ['yes', 'no']), undefined);
+		assert.strictEqual(service.getDecisions().length, 0);
+	});
+
+	test('state should report the transport and identity in use', async () => {
+		const hub = new FakeChannelHub();
+		const { service, backend } = makeParticipant(hub);
+		backend.configure({ displayName: 'Dan' });
+		service.startSession();
+		assert.strictEqual(service.getState().transport, 'broadcast');
+		assert.strictEqual(service.getState().sessionId, undefined);
+
+		const session = await backend.createSession('Shared Reasoning');
+		const state = service.getState();
+		assert.strictEqual(state.transport, 'websocket');
+		assert.strictEqual(state.sessionId, session!.id);
+		assert.strictEqual(state.displayName, 'Dan');
+		assert.strictEqual(state.userId, backend.getLocalIdentity().userId);
 	});
 
 	test('three peers should all receive a broadcast phase', () => {
