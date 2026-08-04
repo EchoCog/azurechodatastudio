@@ -92,9 +92,13 @@ function normalizeSessionCode(code: string): string {
  */
 class DocumentSyncState {
 	outstanding: TextOperation | undefined;
+	outstandingId: string | undefined;
 	buffer: TextOperation | undefined;
+	bufferId: string | undefined;
 	/** Sequenced operations, oldest first. */
 	readonly history: TextOperation[] = [];
+	/** Identities of the retained history entries, in the same order. */
+	private readonly _sequencedIds: string[] = [];
 	/** Revision the first retained history entry produced minus one. */
 	historyBase = 0;
 
@@ -102,13 +106,20 @@ class DocumentSyncState {
 		this.historyBase = revision;
 	}
 
-	record(operation: TextOperation): void {
+	record(operation: TextOperation, operationId: string): void {
 		this.history.push(operation);
+		this._sequencedIds.push(operationId);
 		this.revision++;
 		if (this.history.length > MAX_DOCUMENT_HISTORY) {
 			this.history.shift();
+			this._sequencedIds.shift();
 			this.historyBase++;
 		}
+	}
+
+	/** Whether this operation is already part of the retained server order. */
+	hasSequenced(operationId: string): boolean {
+		return this._sequencedIds.indexOf(operationId) !== -1;
 	}
 
 	/** Sequenced operations applied after `revision`, or undefined if trimmed away. */
@@ -284,6 +295,8 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 	private readonly _participants = new Map<string, CollaborationParticipant>();
 	private readonly _documents = new Map<string, CollaborationDocument>();
 	private readonly _sync = new Map<string, DocumentSyncState>();
+	/** Sequenced operations received before their sender was known to host. */
+	private readonly _deferred: Array<Extract<CollaborationMessage, { type: 'operation-applied' }>> = [];
 	private readonly _votes = new Map<string, CollaborationVote>();
 	private readonly _subChannels = new Map<string, Set<ICollaborationChannel>>();
 
@@ -423,6 +436,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 		this._participants.clear();
 		this._documents.clear();
 		this._sync.clear();
+		this._deferred.length = 0;
 		this._votes.clear();
 
 		this.membraneService.recordActivity('somatic');
@@ -553,7 +567,8 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 		if (this._isHost()) {
 			// The host sequences its own edits directly: they are, by
 			// construction, based on the newest revision.
-			sync.record(operation);
+			const operationId = generateUuid();
+			sync.record(operation, operationId);
 			document.revision = sync.revision;
 			this._post({
 				type: 'operation-applied',
@@ -562,22 +577,28 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 				documentId,
 				revision: sync.revision,
 				authorUserId: this._localUserId,
+				operationId,
 				operation,
 			});
 		} else if (!sync.outstanding) {
 			sync.outstanding = operation;
+			sync.outstandingId = generateUuid();
 			this._post({
 				type: 'operation',
 				sessionId: session.id,
 				userId: this._localUserId,
 				documentId,
 				baseRevision: sync.revision,
+				operationId: sync.outstandingId,
 				operation,
 			});
 		} else {
 			// One operation may be in flight at a time; everything typed since
 			// is composed into a single follow-up.
 			sync.buffer = sync.buffer ? composeOperations(sync.buffer, operation) : operation;
+			if (!sync.bufferId) {
+				sync.bufferId = generateUuid();
+			}
 		}
 
 		this.membraneService.recordActivity('cerebral');
@@ -944,8 +965,134 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 				local.role = 'owner';
 			}
 			this.logService.info(`CollaborationBackendService: took over hosting session ${session.id}`);
+			this._sequencePendingAsHost();
+			// Peers may still be holding edits submitted to the previous host,
+			// and may have noticed its departure before this window did. Asking
+			// them to resubmit closes that window regardless of the order the
+			// departure reached each of them.
+			this._post({ type: 'host-changed', sessionId: session.id, userId: this._localUserId });
+		} else if (hostUserId) {
+			this._resubmitPendingToHost();
 		}
+		this._replayDeferredOperations(hostUserId);
 		this._onDidChangeState.fire(this.getState());
+	}
+
+	/**
+	 * Publish edits that were in flight when this window took over hosting.
+	 *
+	 * They were submitted to a host that is now gone, so their acknowledgement
+	 * is never coming. The local replica already contains them, and no peer
+	 * does, so sequencing them here is what stops the replicas diverging.
+	 */
+	private _sequencePendingAsHost(): void {
+		const session = this._session;
+		if (!session) {
+			return;
+		}
+		for (const [documentId, sync] of this._sync) {
+			const outstanding = sync.outstanding;
+			const buffer = sync.buffer;
+			const outstandingId = sync.outstandingId;
+			const bufferId = sync.bufferId;
+			sync.outstanding = undefined;
+			sync.buffer = undefined;
+			sync.outstandingId = undefined;
+			sync.bufferId = undefined;
+			const document = this._documents.get(documentId);
+			if (!document || (!outstanding && !buffer)) {
+				continue;
+			}
+			let pending: TextOperation;
+			try {
+				pending = outstanding && buffer ? composeOperations(outstanding, buffer) : (outstanding ?? buffer)!;
+			} catch (error) {
+				this.logService.warn(`CollaborationBackendService: could not sequence pending edits on ${documentId}: ${error instanceof Error ? error.message : String(error)}`);
+				continue;
+			}
+			// Composing two pending edits produces a new operation, so it needs
+			// an identity of its own; a lone edit keeps the one it was already
+			// submitted under so that it is recognisably the same operation.
+			const operationId = outstanding && buffer ? generateUuid() : (outstandingId ?? bufferId ?? generateUuid());
+			sync.record(pending, operationId);
+			document.revision = sync.revision;
+			document.updatedAt = Date.now();
+			document.lastEditedBy = this._localUserId;
+			this._post({
+				type: 'operation-applied',
+				sessionId: session.id,
+				userId: this._localUserId,
+				documentId,
+				revision: sync.revision,
+				authorUserId: this._localUserId,
+				operationId,
+				operation: pending,
+			});
+			this._onDidChangeDocument.fire({ ...document });
+		}
+	}
+
+	/**
+	 * Apply held operations now that the host is settled.
+	 *
+	 * Anything from a participant that did not become the host was not the
+	 * session's to apply, so it is dropped rather than replayed.
+	 */
+	private _replayDeferredOperations(hostUserId: string): void {
+		if (this._deferred.length === 0) {
+			return;
+		}
+		const held = this._deferred.splice(0, this._deferred.length);
+		if (!hostUserId || hostUserId === this._localUserId) {
+			return;
+		}
+		for (const message of held) {
+			if (message.userId === hostUserId) {
+				this._onSequencedOperation(message);
+			}
+		}
+	}
+
+	/**
+	 * Answer a new host's request for unacknowledged work.
+	 *
+	 * The sender is taken at its word only if this window had already derived
+	 * the same host, so the message cannot be used to divert edits.
+	 */
+	private _onHostChanged(message: Extract<CollaborationMessage, { type: 'host-changed' }>): void {
+		if (this._session?.hostUserId !== message.userId) {
+			return;
+		}
+		this._resubmitPendingToHost();
+	}
+
+	/**
+	 * Resend in-flight edits to a host that has just taken over.
+	 *
+	 * The acknowledgement from the previous host is never arriving, so without
+	 * this the edit would stay pending forever and only ever exist on this
+	 * replica. The stable operation identity is what lets the new host tell a
+	 * genuine resend apart from one it has already sequenced.
+	 */
+	private _resubmitPendingToHost(): void {
+		const session = this._session;
+		if (!session) {
+			return;
+		}
+		for (const [documentId, sync] of this._sync) {
+			if (!sync.outstanding || !sync.outstandingId) {
+				continue;
+			}
+			this._post({
+				type: 'operation',
+				sessionId: session.id,
+				userId: this._localUserId,
+				documentId,
+				baseRevision: sync.revision,
+				operationId: sync.outstandingId,
+				operation: sync.outstanding,
+			});
+		}
 	}
 
 	private _isHost(): boolean {
@@ -1112,6 +1259,9 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			case 'state-snapshot':
 				this._onStateSnapshot(message);
 				break;
+			case 'host-changed':
+				this._onHostChanged(message);
+				break;
 			case 'operation':
 				this._onRemoteOperation(message);
 				break;
@@ -1227,6 +1377,9 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 
 		this._documents.clear();
 		this._sync.clear();
+		// The snapshot is authoritative, so anything held from before it is
+		// either already reflected in it or was never the session's to apply.
+		this._deferred.length = 0;
 		for (const document of message.documents) {
 			if (typeof document?.id === 'string' && typeof document.content === 'string' && typeof document.revision === 'number') {
 				this._installDocument({ ...document });
@@ -1300,8 +1453,15 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			return;
 		}
 		const parsed = parseTextOperation(message.operation);
-		if (!parsed || typeof message.baseRevision !== 'number') {
+		if (!parsed || typeof message.baseRevision !== 'number' || typeof message.operationId !== 'string' || !message.operationId) {
 			this.logService.warn('CollaborationBackendService: discarded malformed operation');
+			return;
+		}
+		if (sync.hasSequenced(message.operationId)) {
+			// A resend that crossed a change of host: this operation is already
+			// in the server order, so applying it again would duplicate the
+			// edit. The submitter is brought back in line with a snapshot.
+			this._onStateRequest(message.userId);
 			return;
 		}
 		const concurrent = sync.since(message.baseRevision);
@@ -1322,7 +1482,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			this._onStateRequest(message.userId);
 			return;
 		}
-		sync.record(operation);
+		sync.record(operation, message.operationId);
 		document.revision = sync.revision;
 		document.updatedAt = Date.now();
 		document.lastEditedBy = message.userId;
@@ -1335,6 +1495,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			documentId: message.documentId,
 			revision: sync.revision,
 			authorUserId: message.userId,
+			operationId: message.operationId,
 			operation,
 		});
 		this._onDidChangeDocument.fire({ ...document });
@@ -1358,11 +1519,19 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			return;
 		}
 		if (message.userId !== session.hostUserId) {
-			this.logService.warn('CollaborationBackendService: discarded sequenced operation from a non-host participant');
+			// Either a peer forging sequencing, or the new host getting here
+			// before the notice that the old one left. Holding the message
+			// instead of dropping it lets the election decide which: it is
+			// replayed only if the sender turns out to be the host, so a forged
+			// operation is still never applied.
+			this._deferred.push(message);
+			if (this._deferred.length > MAX_QUEUED_MESSAGES) {
+				this._deferred.shift();
+			}
 			return;
 		}
 		const parsed = parseTextOperation(message.operation);
-		if (!parsed) {
+		if (!parsed || typeof message.operationId !== 'string' || !message.operationId) {
 			this.logService.warn('CollaborationBackendService: discarded malformed sequenced operation');
 			return;
 		}
@@ -1376,17 +1545,20 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 		}
 
 		if (message.authorUserId === this._localUserId) {
-			sync.record(parsed);
+			sync.record(parsed, message.operationId);
 			document.revision = sync.revision;
 			sync.outstanding = sync.buffer;
+			sync.outstandingId = sync.bufferId;
 			sync.buffer = undefined;
-			if (sync.outstanding) {
+			sync.bufferId = undefined;
+			if (sync.outstanding && sync.outstandingId) {
 				this._post({
 					type: 'operation',
 					sessionId: session.id,
 					userId: this._localUserId,
 					documentId: message.documentId,
 					baseRevision: sync.revision,
+					operationId: sync.outstandingId,
 					operation: sync.outstanding,
 				});
 			}
@@ -1412,7 +1584,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			this._post({ type: 'state-request', sessionId: session.id, userId: this._localUserId });
 			return;
 		}
-		sync.record(parsed);
+		sync.record(parsed, message.operationId);
 		document.revision = sync.revision;
 		document.updatedAt = Date.now();
 		document.lastEditedBy = message.authorUserId;

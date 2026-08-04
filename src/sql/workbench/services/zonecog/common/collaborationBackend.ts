@@ -248,14 +248,21 @@ export type CollaborationMessage =
 	| { type: 'presence'; sessionId: string; userId: string; displayName: string; role: CollaborationRole; joinedAt: number; focus?: CollaborationFocus }
 	/** Explicit departure. */
 	| { type: 'leave'; sessionId: string; userId: string }
+	/**
+	 * Sent by a participant that has just started sequencing, so that peers
+	 * still holding unacknowledged edits resubmit them. It is not a claim to
+	 * hosting: receivers act on it only if they independently derived the same
+	 * host, so asserting it earns a peer nothing.
+	 */
+	| { type: 'host-changed'; sessionId: string; userId: string }
 	/** A joining participant asking the host for the current session state. */
 	| { type: 'state-request'; sessionId: string; userId: string }
 	/** The host's answer: everything needed to start collaborating. */
 	| { type: 'state-snapshot'; sessionId: string; userId: string; targetUserId: string; title: string; createdAt: number; documents: CollaborationDocument[]; roles: Record<string, CollaborationRole>; votes: CollaborationVote[] }
 	/** A participant's edit, still expressed against `baseRevision`. */
-	| { type: 'operation'; sessionId: string; userId: string; documentId: string; baseRevision: number; operation: TextOperation }
+	| { type: 'operation'; sessionId: string; userId: string; documentId: string; baseRevision: number; operationId: string; operation: TextOperation }
 	/** The host's sequenced edit, authoritative for every replica. */
-	| { type: 'operation-applied'; sessionId: string; userId: string; documentId: string; revision: number; authorUserId: string; operation: TextOperation }
+	| { type: 'operation-applied'; sessionId: string; userId: string; documentId: string; revision: number; authorUserId: string; operationId: string; operation: TextOperation }
 	/** A new shared document. */
 	| { type: 'document-created'; sessionId: string; userId: string; document: CollaborationDocument }
 	/** A role change made by a participant holding `session:manage`. */

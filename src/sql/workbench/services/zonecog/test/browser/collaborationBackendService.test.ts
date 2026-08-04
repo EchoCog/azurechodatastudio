@@ -24,7 +24,18 @@ import { replaceOperation } from 'sql/workbench/services/zonecog/common/collabor
 class TestRelayHub {
 	private readonly _sessions = new Map<string, Set<TestRelayChannel>>();
 	private readonly _held: Array<{ channel: TestRelayChannel; message: unknown }> = [];
+	private readonly _unreachable = new Set<string>();
 	private _paused = false;
+
+	/** Stop delivering to one participant, as a dropped connection would. */
+	blackhole(owner: string): void {
+		this._unreachable.add(owner);
+	}
+
+	/** Let a participant receive again; nothing missed is replayed. */
+	restore(owner: string): void {
+		this._unreachable.delete(owner);
+	}
 
 	/** Hold traffic so peers can act before hearing from each other. */
 	pause(): void {
@@ -40,13 +51,13 @@ class TestRelayHub {
 		}
 	}
 
-	connect(sessionId: string): TestRelayChannel {
+	connect(sessionId: string, owner: string): TestRelayChannel {
 		let members = this._sessions.get(sessionId);
 		if (!members) {
 			members = new Set<TestRelayChannel>();
 			this._sessions.set(sessionId, members);
 		}
-		const channel = new TestRelayChannel(this, sessionId);
+		const channel = new TestRelayChannel(this, sessionId, owner);
 		members.add(channel);
 		return channel;
 	}
@@ -62,7 +73,7 @@ class TestRelayHub {
 		}
 		const wire = JSON.stringify(message);
 		for (const member of Array.from(members)) {
-			if (member === sender) {
+			if (member === sender || this._unreachable.has(member.owner)) {
 				continue;
 			}
 			if (this._paused) {
@@ -77,7 +88,7 @@ class TestRelayHub {
 class TestRelayChannel implements ICollaborationChannel {
 	onmessage: ((event: { data: unknown }) => void) | null = null;
 
-	constructor(private readonly _hub: TestRelayHub, private readonly _sessionId: string) { }
+	constructor(private readonly _hub: TestRelayHub, private readonly _sessionId: string, readonly owner: string) { }
 
 	postMessage(message: unknown): void {
 		this._hub.broadcast(this._sessionId, this, message);
@@ -94,16 +105,16 @@ class TestRelayChannel implements ICollaborationChannel {
 }
 
 class TestCollaborationBackendService extends CollaborationBackendService {
-	constructor(private readonly _hub: TestRelayHub, displayName: string) {
+	constructor(private readonly _hub: TestRelayHub, private readonly _displayName: string) {
 		const logService = new NullLogService();
 		super(logService, new HypergraphStore(logService), new CognitiveMembraneService(logService));
 		// A zero interval keeps the presence heartbeat from leaving timers
 		// behind; every test drives presence explicitly instead.
-		this.configure({ displayName, presenceIntervalMs: 0, joinTimeoutMs: 50 });
+		this.configure({ displayName: _displayName, presenceIntervalMs: 0, joinTimeoutMs: 50 });
 	}
 
 	protected override _createTransport(sessionId: string): { channel: ICollaborationChannel; kind: CollaborationTransportKind } | undefined {
-		return { channel: this._hub.connect(sessionId), kind: 'websocket' };
+		return { channel: this._hub.connect(sessionId, this._displayName), kind: 'websocket' };
 	}
 }
 
@@ -469,6 +480,60 @@ suite('Collaboration Backend Service Tests', () => {
 		assert.strictEqual(guest.getDocument(document!.id)?.content, 'SELECT 1 AS one');
 	});
 
+	test('should publish edits that were in flight when hosting changed hands', async () => {
+		const host = makeService('Host');
+		const guest = makeService('Guest');
+		const observer = makeService('Third');
+		const session = await host.createSession('Shared Workspace');
+		await guest.joinSession(session!.id);
+		await observer.joinSession(session!.id);
+		const document = host.createDocument('analysis.sql', 'SELECT 1');
+
+		// The guest submits an edit the host never gets to sequence. Whichever
+		// peer takes over, the edit has to reach the other one rather than
+		// living on only the replica that typed it.
+		hub.pause();
+		assert.strictEqual(guest.editDocument(document!.id, 8, 0, ' FROM t'), true);
+		host.leaveSession();
+		hub.resume();
+
+		assert.strictEqual(guest.getDocument(document!.id)?.content, 'SELECT 1 FROM t');
+		assert.strictEqual(observer.getDocument(document!.id)?.content, 'SELECT 1 FROM t');
+		assert.strictEqual(guest.getState().pendingOperations, 0);
+
+		// Sequencing must carry on cleanly from the republished revision.
+		assert.strictEqual(observer.editDocument(document!.id, 15, 0, ' WHERE x > 1'), true);
+		assert.strictEqual(guest.getDocument(document!.id)?.content, 'SELECT 1 FROM t WHERE x > 1');
+		assert.strictEqual(observer.getDocument(document!.id)?.content, 'SELECT 1 FROM t WHERE x > 1');
+	});
+
+	test('should not apply an edit twice when the previous host had already sequenced it', async () => {
+		const host = makeService('Host');
+		const guest = makeService('Guest');
+		const observer = makeService('Third');
+		const session = await host.createSession('Shared Workspace');
+		await guest.joinSession(session!.id);
+		await observer.joinSession(session!.id);
+		const document = host.createDocument('analysis.sql', 'SELECT 1');
+
+		// The guest stops receiving just before the host sequences its edit, so
+		// the acknowledgement never lands and the edit stays pending locally
+		// even though the rest of the session has already applied it.
+		hub.blackhole('Guest');
+		assert.strictEqual(guest.editDocument(document!.id, 8, 0, ' FROM t'), true);
+		assert.strictEqual(observer.getDocument(document!.id)?.content, 'SELECT 1 FROM t');
+		assert.strictEqual(guest.getState().pendingOperations, 1);
+
+		// The guest hears the session again and the host leaves; resubmitting
+		// the pending edit must not append a second copy of it.
+		hub.restore('Guest');
+		host.leaveSession();
+
+		assert.strictEqual(guest.getDocument(document!.id)?.content, 'SELECT 1 FROM t');
+		assert.strictEqual(observer.getDocument(document!.id)?.content, 'SELECT 1 FROM t');
+		assert.strictEqual(guest.getState().pendingOperations, 0);
+	});
+
 	test('should let a late joiner take over from the migrated host', async () => {
 		const host = makeService('Host');
 		const guest = makeService('Guest');
@@ -545,12 +610,12 @@ suite('Collaboration Backend Service Tests', () => {
 		const localHub = hub;
 
 		class SharedStoreService extends CollaborationBackendService {
-			constructor(displayName: string) {
+			constructor(private readonly _displayName: string) {
 				super(logService, hypergraphStore, membraneService);
-				this.configure({ displayName, presenceIntervalMs: 0, joinTimeoutMs: 50 });
+				this.configure({ displayName: _displayName, presenceIntervalMs: 0, joinTimeoutMs: 50 });
 			}
 			protected override _createTransport(sessionId: string): { channel: ICollaborationChannel; kind: CollaborationTransportKind } | undefined {
-				return { channel: localHub.connect(sessionId), kind: 'websocket' };
+				return { channel: localHub.connect(sessionId, this._displayName), kind: 'websocket' };
 			}
 		}
 
