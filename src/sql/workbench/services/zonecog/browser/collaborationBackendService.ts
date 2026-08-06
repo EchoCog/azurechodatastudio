@@ -35,7 +35,6 @@ import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/servi
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ILogService } from 'vs/platform/log/common/log';
-import { generateUuid } from 'vs/base/common/uuid';
 
 /** BroadcastChannel name prefix for same-machine sessions. */
 const CHANNEL_PREFIX = 'zonecog-collaboration-';
@@ -55,12 +54,22 @@ const DEFAULT_JOIN_ROLE: CollaborationRole = 'editor';
 /**
  * Generate a session code that is safe to share out of band.
  *
- * The code is the only credential needed to join a session, so its entropy
- * comes from `generateUuid`, which draws on the platform CSPRNG.
+ * The code is the only credential needed to join a session, so its entropy must
+ * come directly from the platform CSPRNG.
  */
 function generateSessionCode(): string {
-	const hex = generateUuid().replace(/-/g, '').toUpperCase();
+	const hex = generateSecureHex(6);
 	return `ZC-${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
+}
+
+function generateSecureHex(byteLength: number): string {
+	const bytes = new Uint8Array(byteLength);
+	globalThis.crypto.getRandomValues(bytes);
+	return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+function generateSecureIdentifier(prefix: string): string {
+	return `${prefix}-${generateSecureHex(16)}`;
 }
 
 /**
@@ -282,7 +291,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 	declare readonly _serviceBrand: undefined;
 
 	private _config: CollaborationBackendConfig = { ...DEFAULT_COLLABORATION_CONFIG };
-	private readonly _localUserId = generateUuid();
+	private readonly _localUserId = generateSecureIdentifier('zonecog-user');
 
 	private _session: CollaborationSession | undefined;
 	private _channel: ICollaborationChannel | undefined;
@@ -521,7 +530,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			return undefined;
 		}
 		const document: CollaborationDocument = {
-			id: generateUuid(),
+			id: generateSecureIdentifier('zonecog-document'),
 			title: title.trim() || 'Untitled',
 			content,
 			revision: 0,
@@ -567,7 +576,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 		if (this._isHost()) {
 			// The host sequences its own edits directly: they are, by
 			// construction, based on the newest revision.
-			const operationId = generateUuid();
+			const operationId = generateSecureIdentifier('zonecog-operation');
 			sync.record(operation, operationId);
 			document.revision = sync.revision;
 			this._post({
@@ -582,7 +591,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			});
 		} else if (!sync.outstanding) {
 			sync.outstanding = operation;
-			sync.outstandingId = generateUuid();
+			sync.outstandingId = generateSecureIdentifier('zonecog-operation');
 			this._post({
 				type: 'operation',
 				sessionId: session.id,
@@ -597,7 +606,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			// is composed into a single follow-up.
 			sync.buffer = sync.buffer ? composeOperations(sync.buffer, operation) : operation;
 			if (!sync.bufferId) {
-				sync.bufferId = generateUuid();
+				sync.bufferId = generateSecureIdentifier('zonecog-operation');
 			}
 		}
 
@@ -625,7 +634,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			return undefined;
 		}
 		const vote: CollaborationVote = {
-			id: generateUuid(),
+			id: generateSecureIdentifier('zonecog-vote'),
 			topic: trimmedTopic,
 			options: trimmedOptions,
 			createdBy: this._localUserId,
@@ -1013,7 +1022,7 @@ export class CollaborationBackendService extends Disposable implements ICollabor
 			// Composing two pending edits produces a new operation, so it needs
 			// an identity of its own; a lone edit keeps the one it was already
 			// submitted under so that it is recognisably the same operation.
-			const operationId = outstanding && buffer ? generateUuid() : (outstandingId ?? bufferId ?? generateUuid());
+			const operationId = outstanding && buffer ? generateSecureIdentifier('zonecog-operation') : (outstandingId ?? bufferId ?? generateSecureIdentifier('zonecog-operation'));
 			sync.record(pending, operationId);
 			document.revision = sync.revision;
 			document.updatedAt = Date.now();
