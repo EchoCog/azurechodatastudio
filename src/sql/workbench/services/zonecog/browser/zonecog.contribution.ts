@@ -72,6 +72,8 @@ import { IHyperonService } from 'sql/workbench/services/zonecog/common/hyperon';
 import { HyperonService } from 'sql/workbench/services/zonecog/browser/hyperonService';
 import { IFlareCogService } from 'sql/workbench/services/zonecog/common/flareCog';
 import { FlareCogService } from 'sql/workbench/services/zonecog/browser/flareCogService';
+import { ICollaborationBackendService } from 'sql/workbench/services/zonecog/common/collaborationBackend';
+import { CollaborationBackendService } from 'sql/workbench/services/zonecog/browser/collaborationBackendService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -230,3 +232,14 @@ registerSingleton(IHyperonService, HyperonService, InstantiationType.Eager);
 // cross-node cluster management; closes Phase C.1 "Distributed Cognition
 // Protocol")
 registerSingleton(IFlareCogService, FlareCogService, InstantiationType.Eager);
+
+// Register Phase D services (Multi-User Cognitive Workspaces)
+
+// Register the Collaboration Backend service (cross-machine multi-user
+// sessions: real WebSocket relay transport with same-machine BroadcastChannel
+// fallback, participant presence with shared cursors and cognitive focus,
+// operational transformation over shared workspace documents, a role-based
+// access-control model, consensus voting, and session persistence and
+// recovery; closes Phase D.1 "Collaboration Protocol" and D.2 "Shared Session
+// Management")
+registerSingleton(ICollaborationBackendService, CollaborationBackendService, InstantiationType.Eager);

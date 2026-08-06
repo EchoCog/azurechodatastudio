@@ -40,6 +40,7 @@ import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/commo
 import { IFederatedQueryService } from 'sql/workbench/services/zonecog/common/federatedQuery';
 import { IHypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/common/hypergraphSemanticSearch';
 import { ICollaborativeReasoningService, CollaborativePhaseEvent } from 'sql/workbench/services/zonecog/common/collaborativeReasoning';
+import { ICollaborationBackendService, CollaborationRole } from 'sql/workbench/services/zonecog/common/collaborationBackend';
 import { IAtomSpaceTransportService } from 'sql/workbench/services/zonecog/common/atomSpaceTransport';
 import { IAutognosisService } from 'sql/workbench/services/zonecog/common/autognosis';
 
@@ -2984,7 +2985,15 @@ class ZoneCogShowCollaborativeSessionLogAction extends Action2 {
 
 		const state = collaborativeService.getState();
 		const lines = log.slice(-20).map(entry => {
-			const who = entry.event.peerId === state.peerId ? 'you' : `peer ${entry.event.peerId.substring(0, 8)}`;
+			if (entry.kind === 'decision') {
+				const raisedBy = entry.event.displayName ?? 'the session';
+				const outcome = entry.event.outcome
+					? `decided "${entry.event.outcome.winningOption ?? 'no majority'}"`
+					: `open (${entry.event.options.join(' / ')})`;
+				return `  [${raisedBy}] decision "${entry.event.topic}": ${outcome}`;
+			}
+			const who = entry.event.displayName
+				?? (entry.event.peerId === state.peerId ? 'you' : `peer ${entry.event.peerId.substring(0, 8)}`);
 			if (entry.kind === 'phase') {
 				return `  [${who}] ${entry.event.phase.name} (query #${entry.event.querySeq}${entry.event.query ? `: "${entry.event.query}"` : ''})`;
 			}
@@ -3034,7 +3043,11 @@ class ZoneCogAnnotateCollaborativePhaseAction extends Action2 {
 			return;
 		}
 
-		collaborativeService.postAnnotation(lastPhase.event.peerId, lastPhase.event.querySeq, lastPhase.event.phase.name, text);
+		if (!collaborativeService.postAnnotation(lastPhase.event.peerId, lastPhase.event.querySeq, lastPhase.event.phase.name, text)) {
+			notificationService.warn(localize('zonecog.annotateRejected',
+				'Annotation was not shared: your role in this collaboration session does not allow annotating.'));
+			return;
+		}
 		notificationService.info(localize('zonecog.annotateDone',
 			'Annotation shared on "{0}".', lastPhase.event.phase.name));
 	}
@@ -3056,10 +3069,181 @@ registerAction2(ZoneCogSemanticSearchAction);
 registerAction2(ZoneCogToggleSensorimotorBindingAction);
 registerAction2(ZoneCogSensorimotorStatusAction);
 
+/**
+ * Action to start a multi-user cognitive workspace session that other
+ * machines can join with the generated session code (Phase D.4).
+ */
+class ZoneCogCreateCollaborationSessionAction extends Action2 {
+
+	static ID = 'zonecog.collaboration.createSession';
+	constructor() {
+		super({
+			id: ZoneCogCreateCollaborationSessionAction.ID,
+			title: { value: localize('zonecog.collaboration.createSession', 'Create Multi-User Cognitive Workspace'), original: 'Create Multi-User Cognitive Workspace' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.organization,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const collaborationService = accessor.get(ICollaborationBackendService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+		const clipboardService = accessor.get(IClipboardService);
+
+		const existing = collaborationService.getSession();
+		if (existing) {
+			notificationService.warn(localize('zonecog.collaboration.alreadyInSession',
+				'Already in cognitive workspace {0}. Leave it before creating another.', existing.id));
+			return;
+		}
+
+		const title = await quickInputService.input({
+			prompt: localize('zonecog.collaboration.titlePrompt', 'Name for the shared cognitive workspace'),
+			value: localize('zonecog.collaboration.titleDefault', 'Cognitive Workspace'),
+		});
+		if (title === undefined) {
+			return;
+		}
+
+		const session = await collaborationService.createSession(title);
+		if (!session) {
+			notificationService.error(localize('zonecog.collaboration.createFailed',
+				'Could not open a collaboration transport. Configure a relay URL for cross-machine sessions, or use a workbench that supports BroadcastChannel.'));
+			return;
+		}
+
+		await clipboardService.writeText(session.id);
+		const state = collaborationService.getState();
+		notificationService.info(localize('zonecog.collaboration.created',
+			'Cognitive workspace "{0}" is open over the {1} transport. Session code {2} has been copied to the clipboard - share it so others can join.',
+			session.title, state.transport, session.id));
+	}
+}
+
+/**
+ * Action to join an existing multi-user cognitive workspace by its session
+ * code (Phase D.4).
+ */
+class ZoneCogJoinCollaborationSessionAction extends Action2 {
+
+	static ID = 'zonecog.collaboration.joinSession';
+	constructor() {
+		super({
+			id: ZoneCogJoinCollaborationSessionAction.ID,
+			title: { value: localize('zonecog.collaboration.joinSession', 'Join Multi-User Cognitive Workspace'), original: 'Join Multi-User Cognitive Workspace' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.organization,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const collaborationService = accessor.get(ICollaborationBackendService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		const code = await quickInputService.input({
+			prompt: localize('zonecog.collaboration.codePrompt', 'Session code of the cognitive workspace to join'),
+			placeHolder: 'ZC-XXXX-XXXX-XXXX',
+		});
+		if (!code) {
+			return;
+		}
+
+		const roles: Array<{ label: string; description: string; role: CollaborationRole }> = [
+			{ label: localize('zonecog.collaboration.roleEditor', 'Editor'), description: localize('zonecog.collaboration.roleEditorDetail', 'Edit shared documents, annotate reasoning, and vote'), role: 'editor' },
+			{ label: localize('zonecog.collaboration.roleCommenter', 'Commenter'), description: localize('zonecog.collaboration.roleCommenterDetail', 'Annotate reasoning and vote, without editing documents'), role: 'commenter' },
+			{ label: localize('zonecog.collaboration.roleObserver', 'Observer'), description: localize('zonecog.collaboration.roleObserverDetail', 'Watch the shared workspace without contributing'), role: 'observer' },
+		];
+		const chosen = await quickInputService.pick(roles, {
+			placeHolder: localize('zonecog.collaboration.rolePrompt', 'How would you like to take part?'),
+		});
+		if (!chosen) {
+			return;
+		}
+
+		const session = await collaborationService.joinSession(code, chosen.role);
+		if (!session) {
+			notificationService.error(localize('zonecog.collaboration.joinFailed',
+				'Could not join {0}. Check the session code and that the workspace is still open.', code));
+			return;
+		}
+
+		const state = collaborationService.getState();
+		notificationService.info(localize('zonecog.collaboration.joined',
+			'Joined cognitive workspace "{0}" as {1} with {2} participant(s) over the {3} transport.',
+			session.title, state.localRole, state.participantCount, state.transport));
+	}
+}
+
+/**
+ * Action to show who is taking part in the multi-user cognitive workspace and
+ * where their attention currently sits (Phase D.4).
+ */
+class ZoneCogShowCollaborationParticipantsAction extends Action2 {
+
+	static ID = 'zonecog.collaboration.showParticipants';
+	constructor() {
+		super({
+			id: ZoneCogShowCollaborationParticipantsAction.ID,
+			title: { value: localize('zonecog.collaboration.showParticipants', 'Show Cognitive Workspace Participants'), original: 'Show Cognitive Workspace Participants' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.account,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const collaborationService = accessor.get(ICollaborationBackendService);
+		const notificationService = accessor.get(INotificationService);
+
+		const state = collaborationService.getState();
+		if (!state.session) {
+			notificationService.info(localize('zonecog.collaboration.noSession',
+				'Not in a multi-user cognitive workspace. Create one or join with a session code first.'));
+			return;
+		}
+
+		const lines = collaborationService.getParticipants().map(participant => {
+			const markers: string[] = [participant.role];
+			if (participant.isHost) {
+				markers.push('host');
+			}
+			if (participant.userId === state.localUserId) {
+				markers.push('you');
+			}
+			if (!participant.online) {
+				markers.push('away');
+			}
+			const focus = participant.focus?.phaseName
+				? ` - attending to "${participant.focus.phaseName}"`
+				: participant.focus?.documentId
+					? ` - editing document ${participant.focus.documentId.substring(0, 8)} at ${participant.focus.head}`
+					: '';
+			return `  ${participant.displayName} (${markers.join(', ')})${focus}`;
+		}).join('\n');
+
+		notificationService.info(localize('zonecog.collaboration.participants',
+			'Cognitive workspace "{0}" ({1}) over {2} transport, {3} shared document(s), {4} pending operation(s):\n{5}',
+			state.session.title, state.session.id, state.transport,
+			collaborationService.getDocuments().length, state.pendingOperations, lines));
+	}
+}
+
 // Phase 4.4 collaborative reasoning session actions
 registerAction2(ZoneCogToggleCollaborativeReasoningAction);
 registerAction2(ZoneCogShowCollaborativeSessionLogAction);
 registerAction2(ZoneCogAnnotateCollaborativePhaseAction);
+
+// Phase D.4 multi-user cognitive workspace actions
+registerAction2(ZoneCogCreateCollaborationSessionAction);
+registerAction2(ZoneCogJoinCollaborationSessionAction);
+registerAction2(ZoneCogShowCollaborationParticipantsAction);
 
 /**
  * Action to configure the AtomSpace bridge base URL (Phase 3.2 real
