@@ -8,6 +8,9 @@ import {
 	HypergraphSnapshot,
 	PersistenceStats,
 	ArchiveStats,
+	HypergraphBackup,
+	BackupImportResult,
+	HYPERGRAPH_BACKUP_FORMAT_VERSION,
 } from 'sql/workbench/services/zonecog/common/hypergraphPersistence';
 import { IHypergraphStore, HypergraphNode, HypergraphLink, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { Disposable } from 'vs/base/common/lifecycle';
@@ -19,7 +22,7 @@ import { ILogService } from 'vs/platform/log/common/log';
 // ---------------------------------------------------------------------------
 
 const DB_NAME = 'zonecog-hypergraph';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const STORE_NODES = 'nodes';
 const STORE_LINKS = 'links';
@@ -28,6 +31,20 @@ const STORE_SNAPSHOTS = 'snapshots';
 const STORE_ARCHIVE_NODES = 'archiveNodes';
 /** Cold tier: links archived alongside fully-archived nodes. */
 const STORE_ARCHIVE_LINKS = 'archiveLinks';
+/** Append-only log of node/link upserts, used to compute incremental backup deltas. */
+const STORE_CHANGELOG = 'changelog';
+
+/**
+ * One entry in the append-only changelog: "this node/link was upserted at
+ * this time". Used to compute which records belong in an incremental backup
+ * delta - see {@link HypergraphBackup}.
+ */
+interface ChangeLogEntry {
+	id: string;
+	entityType: 'node' | 'link';
+	entityId: string;
+	timestamp: number;
+}
 
 const MIN_AUTO_SAVE_INTERVAL_MS = 10_000;
 
@@ -68,6 +85,9 @@ function openDatabase(): Promise<IDBDatabase> {
 			}
 			if (!db.objectStoreNames.contains(STORE_ARCHIVE_LINKS)) {
 				db.createObjectStore(STORE_ARCHIVE_LINKS, { keyPath: 'id' });
+			}
+			if (!db.objectStoreNames.contains(STORE_CHANGELOG)) {
+				db.createObjectStore(STORE_CHANGELOG, { keyPath: 'id' });
 			}
 		};
 		req.onsuccess = () => resolve(req.result);
@@ -264,12 +284,14 @@ export function nodesAndLinksToAtomSpaceScheme(nodes: ReadonlyArray<HypergraphNo
  * the browser's built-in IndexedDB for durable cross-session persistence.
  *
  * IndexedDB schema:
- *   DB: "zonecog-hypergraph" (version 2)
+ *   DB: "zonecog-hypergraph" (version 3)
  *   - nodes        -> HypergraphNode records keyed by id (hot tier)
  *   - links        -> HypergraphLink records keyed by id (hot tier)
  *   - snapshots    -> HypergraphSnapshot metadata keyed by id
  *   - archiveNodes -> HypergraphNode records keyed by id (cold tier)
  *   - archiveLinks -> HypergraphLink records keyed by id (cold tier)
+ *   - changelog    -> ChangeLogEntry records keyed by id, tracking node/link
+ *                     upserts for incremental backup deltas
  */
 export class HypergraphPersistenceService extends Disposable implements IHypergraphPersistenceService {
 
@@ -282,8 +304,21 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 
 	private _lastSaveTime = 0;
 	private _lastLoadTime = 0;
+	private _lastBackupTime = 0;
 	private _autoSaveIntervalHandle: ReturnType<typeof setInterval> | null = null;
 	private _autoSaveEnabled = false;
+
+	/**
+	 * While true, `onDidChangeNode`/`onDidChangeLink` firings are not
+	 * recorded to the changelog. Set around bulk restorations (`load()`,
+	 * `restoreArchivedNode()`) so replaying already-known state back into
+	 * `IHypergraphStore` isn't mistaken for a fresh change worth including in
+	 * the next incremental backup delta.
+	 */
+	private _suppressChangeTracking = false;
+
+	/** Disambiguates changelog entry ids created within the same millisecond. */
+	private _changeLogCounter = 0;
 
 	/**
 	 * FIFO chain serializing every operation that reads or mutates the
@@ -324,6 +359,9 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 				throw err;
 			});
 		this.membraneService.recordActivity('autonomic');
+
+		this._register(this.hypergraphStore.onDidChangeNode(node => this._recordChange('node', node.id)));
+		this._register(this.hypergraphStore.onDidChangeLink(link => this._recordChange('link', link.id)));
 	}
 
 	// -------------------------------------------------------------------------
@@ -395,9 +433,11 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			}
 
 			// Restore into in-memory store
-			this.hypergraphStore.clear();
-			for (const node of nodes) { this.hypergraphStore.addNode(node); }
-			for (const link of links) { this.hypergraphStore.addLink(link); }
+			this._withChangeTrackingSuppressed(() => {
+				this.hypergraphStore.clear();
+				for (const node of nodes) { this.hypergraphStore.addNode(node); }
+				for (const link of links) { this.hypergraphStore.addLink(link); }
+			});
 
 			const latestSnapshot = snapshots.sort((a, b) => b.timestamp - a.timestamp)[0];
 			this._lastLoadTime = Date.now();
@@ -428,13 +468,14 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	async clearStorage(): Promise<void> {
 		return this._serialize(async () => {
 			const db = await this._getDb();
-			const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_SNAPSHOTS, STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
+			const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_SNAPSHOTS, STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS, STORE_CHANGELOG], 'readwrite');
 			await Promise.all([
 				idbClear(tx.objectStore(STORE_NODES)),
 				idbClear(tx.objectStore(STORE_LINKS)),
 				idbClear(tx.objectStore(STORE_SNAPSHOTS)),
 				idbClear(tx.objectStore(STORE_ARCHIVE_NODES)),
 				idbClear(tx.objectStore(STORE_ARCHIVE_LINKS)),
+				idbClear(tx.objectStore(STORE_CHANGELOG)),
 			]);
 			await new Promise<void>((resolve, reject) => {
 				tx.oncomplete = () => resolve();
@@ -493,6 +534,7 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 				lastLoadTime: this._lastLoadTime,
 				estimatedBytes: 0,
 				archivedNodeCount: 0,
+				lastBackupTime: this._lastBackupTime,
 			};
 		}
 
@@ -516,6 +558,7 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			lastLoadTime: this._lastLoadTime,
 			estimatedBytes,
 			archivedNodeCount,
+			lastBackupTime: this._lastBackupTime,
 		};
 	}
 
@@ -620,12 +663,14 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			}
 			const linksToDropFromArchive = links.filter(l => !stillReferencedInArchive.has(l.id));
 
-			this.hypergraphStore.addNode(node);
-			for (const link of links) {
-				if (!this.hypergraphStore.getLink(link.id)) {
-					this.hypergraphStore.addLink(link);
+			this._withChangeTrackingSuppressed(() => {
+				this.hypergraphStore.addNode(node);
+				for (const link of links) {
+					if (!this.hypergraphStore.getLink(link.id)) {
+						this.hypergraphStore.addLink(link);
+					}
 				}
-			}
+			});
 
 			// A link only belongs in the hot tier once every one of its
 			// outgoing nodes is actually live - otherwise it would sit in hot
@@ -669,6 +714,79 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	}
 
 	// -------------------------------------------------------------------------
+	// Incremental backup / restore
+	// -------------------------------------------------------------------------
+
+	async createBackup(sinceTimestamp?: number): Promise<HypergraphBackup> {
+		const full = sinceTimestamp === undefined;
+		let nodes: HypergraphNode[];
+		let links: HypergraphLink[];
+
+		if (full) {
+			({ nodes, links } = this._collectGraph());
+		} else {
+			const db = await this._getDb();
+			const changelog = await idbGetAll<ChangeLogEntry>(db, STORE_CHANGELOG);
+			const changedNodeIds = new Set(changelog.filter(e => e.entityType === 'node' && e.timestamp > sinceTimestamp).map(e => e.entityId));
+			const changedLinkIds = new Set(changelog.filter(e => e.entityType === 'link' && e.timestamp > sinceTimestamp).map(e => e.entityId));
+			nodes = [...changedNodeIds].map(id => this.hypergraphStore.getNode(id)).filter((n): n is HypergraphNode => n !== undefined);
+			links = [...changedLinkIds].map(id => this.hypergraphStore.getLink(id)).filter((l): l is HypergraphLink => l !== undefined);
+		}
+
+		const backup: HypergraphBackup = {
+			formatVersion: HYPERGRAPH_BACKUP_FORMAT_VERSION,
+			createdAt: Date.now(),
+			full,
+			sinceTimestamp,
+			nodes,
+			links,
+		};
+
+		this._lastBackupTime = backup.createdAt;
+		this.logService.info(
+			`HypergraphPersistenceService: created ${full ? 'full' : 'incremental'} backup - ` +
+			`${nodes.length} node(s), ${links.length} link(s)`
+		);
+		this.membraneService.recordActivity('autonomic');
+		return backup;
+	}
+
+	async exportBackupJson(sinceTimestamp?: number): Promise<string> {
+		return JSON.stringify(await this.createBackup(sinceTimestamp));
+	}
+
+	async importBackup(backup: HypergraphBackup): Promise<BackupImportResult> {
+		return this._serialize(async () => {
+			const db = await this._getDb();
+
+			for (const node of backup.nodes) { this.hypergraphStore.addNode(node); }
+			for (const link of backup.links) { this.hypergraphStore.addLink(link); }
+
+			const tx = db.transaction([STORE_NODES, STORE_LINKS], 'readwrite');
+			const nodeStore = tx.objectStore(STORE_NODES);
+			const linkStore = tx.objectStore(STORE_LINKS);
+			for (const node of backup.nodes) { await idbPut(nodeStore, node); }
+			for (const link of backup.links) { await idbPut(linkStore, link); }
+			await new Promise<void>((resolve, reject) => {
+				tx.oncomplete = () => resolve();
+				tx.onerror = () => reject(tx.error);
+			});
+
+			this.logService.info(
+				`HypergraphPersistenceService: imported ${backup.full ? 'full' : 'incremental'} backup - ` +
+				`${backup.nodes.length} node(s), ${backup.links.length} link(s) upserted`
+			);
+			this.membraneService.recordActivity('autonomic');
+			return { nodesUpserted: backup.nodes.length, linksUpserted: backup.links.length };
+		});
+	}
+
+	async importBackupJson(json: string): Promise<BackupImportResult> {
+		const backup = JSON.parse(json) as HypergraphBackup;
+		return this.importBackup(backup);
+	}
+
+	// -------------------------------------------------------------------------
 	// Lifecycle
 	// -------------------------------------------------------------------------
 
@@ -704,6 +822,44 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 		const result = this._writeQueue.then(operation, operation);
 		this._writeQueue = result.then(() => undefined, () => undefined);
 		return result;
+	}
+
+	/**
+	 * Run `fn` synchronously with changelog recording disabled, then restore
+	 * the previous suppression state. Used to keep bulk restorations
+	 * (`load()`, `restoreArchivedNode()`) out of the incremental backup
+	 * changelog - see {@link _suppressChangeTracking}.
+	 */
+	private _withChangeTrackingSuppressed(fn: () => void): void {
+		const previous = this._suppressChangeTracking;
+		this._suppressChangeTracking = true;
+		try {
+			fn();
+		} finally {
+			this._suppressChangeTracking = previous;
+		}
+	}
+
+	/**
+	 * Best-effort append to the changelog store backing incremental backup
+	 * deltas. Failures are logged, not thrown - a missed changelog entry only
+	 * means that record falls back to being covered by the next full backup,
+	 * not a hard failure of whatever operation triggered the node/link change.
+	 */
+	private _recordChange(entityType: 'node' | 'link', entityId: string): void {
+		if (this._suppressChangeTracking) { return; }
+		const entry: ChangeLogEntry = {
+			id: `${entityType}:${entityId}:${Date.now()}:${this._changeLogCounter++}`,
+			entityType,
+			entityId,
+			timestamp: Date.now(),
+		};
+		this._getDb()
+			.then(db => {
+				const tx = db.transaction([STORE_CHANGELOG], 'readwrite');
+				return idbPut(tx.objectStore(STORE_CHANGELOG), entry);
+			})
+			.catch(err => this.logService.warn(`HypergraphPersistenceService: failed to record changelog entry - ${err}`));
 	}
 
 	/**

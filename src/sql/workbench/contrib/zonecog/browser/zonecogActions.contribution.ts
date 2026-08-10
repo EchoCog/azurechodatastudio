@@ -1160,6 +1160,92 @@ class ZoneCogPersistenceRestoreArchivedAction extends Action2 {
 	}
 }
 
+/**
+ * Action to export a full or incremental hypergraph backup to the clipboard.
+ */
+class ZoneCogExportBackupAction extends Action2 {
+
+	static ID = 'zonecog.persistenceExportBackup';
+	constructor() {
+		super({
+			id: ZoneCogExportBackupAction.ID,
+			title: { value: localize('zonecog.persistenceExportBackup', 'Export Hypergraph Backup'), original: 'Export Hypergraph Backup' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.exportIcon,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+		const clipboardService = accessor.get(IClipboardService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		try {
+			const stats = await persistenceService.getStats();
+			const canIncremental = stats.lastBackupTime > 0;
+			let sinceTimestamp: number | undefined;
+
+			if (canIncremental) {
+				const pick = await quickInputService.pick(
+					[
+						{ label: localize('zonecog.backupFull', 'Full backup'), id: 'full' },
+						{ label: localize('zonecog.backupIncremental', 'Incremental backup (since last backup)'), id: 'incremental' },
+					],
+					{ placeHolder: localize('zonecog.backupPick', 'Select backup type') }
+				);
+				if (!pick) { return; }
+				sinceTimestamp = pick.id === 'incremental' ? stats.lastBackupTime : undefined;
+			}
+
+			const backup = await persistenceService.createBackup(sinceTimestamp);
+			await clipboardService.writeText(JSON.stringify(backup));
+			notificationService.info(localize('zonecog.persistenceExportBackupDone',
+				'{0} backup with {1} node(s) and {2} link(s) copied to clipboard.',
+				backup.full ? 'Full' : 'Incremental', backup.nodes.length, backup.links.length));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceExportBackupError',
+				'Failed to export backup: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to import a hypergraph backup from the clipboard, upserting its
+ * nodes/links into the live hypergraph and hot IndexedDB tier.
+ */
+class ZoneCogImportBackupAction extends Action2 {
+
+	static ID = 'zonecog.persistenceImportBackup';
+	constructor() {
+		super({
+			id: ZoneCogImportBackupAction.ID,
+			title: { value: localize('zonecog.persistenceImportBackup', 'Import Hypergraph Backup'), original: 'Import Hypergraph Backup' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.desktopDownload,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+		const clipboardService = accessor.get(IClipboardService);
+
+		try {
+			const result = await persistenceService.importBackupJson(await clipboardService.readText());
+			notificationService.info(localize('zonecog.persistenceImportBackupDone',
+				'Imported backup: {0} node(s), {1} link(s) upserted.', result.nodesUpserted, result.linksUpserted));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceImportBackupError',
+				'Failed to import backup: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
 // Register all actions
 registerAction2(ZoneCogTestAction);
 registerAction2(ZoneCogToggleThinkingAction);
@@ -1187,6 +1273,8 @@ registerAction2(ZoneCogPersistenceLoadAction);
 registerAction2(ZoneCogPersistenceStatsAction);
 registerAction2(ZoneCogPersistenceArchiveAction);
 registerAction2(ZoneCogPersistenceRestoreArchivedAction);
+registerAction2(ZoneCogExportBackupAction);
+registerAction2(ZoneCogImportBackupAction);
 
 // =============================================================================
 // Phase 5 actions - Schema Perception, Aphrodite Engine

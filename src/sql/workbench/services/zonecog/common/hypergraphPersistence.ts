@@ -5,7 +5,7 @@
 
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { Event } from 'vs/base/common/event';
-import { HypergraphNode } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { HypergraphNode, HypergraphLink } from 'sql/workbench/services/zonecog/common/zonecogService';
 
 export const IHypergraphPersistenceService = createDecorator<IHypergraphPersistenceService>('hypergraphPersistenceService');
 
@@ -49,6 +49,8 @@ export interface PersistenceStats {
 	estimatedBytes: number;
 	/** Number of nodes currently held in cold-tier archive storage. */
 	archivedNodeCount: number;
+	/** Epoch-ms of the most recent backup export. 0 if never backed up. */
+	lastBackupTime: number;
 }
 
 /**
@@ -60,6 +62,39 @@ export interface ArchiveStats {
 	archivedNodeCount: number;
 	/** Number of links moved alongside them (every outgoing id also archived). */
 	archivedLinkCount: number;
+}
+
+/** Format version stamped into every exported {@link HypergraphBackup}. */
+export const HYPERGRAPH_BACKUP_FORMAT_VERSION = 1;
+
+/**
+ * A portable, JSON-serializable backup of the hypergraph - either the full
+ * current state, or (when created with a `sinceTimestamp`) an incremental
+ * delta of just the nodes/links that changed since then.
+ *
+ * Incremental deltas only cover *upserts* (adds and updates), tracked via
+ * {@link IHypergraphStore.onDidChangeNode}/`onDidChangeLink`. Node/link
+ * removal performed directly against `IHypergraphStore` (outside this
+ * service) is not observable through those events and so is not captured by
+ * a delta; a periodic full backup (`sinceTimestamp` omitted) always reflects
+ * the true current state regardless.
+ */
+export interface HypergraphBackup {
+	formatVersion: number;
+	/** Epoch-ms when this backup was created. */
+	createdAt: number;
+	/** True for a full snapshot; false for an incremental delta. */
+	full: boolean;
+	/** The `sinceTimestamp` this delta was computed against, if incremental. */
+	sinceTimestamp?: number;
+	nodes: HypergraphNode[];
+	links: HypergraphLink[];
+}
+
+/** Result of applying a {@link HypergraphBackup} via {@link IHypergraphPersistenceService.importBackup}. */
+export interface BackupImportResult {
+	nodesUpserted: number;
+	linksUpserted: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +244,41 @@ export interface IHypergraphPersistenceService {
 	 * the live hypergraph.
 	 */
 	listArchivedNodes(): Promise<HypergraphNode[]>;
+
+	// -- Incremental backup / restore -----------------------------------------
+
+	/**
+	 * Create a portable, JSON-serializable backup of the hypergraph.
+	 *
+	 * @param sinceTimestamp When omitted, returns a full backup of every
+	 *   current node/link. When given (an epoch-ms value, typically a prior
+	 *   backup's `createdAt`), returns an incremental delta containing only
+	 *   the nodes/links upserted since then - see {@link HypergraphBackup}
+	 *   for what a delta does and does not capture.
+	 */
+	createBackup(sinceTimestamp?: number): Promise<HypergraphBackup>;
+
+	/**
+	 * Convenience wrapper: {@link createBackup} serialized to a JSON string,
+	 * suitable for the clipboard or a file.
+	 */
+	exportBackupJson(sinceTimestamp?: number): Promise<string>;
+
+	/**
+	 * Apply a previously created backup - full or incremental - by upserting
+	 * every node/link it contains into both the live in-memory hypergraph and
+	 * the hot IndexedDB tier. Existing records with the same id are
+	 * overwritten; nothing is cleared first, so multiple incremental backups
+	 * (or a full backup followed by incrementals) can be applied in sequence
+	 * to reconstruct state.
+	 */
+	importBackup(backup: HypergraphBackup): Promise<BackupImportResult>;
+
+	/**
+	 * Convenience wrapper: parses a JSON string produced by
+	 * {@link exportBackupJson} and applies it via {@link importBackup}.
+	 */
+	importBackupJson(json: string): Promise<BackupImportResult>;
 
 	/**
 	 * Dispose of the service and release any resources.
