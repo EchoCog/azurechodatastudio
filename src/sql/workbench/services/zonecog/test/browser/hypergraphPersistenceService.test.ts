@@ -664,6 +664,23 @@ suite('Hypergraph Persistence Service Tests', () => {
 		assert.strictEqual(backup.nodes[0].id, 'inc-new');
 	});
 
+	test('should not drop a change from an incremental backup requested immediately afterward, with no delay for the changelog write to land', async () => {
+		const checkpoint = Date.now();
+		hypergraphStore.addNode({ id: 'no-delay-node', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
+
+		// No await/setTimeout between the change and the backup call: the
+		// changelog put triggered by addNode() is still in flight here.
+		// createBackup() must still see it, and every later incremental
+		// backup must still see it too (once _lastBackupTime moves past an
+		// entry that was missed, it can never be picked up again).
+		const backup = await persistenceService.createBackup(checkpoint);
+		assert.strictEqual(backup.nodes.length, 1, 'change queued immediately before createBackup() must not be dropped');
+		assert.strictEqual(backup.nodes[0].id, 'no-delay-node');
+
+		const secondBackup = await persistenceService.createBackup(backup.createdAt);
+		assert.strictEqual(secondBackup.nodes.length, 0, 'change already captured by the first backup should not reappear');
+	});
+
 	test('should include a link in an incremental backup when it was added after the checkpoint', async () => {
 		hypergraphStore.addNode({ id: 'link-src', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
 		hypergraphStore.addNode({ id: 'link-dst', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
@@ -747,6 +764,18 @@ suite('Hypergraph Persistence Service Tests', () => {
 
 		stats = await persistenceService.getStats();
 		assert.ok(stats.lastBackupTime > 0);
+	});
+
+	test('should reset the last backup checkpoint when storage is cleared', async () => {
+		hypergraphStore.addNode({ id: 'clear-checkpoint-node', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
+		await persistenceService.createBackup();
+		let stats = await persistenceService.getStats();
+		assert.ok(stats.lastBackupTime > 0);
+
+		await persistenceService.clearStorage();
+
+		stats = await persistenceService.getStats();
+		assert.strictEqual(stats.lastBackupTime, 0, 'a stale checkpoint against the now-empty changelog would silently miss everything');
 	});
 });
 

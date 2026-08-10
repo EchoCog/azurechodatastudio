@@ -321,6 +321,17 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	private _changeLogCounter = 0;
 
 	/**
+	 * FIFO chain of in-flight changelog writes. `_recordChange` appends to
+	 * this synchronously (before any `await`), so any write queued by a
+	 * change event that fired before a given `createBackup()` call is always
+	 * part of the chain that call awaits - closing the race where an
+	 * in-flight, not-yet-persisted changelog put would otherwise be silently
+	 * missed by that backup and, since `_lastBackupTime` advances past it
+	 * regardless, by every later incremental delta too.
+	 */
+	private _changeLogWriteQueue: Promise<unknown> = Promise.resolve();
+
+	/**
 	 * FIFO chain serializing every operation that reads or mutates the
 	 * hot/cold IndexedDB tiers against the in-memory hypergraph (save, load,
 	 * clearStorage, archiveLowSalienceNodes, restoreArchivedNode). Without
@@ -481,6 +492,11 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 				tx.oncomplete = () => resolve();
 				tx.onerror = () => reject(tx.error);
 			});
+			// The changelog backing incremental deltas was just wiped, so any
+			// previously reported checkpoint no longer has history behind it -
+			// a caller requesting "since last backup" against the stale value
+			// would read an empty changelog and silently miss everything.
+			this._lastBackupTime = 0;
 			this.logService.info('HypergraphPersistenceService: storage cleared');
 		});
 	}
@@ -718,6 +734,12 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	// -------------------------------------------------------------------------
 
 	async createBackup(sinceTimestamp?: number): Promise<HypergraphBackup> {
+		// Wait for every changelog write queued by a change event that fired
+		// before this call to actually land, so an in-flight put can't be
+		// missed by this backup and then permanently excluded from later
+		// deltas once the checkpoint moves past it. See _changeLogWriteQueue.
+		await this._changeLogWriteQueue;
+
 		const full = sinceTimestamp === undefined;
 		let nodes: HypergraphNode[];
 		let links: HypergraphLink[];
@@ -854,7 +876,11 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			entityId,
 			timestamp: Date.now(),
 		};
-		this._getDb()
+		// Chain onto _changeLogWriteQueue (synchronously, before any await) so
+		// this write is always part of what a subsequent createBackup() awaits
+		// - see the field doc for why that ordering matters.
+		this._changeLogWriteQueue = this._changeLogWriteQueue
+			.then(() => this._getDb())
 			.then(db => {
 				const tx = db.transaction([STORE_CHANGELOG], 'readwrite');
 				return idbPut(tx.objectStore(STORE_CHANGELOG), entry);
