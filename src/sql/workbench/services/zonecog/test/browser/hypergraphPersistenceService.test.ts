@@ -146,6 +146,7 @@ class MockIDBDatabase {
 		['snapshots', new MockIDBObjectStore('id')],
 		['archiveNodes', new MockIDBObjectStore('id')],
 		['archiveLinks', new MockIDBObjectStore('id')],
+		['changelog', new MockIDBObjectStore('id')],
 	]);
 
 	objectStoreNames = { contains: (_name: string) => true };
@@ -630,6 +631,151 @@ suite('Hypergraph Persistence Service Tests', () => {
 
 		assert.strictEqual(mockDb.getStore('nodes').getSize(), 0, 'archived node must not be resurrected by a racing save()');
 		assert.strictEqual(hypergraphStore.getNode('race-node'), undefined);
+	});
+
+	// --- Incremental backup / restore tests ---
+
+	test('should create a full backup containing every current node and link', async () => {
+		hypergraphStore.addNode({ id: 'full-a', node_type: 'T', content: 'a', links: [], metadata: {}, salience_score: 0.5 });
+		hypergraphStore.addNode({ id: 'full-b', node_type: 'T', content: 'b', links: [], metadata: {}, salience_score: 0.5 });
+
+		const backup = await persistenceService.createBackup();
+
+		assert.strictEqual(backup.full, true);
+		assert.strictEqual(backup.sinceTimestamp, undefined);
+		assert.strictEqual(backup.nodes.length, 2);
+		assert.ok(backup.nodes.some(n => n.id === 'full-a'));
+		assert.ok(backup.nodes.some(n => n.id === 'full-b'));
+	});
+
+	test('should create an incremental backup containing only nodes changed since a checkpoint', async () => {
+		hypergraphStore.addNode({ id: 'inc-old', node_type: 'T', content: 'old', links: [], metadata: {}, salience_score: 0.5 });
+		await new Promise(r => setTimeout(r, 10));
+		const checkpoint = Date.now();
+		await new Promise(r => setTimeout(r, 10));
+		hypergraphStore.addNode({ id: 'inc-new', node_type: 'T', content: 'new', links: [], metadata: {}, salience_score: 0.5 });
+		await new Promise(r => setTimeout(r, 10));
+
+		const backup = await persistenceService.createBackup(checkpoint);
+
+		assert.strictEqual(backup.full, false);
+		assert.strictEqual(backup.sinceTimestamp, checkpoint);
+		assert.strictEqual(backup.nodes.length, 1);
+		assert.strictEqual(backup.nodes[0].id, 'inc-new');
+	});
+
+	test('should not drop a change from an incremental backup requested immediately afterward, with no delay for the changelog write to land', async () => {
+		const checkpoint = Date.now();
+		hypergraphStore.addNode({ id: 'no-delay-node', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
+
+		// No await/setTimeout between the change and the backup call: the
+		// changelog put triggered by addNode() is still in flight here.
+		// createBackup() must still see it, and every later incremental
+		// backup must still see it too (once _lastBackupTime moves past an
+		// entry that was missed, it can never be picked up again).
+		const backup = await persistenceService.createBackup(checkpoint);
+		assert.strictEqual(backup.nodes.length, 1, 'change queued immediately before createBackup() must not be dropped');
+		assert.strictEqual(backup.nodes[0].id, 'no-delay-node');
+
+		const secondBackup = await persistenceService.createBackup(backup.createdAt);
+		assert.strictEqual(secondBackup.nodes.length, 0, 'change already captured by the first backup should not reappear');
+	});
+
+	test('should include a link in an incremental backup when it was added after the checkpoint', async () => {
+		hypergraphStore.addNode({ id: 'link-src', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
+		hypergraphStore.addNode({ id: 'link-dst', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
+		await new Promise(r => setTimeout(r, 10));
+		const checkpoint = Date.now();
+		await new Promise(r => setTimeout(r, 10));
+		hypergraphStore.addLink({ id: 'inc-link', link_type: 'L', outgoing: ['link-src', 'link-dst'], metadata: {} });
+		await new Promise(r => setTimeout(r, 10));
+
+		const backup = await persistenceService.createBackup(checkpoint);
+
+		assert.strictEqual(backup.nodes.length, 0, 'neither endpoint node changed after the checkpoint');
+		assert.strictEqual(backup.links.length, 1);
+		assert.strictEqual(backup.links[0].id, 'inc-link');
+	});
+
+	test('should apply a backup by upserting its nodes and links into the live store and hot tier', async () => {
+		const backup = {
+			formatVersion: 1,
+			createdAt: Date.now(),
+			full: true,
+			nodes: [{ id: 'import-a', node_type: 'T', content: 'imported', links: [], metadata: {}, salience_score: 0.4 }],
+			links: [] as HypergraphLink[],
+		};
+
+		const result = await persistenceService.importBackup(backup);
+
+		assert.strictEqual(result.nodesUpserted, 1);
+		assert.strictEqual(result.linksUpserted, 0);
+		assert.ok(hypergraphStore.getNode('import-a'), 'node should be live in memory');
+		assert.strictEqual(mockDb.getStore('nodes').getSize(), 1, 'node should be written into the hot IndexedDB tier');
+	});
+
+	test('should overwrite an existing node when importing a backup with the same id', async () => {
+		hypergraphStore.addNode({ id: 'overwrite-me', node_type: 'T', content: 'original', links: [], metadata: {}, salience_score: 0.2 });
+
+		await persistenceService.importBackup({
+			formatVersion: 1,
+			createdAt: Date.now(),
+			full: false,
+			nodes: [{ id: 'overwrite-me', node_type: 'T', content: 'updated', links: [], metadata: {}, salience_score: 0.9 }],
+			links: [],
+		});
+
+		const node = hypergraphStore.getNode('overwrite-me');
+		assert.strictEqual(node?.content, 'updated');
+		assert.strictEqual(node?.salience_score, 0.9);
+	});
+
+	test('should round-trip a backup through JSON export and import', async () => {
+		hypergraphStore.addNode({ id: 'json-node', node_type: 'T', content: 'roundtrip', links: [], metadata: {}, salience_score: 0.6 });
+
+		const json = await persistenceService.exportBackupJson();
+		hypergraphStore.clear();
+		assert.strictEqual(hypergraphStore.getNode('json-node'), undefined);
+
+		const result = await persistenceService.importBackupJson(json);
+
+		assert.strictEqual(result.nodesUpserted, 1);
+		assert.ok(hypergraphStore.getNode('json-node'));
+	});
+
+	test('should not record a changelog entry for nodes restored by load(), keeping incremental backups from re-including untouched state', async () => {
+		hypergraphStore.addNode({ id: 'suppressed-node', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
+		await persistenceService.save();
+		const checkpoint = Date.now();
+		await new Promise(r => setTimeout(r, 10));
+
+		hypergraphStore.clear();
+		await persistenceService.load();
+
+		const backup = await persistenceService.createBackup(checkpoint);
+		assert.strictEqual(backup.nodes.length, 0, 'load() should not be treated as a new change for backup purposes');
+	});
+
+	test('should track the last backup time in persistence stats', async () => {
+		let stats = await persistenceService.getStats();
+		assert.strictEqual(stats.lastBackupTime, 0);
+
+		await persistenceService.createBackup();
+
+		stats = await persistenceService.getStats();
+		assert.ok(stats.lastBackupTime > 0);
+	});
+
+	test('should reset the last backup checkpoint when storage is cleared', async () => {
+		hypergraphStore.addNode({ id: 'clear-checkpoint-node', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
+		await persistenceService.createBackup();
+		let stats = await persistenceService.getStats();
+		assert.ok(stats.lastBackupTime > 0);
+
+		await persistenceService.clearStorage();
+
+		stats = await persistenceService.getStats();
+		assert.strictEqual(stats.lastBackupTime, 0, 'a stale checkpoint against the now-empty changelog would silently miss everything');
 	});
 });
 
