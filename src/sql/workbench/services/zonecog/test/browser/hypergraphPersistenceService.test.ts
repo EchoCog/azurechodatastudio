@@ -10,9 +10,21 @@ import {
 	nodesAndLinksToCypher,
 	nodesAndLinksToAtomSpaceScheme,
 } from 'sql/workbench/services/zonecog/browser/hypergraphPersistenceService';
+import { RocksDbPersistenceService } from 'sql/workbench/services/zonecog/browser/rocksDbPersistenceService';
+import {
+	RocksDbEngine,
+	WasmBloomFilter,
+	prefixSuccessor,
+	encodeJson,
+	decodeJson,
+} from 'sql/workbench/services/zonecog/browser/rocksDbEngine';
 import { IHypergraphStore, ICognitiveMembraneService, HypergraphNode, HypergraphLink } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
+import { IAtomSpaceBackendService } from 'sql/workbench/services/zonecog/common/atomSpaceBackend';
+import { AtomSpaceBackendService } from 'sql/workbench/services/zonecog/browser/atomSpaceBackendService';
+import { IPLNReasoningService } from 'sql/workbench/services/zonecog/common/plnReasoning';
+import { PLNReasoningService } from 'sql/workbench/services/zonecog/browser/plnReasoningService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 
@@ -146,7 +158,12 @@ class MockIDBDatabase {
 		['snapshots', new MockIDBObjectStore('id')],
 		['archiveNodes', new MockIDBObjectStore('id')],
 		['archiveLinks', new MockIDBObjectStore('id')],
+		['warmNodes', new MockIDBObjectStore('id')],
+		['warmLinks', new MockIDBObjectStore('id')],
 		['changelog', new MockIDBObjectStore('id')],
+		// RocksDB durability sink reuses the same mock factory under a
+		// different DB name; include its store so open() succeeds in tests.
+		['engine', new MockIDBObjectStore('id')],
 	]);
 
 	objectStoreNames = { contains: (_name: string) => true };
@@ -246,6 +263,12 @@ suite('Hypergraph Persistence Service Tests', () => {
 
 		const membraneService = instantiationService.createInstance(CognitiveMembraneService);
 		instantiationService.stub(ICognitiveMembraneService, membraneService);
+
+		const plnService = instantiationService.createInstance(PLNReasoningService);
+		instantiationService.stub(IPLNReasoningService, plnService);
+
+		const atomSpaceBackend = instantiationService.createInstance(AtomSpaceBackendService);
+		instantiationService.stub(IAtomSpaceBackendService, atomSpaceBackend);
 
 		persistenceService = instantiationService.createInstance(HypergraphPersistenceService);
 	});
@@ -776,6 +799,300 @@ suite('Hypergraph Persistence Service Tests', () => {
 
 		stats = await persistenceService.getStats();
 		assert.strictEqual(stats.lastBackupTime, 0, 'a stale checkpoint against the now-empty changelog would silently miss everything');
+	});
+
+	// -- Pluggable backends / warm tier / range / cloud (Phase E remainder) ----
+
+	test('should default to the indexeddb backend and list all available backends', async () => {
+		assert.strictEqual(persistenceService.getBackend(), 'indexeddb');
+		const backends = persistenceService.getAvailableBackends();
+		assert.ok(backends.includes('indexeddb'));
+		assert.ok(backends.includes('rocksdb'));
+		assert.ok(backends.includes('atomspace'));
+		const stats = await persistenceService.getStats();
+		assert.strictEqual(stats.backend, 'indexeddb');
+		assert.strictEqual(stats.warmNodeCount, 0);
+	});
+
+	test('should switch to the rocksdb backend and round-trip save/load', async () => {
+		hypergraphStore.addNode({
+			id: 'rocks-node-1',
+			node_type: 'TableNode',
+			content: 'select 1',
+			links: [],
+			metadata: {},
+			salience_score: 0.8,
+		});
+
+		await persistenceService.setBackend('rocksdb');
+		assert.strictEqual(persistenceService.getBackend(), 'rocksdb');
+
+		const stats = await persistenceService.getStats();
+		assert.strictEqual(stats.backend, 'rocksdb');
+		assert.ok(stats.rocksDb, 'rocksdb stats should be populated after switch');
+		assert.ok(stats.rocksDb!.columnFamilies.includes('nodes'));
+
+		hypergraphStore.clear();
+		assert.strictEqual(hypergraphStore.nodeCount(), 0);
+
+		const loaded = await persistenceService.load();
+		assert.ok(loaded);
+		assert.strictEqual(hypergraphStore.nodeCount(), 1);
+		assert.strictEqual(hypergraphStore.getNode('rocks-node-1')?.content, 'select 1');
+	});
+
+	test('should demote mid-salience nodes to the warm tier and lazily restore them', async () => {
+		hypergraphStore.addNode({ id: 'hot-node', node_type: 'T', content: 'hot', links: [], metadata: {}, salience_score: 0.9 });
+		hypergraphStore.addNode({ id: 'warm-node', node_type: 'T', content: 'warm', links: [], metadata: {}, salience_score: 0.15 });
+		hypergraphStore.addNode({ id: 'cold-node', node_type: 'T', content: 'cold', links: [], metadata: {}, salience_score: 0.01 });
+
+		const demoted = await persistenceService.demoteToWarmTier(0.25);
+		assert.strictEqual(demoted.archivedNodeCount, 1, 'only the warm-band node should demote');
+		assert.strictEqual(hypergraphStore.getNode('warm-node'), undefined);
+		assert.ok(hypergraphStore.getNode('hot-node'));
+		assert.ok(hypergraphStore.getNode('cold-node'), 'cold-band nodes stay for cold archival');
+
+		const warmList = await persistenceService.listWarmNodes();
+		assert.strictEqual(warmList.length, 1);
+		assert.strictEqual(warmList[0].id, 'warm-node');
+
+		const restored = await persistenceService.restoreWarmNode('warm-node');
+		assert.ok(restored);
+		assert.strictEqual(hypergraphStore.getNode('warm-node')?.content, 'warm');
+		assert.strictEqual((await persistenceService.listWarmNodes()).length, 0);
+
+		const stats = await persistenceService.getStats();
+		assert.strictEqual(stats.warmNodeCount, 0);
+	});
+
+	test('should range-query hot-tier nodes by id prefix', async () => {
+		hypergraphStore.addNode({ id: 'tbl_users', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
+		hypergraphStore.addNode({ id: 'tbl_orders', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
+		hypergraphStore.addNode({ id: 'qry_1', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
+		await persistenceService.save();
+
+		const matched = await persistenceService.rangeQueryNodes('tbl_');
+		assert.strictEqual(matched.length, 2);
+		assert.deepStrictEqual(matched.map(n => n.id).sort(), ['tbl_orders', 'tbl_users']);
+
+		const limited = await persistenceService.rangeQueryNodes('tbl_', 1);
+		assert.strictEqual(limited.length, 1);
+	});
+
+	test('should no-op compactStorage on the indexeddb backend and compact on rocksdb', async () => {
+		await persistenceService.compactStorage(); // no throw
+		await persistenceService.setBackend('rocksdb');
+		// Force enough writes to create multiple SSTables then compact.
+		for (let i = 0; i < 300; i++) {
+			hypergraphStore.addNode({
+				id: `compact-n-${i}`,
+				node_type: 'T',
+				content: `c${i}`,
+				links: [],
+				metadata: {},
+				salience_score: 0.5,
+			});
+		}
+		await persistenceService.save();
+		await persistenceService.compactStorage();
+		const stats = await persistenceService.getStats();
+		assert.ok(stats.rocksDb);
+		assert.ok(stats.rocksDb!.compactionCount >= 0);
+	});
+
+	test('should refuse cloud upload when cloud storage is not configured', async () => {
+		assert.strictEqual(persistenceService.getCloudStorageConfig(), undefined);
+		const result = await persistenceService.uploadBackupToCloud();
+		assert.strictEqual(result.success, false);
+		assert.ok(result.error?.includes('not configured'));
+	});
+
+	test('should upload and download backups through the configured cloud endpoint', async () => {
+		hypergraphStore.addNode({ id: 'cloud-node', node_type: 'T', content: 'payload', links: [], metadata: {}, salience_score: 0.7 });
+
+		const remote = new Map<string, string>();
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+			const url = String(input);
+			const method = (init?.method ?? 'GET').toUpperCase();
+			if (method === 'PUT') {
+				remote.set(url, String(init?.body ?? ''));
+				return new Response(null, { status: 200 });
+			}
+			if (method === 'GET' && url.includes('list=1')) {
+				return new Response(JSON.stringify({ items: [...remote.keys()].map(k => k.split('/').pop()!) }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+			if (method === 'GET') {
+				const body = remote.get(url);
+				if (!body) { return new Response('missing', { status: 404 }); }
+				return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+			}
+			return new Response('nope', { status: 405 });
+		}) as typeof fetch;
+
+		try {
+			persistenceService.configureCloudStorage({
+				endpointUrl: 'https://cloud.example.test',
+				prefix: 'zonecog-backups',
+				authToken: 'test-token',
+			});
+			assert.strictEqual(persistenceService.getCloudStorageConfig()?.endpointUrl, 'https://cloud.example.test');
+
+			const upload = await persistenceService.uploadBackupToCloud(undefined, 'unit-test.json');
+			assert.strictEqual(upload.success, true, upload.error);
+			assert.strictEqual(upload.remotePath, 'zonecog-backups/unit-test.json');
+			assert.ok(upload.bytesTransferred > 0);
+
+			const listed = await persistenceService.listCloudBackups();
+			assert.ok(listed.includes('unit-test.json'));
+
+			hypergraphStore.clear();
+			const imported = await persistenceService.downloadBackupFromCloud('zonecog-backups/unit-test.json');
+			assert.strictEqual(imported.nodesUpserted, 1);
+			assert.strictEqual(hypergraphStore.getNode('cloud-node')?.content, 'payload');
+		} finally {
+			globalThis.fetch = originalFetch;
+			persistenceService.configureCloudStorage(undefined);
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// RocksDB engine unit tests (no service layer)
+// ---------------------------------------------------------------------------
+
+suite('RocksDB Engine', () => {
+
+	test('WasmBloomFilter reports definite negatives and accepts inserts', () => {
+		const bloom = new WasmBloomFilter(32, 10, 4);
+		assert.ok(bloom.wasmMemory instanceof WebAssembly.Memory);
+		assert.strictEqual(bloom.mightContain('missing'), false);
+		bloom.add('present');
+		assert.strictEqual(bloom.mightContain('present'), true);
+		assert.ok(bloom.bitCount >= 64);
+	});
+
+	test('put/get/delete and prefix range queries work across column families', async () => {
+		const engine = new RocksDbEngine({ memtableFlushThreshold: 8, compactionSstThreshold: 2 });
+		await engine.open();
+
+		await engine.put('nodes', 'a1', encodeJson({ id: 'a1' }));
+		await engine.put('nodes', 'a2', encodeJson({ id: 'a2' }));
+		await engine.put('nodes', 'b1', encodeJson({ id: 'b1' }));
+		await engine.put('links', 'l1', encodeJson({ id: 'l1' }));
+
+		const a1 = await engine.get('nodes', 'a1');
+		assert.ok(a1);
+		assert.strictEqual(decodeJson<{ id: string }>(a1!).id, 'a1');
+		assert.strictEqual(await engine.get('links', 'a1'), undefined);
+
+		const prefix = await engine.prefixScan('nodes', 'a');
+		assert.deepStrictEqual(prefix.map(([k]) => k), ['a1', 'a2']);
+
+		await engine.delete('nodes', 'a1');
+		assert.strictEqual(await engine.get('nodes', 'a1'), undefined);
+
+		const stats = engine.getStats();
+		assert.ok(stats.columnFamilies.includes('indices'));
+		assert.ok(stats.ready);
+	});
+
+	test('flushes memtables and compacts SSTables when thresholds are hit', async () => {
+		const engine = new RocksDbEngine({ memtableFlushThreshold: 4, compactionSstThreshold: 2, bloomBitsPerKey: 8 });
+		await engine.open();
+
+		for (let i = 0; i < 20; i++) {
+			await engine.put('nodes', `k${i.toString().padStart(2, '0')}`, encodeJson({ i }));
+		}
+		await engine.compact();
+		const stats = engine.getStats();
+		assert.ok(stats.sstableCount >= 1);
+		assert.ok(stats.compactionCount >= 1);
+		assert.ok(stats.bloomFilterBits > 0);
+
+		// Values survive compaction.
+		const v = await engine.get('nodes', 'k05');
+		assert.ok(v);
+		assert.strictEqual(decodeJson<{ i: number }>(v!).i, 5);
+	});
+
+	test('prefixSuccessor produces an exclusive upper bound', () => {
+		assert.strictEqual(prefixSuccessor('abc') > 'abc', true);
+		assert.strictEqual(prefixSuccessor('abc') > 'abc\uffff', false);
+		assert.ok('abd' >= prefixSuccessor('abc') || 'abd' > 'abc');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// RocksDbPersistenceService integration tests
+// ---------------------------------------------------------------------------
+
+suite('RocksDB Persistence Service', () => {
+
+	let instantiationService: TestInstantiationService;
+	let service: RocksDbPersistenceService;
+	let hypergraphStore: IHypergraphStore;
+
+	setup(() => {
+		installIndexedDBMock();
+		instantiationService = new TestInstantiationService();
+		instantiationService.stub(ILogService, new NullLogService());
+		hypergraphStore = instantiationService.createInstance(HypergraphStore);
+		instantiationService.stub(IHypergraphStore, hypergraphStore);
+		const membraneService = instantiationService.createInstance(CognitiveMembraneService);
+		instantiationService.stub(ICognitiveMembraneService, membraneService);
+		// Use an in-memory engine (no durability sink) so tests stay hermetic.
+		const engine = new RocksDbEngine({ memtableFlushThreshold: 32, compactionSstThreshold: 4 });
+		service = instantiationService.createInstance(RocksDbPersistenceService, engine);
+	});
+
+	teardown(() => {
+		service.dispose();
+		uninstallIndexedDBMock();
+	});
+
+	test('should save and load through RocksDB column families', async () => {
+		hypergraphStore.addNode({ id: 'r1', node_type: 'T', content: 'hello', links: [], metadata: {}, salience_score: 0.6 });
+		const snap = await service.save('rocks');
+		assert.strictEqual(snap.nodeCount, 1);
+
+		hypergraphStore.clear();
+		const loaded = await service.load();
+		assert.ok(loaded);
+		assert.strictEqual(hypergraphStore.getNode('r1')?.content, 'hello');
+		assert.strictEqual(service.getBackend(), 'rocksdb');
+	});
+
+	test('should archive, range-query and compact via the RocksDB service', async () => {
+		hypergraphStore.addNode({ id: 'keep', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.9 });
+		hypergraphStore.addNode({ id: 'drop', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.01 });
+		await service.save();
+
+		const archived = await service.archiveLowSalienceNodes(0.05);
+		assert.strictEqual(archived.archivedNodeCount, 1);
+		assert.strictEqual(hypergraphStore.getNode('drop'), undefined);
+
+		const range = await service.rangeQueryNodes('ke');
+		assert.strictEqual(range.length, 1);
+		assert.strictEqual(range[0].id, 'keep');
+
+		await service.compactStorage();
+		const stats = await service.getStats();
+		assert.strictEqual(stats.backend, 'rocksdb');
+		assert.ok(stats.rocksDb?.ready);
+	});
+
+	test('should demote to warm tier on the RocksDB service', async () => {
+		hypergraphStore.addNode({ id: 'warm-me', node_type: 'T', content: 'w', links: [], metadata: {}, salience_score: 0.1 });
+		const result = await service.demoteToWarmTier(0.25);
+		assert.strictEqual(result.archivedNodeCount, 1);
+		const listed = await service.listWarmNodes();
+		assert.strictEqual(listed[0].id, 'warm-me');
+		await service.restoreWarmNode('warm-me');
+		assert.ok(hypergraphStore.getNode('warm-me'));
 	});
 });
 
