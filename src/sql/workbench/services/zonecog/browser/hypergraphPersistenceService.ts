@@ -603,6 +603,11 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	}
 
 	async listSnapshots(): Promise<HypergraphSnapshot[]> {
+		if (this._backend === 'rocksdb') {
+			const engine = await this._getRocksEngine();
+			const all = (await engine.range('snapshots', '')).map(([, v]) => decodeJson<HypergraphSnapshot>(v));
+			return all.sort((a, b) => b.timestamp - a.timestamp);
+		}
 		const db = await this._getDb();
 		const all = await idbGetAll<HypergraphSnapshot>(db, STORE_SNAPSHOTS);
 		return all.sort((a, b) => b.timestamp - a.timestamp);

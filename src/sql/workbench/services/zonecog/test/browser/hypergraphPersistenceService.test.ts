@@ -1020,9 +1020,12 @@ suite('RocksDB Engine', () => {
 	});
 
 	test('prefixSuccessor produces an exclusive upper bound', () => {
+		// 'abc' + successor must sit strictly after every key that starts with 'abc',
+		// including the maximal 'abc\uffff...' form, and equal the natural next prefix.
 		assert.strictEqual(prefixSuccessor('abc') > 'abc', true);
-		assert.strictEqual(prefixSuccessor('abc') > 'abc\uffff', false);
-		assert.ok('abd' >= prefixSuccessor('abc') || 'abd' > 'abc');
+		assert.strictEqual(prefixSuccessor('abc') > 'abc\uffff', true);
+		assert.strictEqual(prefixSuccessor('abc'), 'abd');
+		assert.ok('abcxyz' < prefixSuccessor('abc'));
 	});
 });
 
@@ -1045,8 +1048,15 @@ suite('RocksDB Persistence Service', () => {
 		const membraneService = instantiationService.createInstance(CognitiveMembraneService);
 		instantiationService.stub(ICognitiveMembraneService, membraneService);
 		// Use an in-memory engine (no durability sink) so tests stay hermetic.
+		// Construct directly: the optional engine arg is not a DI service and
+		// createInstance's static typing expects only decorator-injected params.
 		const engine = new RocksDbEngine({ memtableFlushThreshold: 32, compactionSstThreshold: 4 });
-		service = instantiationService.createInstance(RocksDbPersistenceService, engine);
+		service = new RocksDbPersistenceService(
+			new NullLogService(),
+			hypergraphStore,
+			membraneService,
+			engine,
+		);
 	});
 
 	teardown(() => {
