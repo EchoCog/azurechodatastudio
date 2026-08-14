@@ -74,6 +74,8 @@ import { IFlareCogService } from 'sql/workbench/services/zonecog/common/flareCog
 import { FlareCogService } from 'sql/workbench/services/zonecog/browser/flareCogService';
 import { ICollaborationBackendService } from 'sql/workbench/services/zonecog/common/collaborationBackend';
 import { CollaborationBackendService } from 'sql/workbench/services/zonecog/browser/collaborationBackendService';
+import { IRocksDbPersistenceService } from 'sql/workbench/services/zonecog/common/rocksDbPersistence';
+import { RocksDbPersistenceService } from 'sql/workbench/services/zonecog/browser/rocksDbPersistenceService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -243,3 +245,12 @@ registerSingleton(IFlareCogService, FlareCogService, InstantiationType.Eager);
 // recovery; closes Phase D.1 "Collaboration Protocol" and D.2 "Shared Session
 // Management")
 registerSingleton(ICollaborationBackendService, CollaborationBackendService, InstantiationType.Eager);
+
+// Register Phase E services (Enhanced Persistence Layer)
+
+// Register the RocksDB Persistence service (high-performance RocksDB-backed
+// storage: column families for nodes/links/indices, efficient range queries,
+// bloom filters for fast lookups, batch operations, secondary indices,
+// compaction control, and backup/restore; closes Phase E.1 "RocksDB Backend
+// Option")
+registerSingleton(IRocksDbPersistenceService, RocksDbPersistenceService, InstantiationType.Eager);
