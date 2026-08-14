@@ -37,13 +37,11 @@ function createTestNode(id: string, nodeType: string, salience = 0.5): Hypergrap
 	};
 }
 
-function createTestLink(id: string, sourceId: string, targetId: string): HypergraphLink {
+function createTestLink(id: string, ...nodeIds: string[]): HypergraphLink {
 	return {
 		id,
 		link_type: 'TestLink',
-		source_id: sourceId,
-		target_id: targetId,
-		weight: 1.0,
+		outgoing: nodeIds,
 		metadata: {}
 	};
 }
@@ -252,7 +250,7 @@ suite('RocksDbPersistenceService', () => {
 			await service.putLink(createTestLink('link-4', 'node-b', 'node-c'));
 
 			const linksForA = await service.getLinksForNode('node-a');
-			assert.strictEqual(linksForA.length, 3); // 2 outgoing + 1 incoming
+			assert.strictEqual(linksForA.length, 3); // 3 links include node-a in outgoing
 
 			const linksForB = await service.getLinksForNode('node-b');
 			assert.strictEqual(linksForB.length, 2);
@@ -670,6 +668,148 @@ suite('RocksDbPersistenceService', () => {
 
 			await newService.close();
 			newService.dispose();
+		});
+	});
+
+	suite('Index Consistency', () => {
+		test('node type index updates when node type changes', async () => {
+			// Insert node with TypeA
+			await service.putNode(createTestNode('node-1', 'TypeA'));
+			let typeA = await service.getNodesByType('TypeA');
+			assert.strictEqual(typeA.length, 1);
+
+			// Update same node to TypeB
+			await service.putNode(createTestNode('node-1', 'TypeB'));
+			typeA = await service.getNodesByType('TypeA');
+			const typeB = await service.getNodesByType('TypeB');
+
+			// TypeA should be empty, TypeB should have the node
+			assert.strictEqual(typeA.length, 0, 'Old type index should be cleared');
+			assert.strictEqual(typeB.length, 1, 'New type index should have the node');
+		});
+
+		test('link index updates when link outgoing nodes change', async () => {
+			// Insert link connecting node-a and node-b
+			await service.putLink(createTestLink('link-1', 'node-a', 'node-b'));
+			let linksForA = await service.getLinksForNode('node-a');
+			let linksForB = await service.getLinksForNode('node-b');
+			assert.strictEqual(linksForA.length, 1);
+			assert.strictEqual(linksForB.length, 1);
+
+			// Update link to connect node-c and node-d instead
+			await service.putLink({ id: 'link-1', link_type: 'TestLink', outgoing: ['node-c', 'node-d'], metadata: {} });
+			linksForA = await service.getLinksForNode('node-a');
+			linksForB = await service.getLinksForNode('node-b');
+			const linksForC = await service.getLinksForNode('node-c');
+			const linksForD = await service.getLinksForNode('node-d');
+
+			assert.strictEqual(linksForA.length, 0, 'Old node-a index should be cleared');
+			assert.strictEqual(linksForB.length, 0, 'Old node-b index should be cleared');
+			assert.strictEqual(linksForC.length, 1, 'New node-c index should have the link');
+			assert.strictEqual(linksForD.length, 1, 'New node-d index should have the link');
+		});
+
+		test('batch writes maintain node type indexes', async () => {
+			await service.batchWrite([
+				{ type: 'put', columnFamily: 'nodes', key: 'node-1', value: JSON.stringify(createTestNode('node-1', 'TypeA')) },
+				{ type: 'put', columnFamily: 'nodes', key: 'node-2', value: JSON.stringify(createTestNode('node-2', 'TypeA')) },
+				{ type: 'put', columnFamily: 'nodes', key: 'node-3', value: JSON.stringify(createTestNode('node-3', 'TypeB')) }
+			]);
+
+			const typeA = await service.getNodesByType('TypeA');
+			const typeB = await service.getNodesByType('TypeB');
+
+			assert.strictEqual(typeA.length, 2);
+			assert.strictEqual(typeB.length, 1);
+		});
+
+		test('batch writes maintain link indexes', async () => {
+			await service.batchWrite([
+				{ type: 'put', columnFamily: 'links', key: 'link-1', value: JSON.stringify(createTestLink('link-1', 'node-a', 'node-b')) },
+				{ type: 'put', columnFamily: 'links', key: 'link-2', value: JSON.stringify(createTestLink('link-2', 'node-a', 'node-c')) }
+			]);
+
+			const linksForA = await service.getLinksForNode('node-a');
+			assert.strictEqual(linksForA.length, 2);
+		});
+
+		test('batch write delete removes index entries', async () => {
+			await service.putNode(createTestNode('node-1', 'TypeA'));
+			assert.strictEqual((await service.getNodesByType('TypeA')).length, 1);
+
+			await service.batchWrite([
+				{ type: 'delete', columnFamily: 'nodes', key: 'node-1' }
+			]);
+
+			assert.strictEqual((await service.getNodesByType('TypeA')).length, 0);
+		});
+	});
+
+	suite('Batch Write Atomicity', () => {
+		test('batch write rolls back on failure', async () => {
+			// Insert initial data
+			await service.putNode(createTestNode('node-1', 'TypeA'));
+
+			// Attempt batch with invalid merge that will fail
+			try {
+				await service.batchWrite([
+					{ type: 'put', columnFamily: 'nodes', key: 'node-2', value: JSON.stringify(createTestNode('node-2', 'TypeB')) },
+					{ type: 'merge', columnFamily: 'nodes', key: 'node-3', value: 'invalid json {{{' }
+				]);
+				assert.fail('Should have thrown');
+			} catch {
+				// Expected
+			}
+
+			// Original data should be intact
+			assert.ok(await service.hasNode('node-1'), 'Original node should still exist');
+			// Partial batch should have been rolled back
+			assert.strictEqual(await service.hasNode('node-2'), false, 'Partial batch should be rolled back');
+		});
+	});
+
+	suite('Backup and Restore Consistency', () => {
+		test('restoring multiple times from same backup works', async () => {
+			await service.putNode(createTestNode('node-1', 'Original'));
+			await service.createBackup('backup-1');
+
+			// First restore after modifications
+			await service.deleteNode('node-1');
+			await service.putNode(createTestNode('node-2', 'New'));
+			await service.restoreFromBackup('backup-1');
+			assert.ok(await service.hasNode('node-1'));
+			assert.strictEqual(await service.hasNode('node-2'), false);
+
+			// Second restore should still work
+			await service.putNode(createTestNode('node-3', 'Another'));
+			await service.restoreFromBackup('backup-1');
+			assert.ok(await service.hasNode('node-1'));
+			assert.strictEqual(await service.hasNode('node-3'), false);
+		});
+
+		test('indexes are correct after restore', async () => {
+			await service.putNode(createTestNode('node-1', 'TypeA'));
+			await service.putNode(createTestNode('node-2', 'TypeA'));
+			await service.putLink(createTestLink('link-1', 'node-1', 'node-2'));
+			await service.createBackup('backup-indexes');
+
+			// Modify data
+			await service.deleteNode('node-1');
+			await service.deleteNode('node-2');
+			await service.deleteLink('link-1');
+			await service.putNode(createTestNode('node-3', 'TypeB'));
+
+			// Restore
+			await service.restoreFromBackup('backup-indexes');
+
+			// Verify indexes work correctly
+			const typeA = await service.getNodesByType('TypeA');
+			const typeB = await service.getNodesByType('TypeB');
+			const linksForNode1 = await service.getLinksForNode('node-1');
+
+			assert.strictEqual(typeA.length, 2, 'TypeA index should be restored');
+			assert.strictEqual(typeB.length, 0, 'TypeB index should not exist after restore');
+			assert.strictEqual(linksForNode1.length, 1, 'Link index should be restored');
 		});
 	});
 });

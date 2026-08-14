@@ -73,6 +73,9 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 	// Index definitions
 	private readonly _indexDefinitions: Map<string, IndexDefinition> = new Map();
 
+	// Separate backup storage (not part of column families to prevent restore from deleting backups)
+	private readonly _backups: Map<string, { timestamp: number; data: Record<string, Record<string, string>>; indices: Record<string, Record<string, string[]>> }> = new Map();
+
 	// Statistics
 	private _writeCount = 0;
 	private _readCount = 0;
@@ -128,6 +131,7 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 		this._bloomFilters.clear();
 		this._snapshots.clear();
 		this._indexDefinitions.clear();
+		this._backups.clear();
 
 		this._initialized = false;
 		this.logService.info('[RocksDbPersistenceService] Database closed');
@@ -141,8 +145,15 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 
 		const cf = this._getColumnFamily('nodes');
 		const key = node.id;
-		const value = JSON.stringify(node);
 
+		// Remove old index entries if updating an existing node
+		const existingValue = cf.data.get(key);
+		if (existingValue) {
+			const existingNode = JSON.parse(existingValue) as HypergraphNode;
+			this._removeFromIndex('nodes', `type:${existingNode.node_type}`, key);
+		}
+
+		const value = JSON.stringify(node);
 		cf.data.set(key, value);
 		this._updateBloomFilter('nodes', key);
 		this._updateIndices('nodes', key, node);
@@ -280,14 +291,24 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 
 		const cf = this._getColumnFamily('links');
 		const key = link.id;
-		const value = JSON.stringify(link);
 
+		// Remove old index entries if updating an existing link
+		const existingValue = cf.data.get(key);
+		if (existingValue) {
+			const existingLink = JSON.parse(existingValue) as HypergraphLink;
+			for (const nodeId of existingLink.outgoing) {
+				this._removeFromIndex('links', `outgoing:${nodeId}`, key);
+			}
+		}
+
+		const value = JSON.stringify(link);
 		cf.data.set(key, value);
 		this._updateBloomFilter('links', key);
 
-		// Index by source and target nodes
-		this._addToIndex('links', `source:${link.source_id}`, key);
-		this._addToIndex('links', `target:${link.target_id}`, key);
+		// Index by all nodes in the outgoing array
+		for (const nodeId of link.outgoing) {
+			this._addToIndex('links', `outgoing:${nodeId}`, key);
+		}
 
 		this._writeCount++;
 		this.membraneService.recordActivity('somatic');
@@ -321,8 +342,9 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 			const value = cf.data.get(id);
 			if (value) {
 				const link = JSON.parse(value) as HypergraphLink;
-				this._removeFromIndex('links', `source:${link.source_id}`, id);
-				this._removeFromIndex('links', `target:${link.target_id}`, id);
+				for (const nodeId of link.outgoing) {
+					this._removeFromIndex('links', `outgoing:${nodeId}`, id);
+				}
 			}
 			cf.data.delete(id);
 			this._writeCount++;
@@ -336,13 +358,12 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 		this._ensureInitialized();
 
 		const cf = this._getColumnFamily('links');
-		const sourceIndex = cf.indices.get(`source:${nodeId}`) ?? new Set();
-		const targetIndex = cf.indices.get(`target:${nodeId}`) ?? new Set();
+		// Look up links that include this node in their outgoing array
+		const outgoingIndex = cf.indices.get(`outgoing:${nodeId}`) ?? new Set();
 
-		const linkIds = new Set([...sourceIndex, ...targetIndex]);
 		const links: HypergraphLink[] = [];
 
-		for (const id of linkIds) {
+		for (const id of outgoingIndex) {
 			const value = cf.data.get(id);
 			if (value) {
 				links.push(JSON.parse(value) as HypergraphLink);
@@ -442,38 +463,81 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 	async batchWrite(operations: BatchWriteOperation[]): Promise<void> {
 		this._ensureInitialized();
 
-		// Execute all operations atomically
-		for (const op of operations) {
-			const cf = this._getColumnFamily(op.columnFamily);
+		// Create snapshot for rollback on failure
+		const snapshots = new Map<RocksDbColumnFamily, { data: Map<string, string>; indices: Map<string, Set<string>> }>();
+		const affectedFamilies = new Set(operations.map(op => op.columnFamily));
 
-			switch (op.type) {
-				case 'put':
-					if (op.value !== undefined) {
-						cf.data.set(op.key, op.value);
-						this._updateBloomFilter(op.columnFamily, op.key);
-					}
-					break;
-				case 'delete':
-					cf.data.delete(op.key);
-					break;
-				case 'merge':
-					if (op.value !== undefined) {
-						const existing = cf.data.get(op.key);
-						if (existing) {
-							// Merge JSON objects
-							const merged = { ...JSON.parse(existing), ...JSON.parse(op.value) };
-							cf.data.set(op.key, JSON.stringify(merged));
-						} else {
-							cf.data.set(op.key, op.value);
-						}
-						this._updateBloomFilter(op.columnFamily, op.key);
-					}
-					break;
-			}
+		for (const family of affectedFamilies) {
+			const cf = this._getColumnFamily(family);
+			snapshots.set(family, {
+				data: new Map(cf.data),
+				indices: new Map(Array.from(cf.indices.entries()).map(([k, v]) => [k, new Set(v)]))
+			});
 		}
 
-		this._writeCount += operations.length;
-		this.membraneService.recordActivity('somatic');
+		try {
+			// Execute all operations
+			for (const op of operations) {
+				const cf = this._getColumnFamily(op.columnFamily);
+
+				switch (op.type) {
+					case 'put':
+						if (op.value !== undefined) {
+							// Remove old index entries before put
+							const existingValue = cf.data.get(op.key);
+							if (existingValue) {
+								this._removeIndexEntriesForValue(op.columnFamily, op.key, existingValue);
+							}
+							cf.data.set(op.key, op.value);
+							this._updateBloomFilter(op.columnFamily, op.key);
+							// Add new index entries
+							this._addIndexEntriesForValue(op.columnFamily, op.key, op.value);
+						}
+						break;
+					case 'delete':
+						const existingValue = cf.data.get(op.key);
+						if (existingValue) {
+							this._removeIndexEntriesForValue(op.columnFamily, op.key, existingValue);
+						}
+						cf.data.delete(op.key);
+						break;
+					case 'merge':
+						if (op.value !== undefined) {
+							const existing = cf.data.get(op.key);
+							// Remove old index entries
+							if (existing) {
+								this._removeIndexEntriesForValue(op.columnFamily, op.key, existing);
+							}
+							const merged = existing
+								? { ...JSON.parse(existing), ...JSON.parse(op.value) }
+								: JSON.parse(op.value);
+							const mergedStr = JSON.stringify(merged);
+							cf.data.set(op.key, mergedStr);
+							this._updateBloomFilter(op.columnFamily, op.key);
+							// Add new index entries
+							this._addIndexEntriesForValue(op.columnFamily, op.key, mergedStr);
+						}
+						break;
+				}
+			}
+
+			this._writeCount += operations.length;
+			this.membraneService.recordActivity('somatic');
+		} catch (error) {
+			// Rollback on failure
+			for (const [family, snapshot] of snapshots) {
+				const cf = this._getColumnFamily(family);
+				cf.data.clear();
+				for (const [k, v] of snapshot.data) {
+					cf.data.set(k, v);
+				}
+				cf.indices.clear();
+				for (const [k, v] of snapshot.indices) {
+					cf.indices.set(k, new Set(v));
+				}
+			}
+			throw error;
+		}
 	}
 
 	async bulkPutNodes(nodes: HypergraphNode[]): Promise<{ inserted: number; updated: number }> {
@@ -485,7 +549,15 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 		const cf = this._getColumnFamily('nodes');
 
 		for (const node of nodes) {
-			const existed = cf.data.has(node.id);
+			const existingValue = cf.data.get(node.id);
+			const existed = !!existingValue;
+
+			// Remove old index entries if updating
+			if (existingValue) {
+				const existingNode = JSON.parse(existingValue) as HypergraphNode;
+				this._removeFromIndex('nodes', `type:${existingNode.node_type}`, node.id);
+			}
+
 			cf.data.set(node.id, JSON.stringify(node));
 			this._updateBloomFilter('nodes', node.id);
 			this._updateIndices('nodes', node.id, node);
@@ -512,11 +584,22 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 		const cf = this._getColumnFamily('links');
 
 		for (const link of links) {
-			const existed = cf.data.has(link.id);
+			const existingValue = cf.data.get(link.id);
+			const existed = !!existingValue;
+
+			// Remove old index entries if updating
+			if (existingValue) {
+				const existingLink = JSON.parse(existingValue) as HypergraphLink;
+				for (const nodeId of existingLink.outgoing) {
+					this._removeFromIndex('links', `outgoing:${nodeId}`, link.id);
+				}
+			}
+
 			cf.data.set(link.id, JSON.stringify(link));
 			this._updateBloomFilter('links', link.id);
-			this._addToIndex('links', `source:${link.source_id}`, link.id);
-			this._addToIndex('links', `target:${link.target_id}`, link.id);
+			for (const nodeId of link.outgoing) {
+				this._addToIndex('links', `outgoing:${nodeId}`, link.id);
+			}
 
 			if (existed) {
 				updated++;
@@ -723,19 +806,26 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 		this._ensureInitialized();
 
 		try {
-			// In a browser environment, we'd serialize to IndexedDB or download.
-			// For this implementation, we just record the event.
+			// Serialize data and indices for all column families
 			const data: Record<string, Record<string, string>> = {};
+			const indices: Record<string, Record<string, string[]>> = {};
+
 			for (const [family, store] of this._columnFamilies) {
 				data[family] = Object.fromEntries(store.data);
+				// Serialize indices as arrays for JSON compatibility
+				const familyIndices: Record<string, string[]> = {};
+				for (const [key, idSet] of store.indices) {
+					familyIndices[key] = Array.from(idSet);
+				}
+				indices[family] = familyIndices;
 			}
 
-			// Store in metadata
-			const metadataCf = this._getColumnFamily('metadata');
-			metadataCf.data.set(`backup:${backupPath}`, JSON.stringify({
+			// Store backup separately from column families
+			this._backups.set(backupPath, {
 				timestamp: Date.now(),
-				data
-			}));
+				data,
+				indices
+			});
 
 			this._onDidBackupOrRestore.fire({ operation: 'backup', path: backupPath, success: true });
 			this.logService.info('[RocksDbPersistenceService] Backup created:', backupPath);
@@ -749,29 +839,42 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 		this._ensureInitialized();
 
 		try {
-			const metadataCf = this._getColumnFamily('metadata');
-			const backupData = metadataCf.data.get(`backup:${backupPath}`);
+			const backup = this._backups.get(backupPath);
 
-			if (!backupData) {
+			if (!backup) {
+				this._onDidBackupOrRestore.fire({ operation: 'restore', path: backupPath, success: false });
 				throw new Error(`Backup not found: ${backupPath}`);
 			}
 
-			const { data } = JSON.parse(backupData) as { timestamp: number; data: Record<string, Record<string, string>> };
+			const { data, indices } = backup;
 
-			// Restore each column family
+			// Restore each column family's data and indices
 			for (const [family, entries] of Object.entries(data)) {
 				const cf = this._getColumnFamily(family as RocksDbColumnFamily);
 				cf.data.clear();
+				cf.indices.clear();
+
+				// Restore data
 				for (const [key, value] of Object.entries(entries)) {
 					cf.data.set(key, value);
 					this._updateBloomFilter(family as RocksDbColumnFamily, key);
+				}
+
+				// Restore indices
+				const familyIndices = indices[family];
+				if (familyIndices) {
+					for (const [indexKey, ids] of Object.entries(familyIndices)) {
+						cf.indices.set(indexKey, new Set(ids));
+					}
 				}
 			}
 
 			this._onDidBackupOrRestore.fire({ operation: 'restore', path: backupPath, success: true });
 			this.logService.info('[RocksDbPersistenceService] Restored from backup:', backupPath);
 		} catch (error) {
-			this._onDidBackupOrRestore.fire({ operation: 'restore', path: backupPath, success: false });
+			if (!(error instanceof Error && error.message.includes('Backup not found'))) {
+				this._onDidBackupOrRestore.fire({ operation: 'restore', path: backupPath, success: false });
+			}
 			throw error;
 		}
 	}
@@ -823,6 +926,40 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 			if (ids.size === 0) {
 				cf.indices.delete(indexKey);
 			}
+		}
+	}
+
+	private _removeIndexEntriesForValue(family: RocksDbColumnFamily, key: string, value: string): void {
+		try {
+			const doc = JSON.parse(value);
+			if (family === 'nodes') {
+				const node = doc as HypergraphNode;
+				this._removeFromIndex(family, `type:${node.node_type}`, key);
+			} else if (family === 'links') {
+				const link = doc as HypergraphLink;
+				for (const nodeId of link.outgoing) {
+					this._removeFromIndex(family, `outgoing:${nodeId}`, key);
+				}
+			}
+		} catch {
+			// If we can't parse the value, we can't remove index entries
+		}
+	}
+
+	private _addIndexEntriesForValue(family: RocksDbColumnFamily, key: string, value: string): void {
+		try {
+			const doc = JSON.parse(value);
+			if (family === 'nodes') {
+				const node = doc as HypergraphNode;
+				this._addToIndex(family, `type:${node.node_type}`, key);
+			} else if (family === 'links') {
+				const link = doc as HypergraphLink;
+				for (const nodeId of link.outgoing) {
+					this._addToIndex(family, `outgoing:${nodeId}`, key);
+				}
+			}
+		} catch {
+			// If we can't parse the value, we can't add index entries
 		}
 	}
 
