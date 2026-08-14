@@ -29,7 +29,7 @@ The system implements the P-System Membrane Architecture:
 | **Somatic** | Extension & UI interaction | Command Palette, bridge extension, LLM calls |
 | **Autonomic** | Health monitoring & validation | `CognitiveMembraneService`, ECAN rent, error tracking |
 
-### Services (13 total)
+### Services (14 total)
 
 | Service | Interface | Implementation |
 |---|---|---|
@@ -46,6 +46,7 @@ The system implements the P-System Membrane Architecture:
 | Cognitive Analytics | `ICognitiveAnalyticsService` | `CognitiveAnalyticsService` |
 | AtomSpace Transport | `IAtomSpaceTransportService` | `AtomSpaceTransportService` |
 | Collaboration Backend | `ICollaborationBackendService` | `CollaborationBackendService` |
+| RocksDB Persistence | `IRocksDbPersistenceService` | `RocksDbPersistenceService` |
 
 ### Cognitive Analytics & Telemetry (Phase 6.3)
 
@@ -215,6 +216,63 @@ autognosisService.onDidCompleteSelfAssessment(a => {
 |---|---|
 | `zonecog.autognosis.selfAssess` | Perform a self-assessment now and show the verdict and narrative |
 | `zonecog.autognosis.showHistory` | Show recent self-assessments and the confidence trend |
+
+### RocksDB Persistence Backend (Phase E.1)
+
+`IRocksDbPersistenceService` / `RocksDbPersistenceService` provides a high-performance
+storage backend for the hypergraph store using RocksDB semantics. While this
+implementation emulates RocksDB behavior in-memory (suitable for browser
+environments), it follows the full RocksDB API pattern and can be backed by
+actual RocksDB WASM bindings in production.
+
+**Features:**
+- **Column Families**: Separate storage for `nodes`, `links`, `indices`, and `metadata`
+- **Range Queries**: Efficient key-range iteration with prefix filtering
+- **Bloom Filters**: Fast negative lookups to reduce unnecessary disk reads
+- **Batch Operations**: Atomic multi-key writes with put/delete/merge semantics
+- **Secondary Indices**: Custom index definitions with automatic maintenance
+- **Compaction Control**: Manual trigger and status monitoring
+- **Backup/Restore**: Consistent checkpoint creation and recovery
+
+```typescript
+// Initialize with custom configuration
+await rocksDbService.initialize({
+  dbPath: 'my-hypergraph-db',
+  enableBloomFilters: true,
+  compression: 'lz4',
+  enableCompaction: true
+});
+
+// Efficient range queries
+const result = await rocksDbService.rangeQuery<HypergraphNode>({
+  columnFamily: 'nodes',
+  prefix: 'user:',
+  limit: 100
+});
+
+// Batch operations
+await rocksDbService.batchWrite([
+  { type: 'put', columnFamily: 'nodes', key: 'node-1', value: JSON.stringify(node1) },
+  { type: 'put', columnFamily: 'nodes', key: 'node-2', value: JSON.stringify(node2) },
+  { type: 'delete', columnFamily: 'nodes', key: 'old-node' }
+]);
+
+// Bulk import for large datasets
+const { inserted, updated } = await rocksDbService.bulkPutNodes(nodesArray);
+
+// Secondary index for fast lookups
+await rocksDbService.createIndex({
+  name: 'by-type',
+  sourceColumnFamily: 'nodes',
+  keyExtractor: 'node_type',
+  unique: false,
+  sparse: false
+});
+
+// Backup and restore
+await rocksDbService.createBackup('checkpoint-2026-08-14');
+await rocksDbService.restoreFromBackup('checkpoint-2026-08-14');
+```
 
 ### OpenCog Hyperon AtomSpace Backend (Phase B)
 
@@ -521,6 +579,7 @@ services/zonecog/
 │   ├── atomSpaceBackend.ts        # IAtomSpaceBackendService (Hyperon AtomSpace)
 │   ├── hyperon.ts                 # IHyperonService (MeTTa) interface and types
 │   ├── collaborationBackend.ts    # ICollaborationBackendService, roles, wire protocol
+│   └── rocksDbPersistence.ts      # IRocksDbPersistenceService, column families, range queries
 │   ├── collaborationOT.ts         # Operational transformation engine
 │   └── cognitiveWorkflowAutomation.ts # Workflow DSL and automation
 ├── browser/
@@ -545,6 +604,7 @@ services/zonecog/
 │   ├── atomSpaceBackendService.ts # AtomSpace-native storage + persistence
 │   ├── hyperonService.ts          # MeTTa interpreter + native PLN deduction
 │   ├── collaborationBackendService.ts # Multi-user sessions, presence, OT sync
+│   ├── rocksDbPersistenceService.ts # RocksDB column families, range queries, bloom filters
 │   └── zonecog.contribution.ts    # DI service registration
 ├── test/
 │   └── browser/
