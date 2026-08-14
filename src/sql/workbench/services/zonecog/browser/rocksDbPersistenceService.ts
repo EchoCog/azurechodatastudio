@@ -296,8 +296,11 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 		const existingValue = cf.data.get(key);
 		if (existingValue) {
 			const existingLink = JSON.parse(existingValue) as HypergraphLink;
-			for (const nodeId of existingLink.outgoing) {
-				this._removeFromIndex('links', `outgoing:${nodeId}`, key);
+			// Defensive: handle malformed links that may have been batch-written without outgoing array
+			if (Array.isArray(existingLink.outgoing)) {
+				for (const nodeId of existingLink.outgoing) {
+					this._removeFromIndex('links', `outgoing:${nodeId}`, key);
+				}
 			}
 		}
 
@@ -306,8 +309,10 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 		this._updateBloomFilter('links', key);
 
 		// Index by all nodes in the outgoing array
-		for (const nodeId of link.outgoing) {
-			this._addToIndex('links', `outgoing:${nodeId}`, key);
+		if (Array.isArray(link.outgoing)) {
+			for (const nodeId of link.outgoing) {
+				this._addToIndex('links', `outgoing:${nodeId}`, key);
+			}
 		}
 
 		this._writeCount++;
@@ -342,8 +347,11 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 			const value = cf.data.get(id);
 			if (value) {
 				const link = JSON.parse(value) as HypergraphLink;
-				for (const nodeId of link.outgoing) {
-					this._removeFromIndex('links', `outgoing:${nodeId}`, id);
+				// Defensive: handle malformed links that may have been batch-written without outgoing array
+				if (Array.isArray(link.outgoing)) {
+					for (const nodeId of link.outgoing) {
+						this._removeFromIndex('links', `outgoing:${nodeId}`, id);
+					}
 				}
 			}
 			cf.data.delete(id);
@@ -937,8 +945,11 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 				this._removeFromIndex(family, `type:${node.node_type}`, key);
 			} else if (family === 'links') {
 				const link = doc as HypergraphLink;
-				for (const nodeId of link.outgoing) {
-					this._removeFromIndex(family, `outgoing:${nodeId}`, key);
+				// Defensive: handle malformed links without outgoing array
+				if (Array.isArray(link.outgoing)) {
+					for (const nodeId of link.outgoing) {
+						this._removeFromIndex(family, `outgoing:${nodeId}`, key);
+					}
 				}
 			}
 		} catch {
@@ -954,8 +965,11 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 				this._addToIndex(family, `type:${node.node_type}`, key);
 			} else if (family === 'links') {
 				const link = doc as HypergraphLink;
-				for (const nodeId of link.outgoing) {
-					this._addToIndex(family, `outgoing:${nodeId}`, key);
+				// Defensive: handle malformed links without outgoing array
+				if (Array.isArray(link.outgoing)) {
+					for (const nodeId of link.outgoing) {
+						this._addToIndex(family, `outgoing:${nodeId}`, key);
+					}
 				}
 			}
 		} catch {
