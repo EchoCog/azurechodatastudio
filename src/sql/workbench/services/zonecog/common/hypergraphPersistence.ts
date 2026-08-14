@@ -30,14 +30,72 @@ export interface HypergraphSnapshot {
 }
 
 /**
+ * Pluggable durable backends for the hybrid persistence layer (Phase E.2).
+ *
+ * - `indexeddb` — browser IndexedDB object stores (default).
+ * - `rocksdb` — RocksDB-compatible LSM engine with column families, bloom
+ *   filters (WebAssembly memory), range queries and leveled compaction.
+ * - `atomspace` — OpenCog AtomSpace backend via {@link IAtomSpaceBackendService}.
+ */
+export type HypergraphPersistenceBackendKind = 'indexeddb' | 'rocksdb' | 'atomspace';
+
+/** Storage tier a node currently occupies in the hybrid hot/warm/cold layout. */
+export type HypergraphStorageTier = 'hot' | 'warm' | 'cold';
+
+/**
+ * Diagnostics for the in-process RocksDB-compatible engine when that backend
+ * is active (or was last used).
+ */
+export interface RocksDbPersistenceStats {
+	columnFamilies: string[];
+	memtableEntries: number;
+	sstableCount: number;
+	bloomFilterBits: number;
+	bloomFilterHits: number;
+	bloomFilterMisses: number;
+	compactionCount: number;
+	estimatedBytes: number;
+	ready: boolean;
+}
+
+/**
+ * Optional HTTP cloud-backup endpoint configuration (Phase E.3).
+ *
+ * When configured, {@link IHypergraphPersistenceService.uploadBackupToCloud}
+ * POSTs a JSON backup to `{endpointUrl}/{prefix}/{name}` and
+ * {@link IHypergraphPersistenceService.downloadBackupFromCloud} GETs one back.
+ * Auth is a bearer token when `authToken` is set. No provider is enabled by
+ * default - cloud integration is strictly opt-in.
+ */
+export interface CloudStorageConfig {
+	/** Absolute base URL of the backup API (no trailing slash required). */
+	endpointUrl: string;
+	/** Optional bearer token sent as an HTTP Authorization bearer header. */
+	authToken?: string;
+	/** Remote path prefix under the endpoint (default `"zonecog-backups"`). */
+	prefix?: string;
+	/** Request timeout in milliseconds (default 30_000). */
+	timeoutMs?: number;
+}
+
+/** Result of a cloud backup upload or download attempt. */
+export interface CloudBackupResult {
+	success: boolean;
+	remotePath: string;
+	bytesTransferred: number;
+	durationMs: number;
+	error?: string;
+}
+
+/**
  * Statistics about the persisted hypergraph storage.
  */
 export interface PersistenceStats {
-	/** Whether the IndexedDB database is open and ready. */
+	/** Whether the active durable backend is open and ready. */
 	databaseReady: boolean;
-	/** Total number of node records currently in storage. */
+	/** Total number of node records currently in hot-tier storage. */
 	storedNodeCount: number;
-	/** Total number of link records currently in storage. */
+	/** Total number of link records currently in hot-tier storage. */
 	storedLinkCount: number;
 	/** Total number of snapshots recorded. */
 	snapshotCount: number;
@@ -49,8 +107,14 @@ export interface PersistenceStats {
 	estimatedBytes: number;
 	/** Number of nodes currently held in cold-tier archive storage. */
 	archivedNodeCount: number;
+	/** Number of nodes currently held in the warm tier (durable, not in memory). */
+	warmNodeCount: number;
 	/** Epoch-ms of the most recent backup export. 0 if never backed up. */
 	lastBackupTime: number;
+	/** Currently selected durable backend. */
+	backend: HypergraphPersistenceBackendKind;
+	/** RocksDB engine diagnostics when the rocksdb backend has been opened. */
+	rocksDb?: RocksDbPersistenceStats;
 }
 
 /**
@@ -279,6 +343,86 @@ export interface IHypergraphPersistenceService {
 	 * {@link exportBackupJson} and applies it via {@link importBackup}.
 	 */
 	importBackupJson(json: string): Promise<BackupImportResult>;
+
+	// -- Pluggable backend selection (Phase E.2) ------------------------------
+
+	/**
+	 * Switch the durable backend used for hot/warm/cold tiers.
+	 *
+	 * The current in-memory hypergraph is written through to the newly
+	 * selected backend on switch so no live state is lost. Available kinds
+	 * are listed by {@link getAvailableBackends}.
+	 */
+	setBackend(kind: HypergraphPersistenceBackendKind): Promise<void>;
+
+	/** Currently active durable backend. */
+	getBackend(): HypergraphPersistenceBackendKind;
+
+	/** Backends this build can activate. */
+	getAvailableBackends(): HypergraphPersistenceBackendKind[];
+
+	// -- Warm tier (Phase E.2 hot/warm/cold) ----------------------------------
+
+	/**
+	 * Move nodes whose salience is below `threshold` (default 0.25) but at or
+	 * above the cold-archive threshold out of the live hypergraph into the
+	 * warm tier. Warm nodes remain durably stored and can be lazily restored
+	 * via {@link restoreWarmNode} without loading the rest of the tier.
+	 * Nodes below the cold threshold are left for {@link archiveLowSalienceNodes}.
+	 */
+	demoteToWarmTier(threshold?: number): Promise<ArchiveStats>;
+
+	/**
+	 * Lazily restore a single warm-tier node (and its warm links) back into
+	 * the live hypergraph.
+	 */
+	restoreWarmNode(nodeId: string): Promise<HypergraphNode | undefined>;
+
+	/** List warm-tier nodes without loading them into the live hypergraph. */
+	listWarmNodes(): Promise<HypergraphNode[]>;
+
+	// -- Range queries / compaction -------------------------------------------
+
+	/**
+	 * Efficient ordered retrieval of hot-tier nodes whose id is greater than
+	 * or equal to `prefix` and shares that prefix. Backed by RocksDB range
+	 * scans when that backend is active; falls back to an in-memory filter
+	 * over the IndexedDB/AtomSpace hot set otherwise.
+	 */
+	rangeQueryNodes(prefix: string, limit?: number): Promise<HypergraphNode[]>;
+
+	/**
+	 * Force memtable flush + leveled compaction on the RocksDB backend.
+	 * No-op for backends that do not support compaction.
+	 */
+	compactStorage(): Promise<void>;
+
+	// -- Optional cloud storage (Phase E.3) -----------------------------------
+
+	/**
+	 * Configure (or clear, when `config` is `undefined`) the optional HTTP
+	 * cloud backup endpoint. Cloud integration is disabled until this is
+	 * called with a valid config.
+	 */
+	configureCloudStorage(config: CloudStorageConfig | undefined): void;
+
+	/** Current cloud storage config, or `undefined` when disabled. */
+	getCloudStorageConfig(): CloudStorageConfig | undefined;
+
+	/**
+	 * Create a backup (full or incremental) and POST it to the configured
+	 * cloud endpoint. Fails fast when cloud storage is not configured.
+	 */
+	uploadBackupToCloud(sinceTimestamp?: number, remoteName?: string): Promise<CloudBackupResult>;
+
+	/**
+	 * Download a previously uploaded backup from the cloud endpoint and
+	 * apply it via {@link importBackup}.
+	 */
+	downloadBackupFromCloud(remotePath: string): Promise<BackupImportResult>;
+
+	/** List backup object names under the configured cloud prefix. */
+	listCloudBackups(): Promise<string[]>;
 
 	/**
 	 * Dispose of the service and release any resources.

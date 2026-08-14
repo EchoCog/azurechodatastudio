@@ -11,18 +11,34 @@ import {
 	HypergraphBackup,
 	BackupImportResult,
 	HYPERGRAPH_BACKUP_FORMAT_VERSION,
+	HypergraphPersistenceBackendKind,
+	CloudStorageConfig,
+	CloudBackupResult,
+	RocksDbPersistenceStats,
 } from 'sql/workbench/services/zonecog/common/hypergraphPersistence';
 import { IHypergraphStore, HypergraphNode, HypergraphLink, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ILogService } from 'vs/platform/log/common/log';
+import { IAtomSpaceBackendService } from 'sql/workbench/services/zonecog/common/atomSpaceBackend';
+import {
+	RocksDbEngine,
+	IndexedDbRocksDbDurabilitySink,
+	encodeJson,
+	decodeJson,
+} from 'sql/workbench/services/zonecog/browser/rocksDbEngine';
+import {
+	uploadBackupToCloud,
+	downloadBackupFromCloud,
+	listCloudBackups,
+} from 'sql/workbench/services/zonecog/browser/cloudBackup';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const DB_NAME = 'zonecog-hypergraph';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 const STORE_NODES = 'nodes';
 const STORE_LINKS = 'links';
@@ -31,8 +47,23 @@ const STORE_SNAPSHOTS = 'snapshots';
 const STORE_ARCHIVE_NODES = 'archiveNodes';
 /** Cold tier: links archived alongside fully-archived nodes. */
 const STORE_ARCHIVE_LINKS = 'archiveLinks';
+/** Warm tier: durable but not resident in the live hypergraph. */
+const STORE_WARM_NODES = 'warmNodes';
+/** Warm tier links demoted alongside fully-warm nodes. */
+const STORE_WARM_LINKS = 'warmLinks';
 /** Append-only log of node/link upserts, used to compute incremental backup deltas. */
 const STORE_CHANGELOG = 'changelog';
+
+const ALL_OBJECT_STORES = [
+	STORE_NODES,
+	STORE_LINKS,
+	STORE_SNAPSHOTS,
+	STORE_ARCHIVE_NODES,
+	STORE_ARCHIVE_LINKS,
+	STORE_WARM_NODES,
+	STORE_WARM_LINKS,
+	STORE_CHANGELOG,
+] as const;
 
 /**
  * One entry in the append-only changelog: "this node/link was upserted at
@@ -48,8 +79,11 @@ interface ChangeLogEntry {
 
 const MIN_AUTO_SAVE_INTERVAL_MS = 10_000;
 
-/** Nodes with salience strictly below this are eligible for archival by default. */
+/** Nodes with salience strictly below this are eligible for cold archival by default. */
 const DEFAULT_ARCHIVE_SALIENCE_THRESHOLD = 0.05;
+
+/** Nodes with salience in [cold, warm) are eligible for warm-tier demotion by default. */
+const DEFAULT_WARM_SALIENCE_THRESHOLD = 0.25;
 
 /**
  * Rough per-record size estimates used for `estimatedBytes` in storage stats.
@@ -88,6 +122,12 @@ function openDatabase(): Promise<IDBDatabase> {
 			}
 			if (!db.objectStoreNames.contains(STORE_CHANGELOG)) {
 				db.createObjectStore(STORE_CHANGELOG, { keyPath: 'id' });
+			}
+			if (!db.objectStoreNames.contains(STORE_WARM_NODES)) {
+				db.createObjectStore(STORE_WARM_NODES, { keyPath: 'id' });
+			}
+			if (!db.objectStoreNames.contains(STORE_WARM_LINKS)) {
+				db.createObjectStore(STORE_WARM_LINKS, { keyPath: 'id' });
 			}
 		};
 		req.onsuccess = () => resolve(req.result);
@@ -280,18 +320,20 @@ export function nodesAndLinksToAtomSpaceScheme(nodes: ReadonlyArray<HypergraphNo
 // ---------------------------------------------------------------------------
 
 /**
- * Hypergraph Persistence Service - stores the Zone-Cog knowledge graph in
- * the browser's built-in IndexedDB for durable cross-session persistence.
+ * Hypergraph Persistence Service - hybrid durable storage for the Zone-Cog
+ * knowledge graph (Phase E).
  *
- * IndexedDB schema:
- *   DB: "zonecog-hypergraph" (version 3)
- *   - nodes        -> HypergraphNode records keyed by id (hot tier)
- *   - links        -> HypergraphLink records keyed by id (hot tier)
- *   - snapshots    -> HypergraphSnapshot metadata keyed by id
- *   - archiveNodes -> HypergraphNode records keyed by id (cold tier)
- *   - archiveLinks -> HypergraphLink records keyed by id (cold tier)
- *   - changelog    -> ChangeLogEntry records keyed by id, tracking node/link
- *                     upserts for incremental backup deltas
+ * Default backend is IndexedDB. Callers may switch to the RocksDB-compatible
+ * LSM engine or the AtomSpace backend via {@link setBackend}. Hot/warm/cold
+ * tiers, incremental backups, Cypher/Scheme export, and optional HTTP cloud
+ * backup are available on every backend.
+ *
+ * IndexedDB schema (backend = 'indexeddb'):
+ *   DB: "zonecog-hypergraph" (version 4)
+ *   - nodes / links           -> hot tier
+ *   - warmNodes / warmLinks   -> warm tier (durable, not in memory)
+ *   - archiveNodes / archiveLinks -> cold tier
+ *   - snapshots, changelog
  */
 export class HypergraphPersistenceService extends Disposable implements IHypergraphPersistenceService {
 
@@ -301,6 +343,11 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	private _db: IDBDatabase | null = null;
 	private _dbOpenPromise: Promise<IDBDatabase> | null = null;
 	private _dbAvailable = false;
+
+	private _backend: HypergraphPersistenceBackendKind = 'indexeddb';
+	private _rocksEngine: RocksDbEngine | null = null;
+	private _rocksDurability: IndexedDbRocksDbDurabilitySink | null = null;
+	private _cloudConfig: CloudStorageConfig | undefined;
 
 	private _lastSaveTime = 0;
 	private _lastLoadTime = 0;
@@ -354,6 +401,7 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 		@ILogService private readonly logService: ILogService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
+		@IAtomSpaceBackendService private readonly atomSpaceBackend: IAtomSpaceBackendService,
 	) {
 		super();
 		// Eagerly open the DB in the background; callers await _getDb().
@@ -381,7 +429,6 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 
 	async save(label = 'manual'): Promise<HypergraphSnapshot> {
 		return this._serialize(async () => {
-			const db = await this._getDb();
 			const { nodes, links } = this._collectGraph();
 
 			const snapshot: HypergraphSnapshot = {
@@ -393,28 +440,51 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			};
 
 			try {
-				// Write nodes, links, snapshot in a single transaction
-				const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_SNAPSHOTS], 'readwrite');
-				const nodeStore = tx.objectStore(STORE_NODES);
-				const linkStore = tx.objectStore(STORE_LINKS);
-				const snapshotStore = tx.objectStore(STORE_SNAPSHOTS);
+				if (this._backend === 'rocksdb') {
+					const engine = await this._getRocksEngine();
+					await engine.clear('nodes');
+					await engine.clear('links');
+					for (const node of nodes) { await engine.put('nodes', node.id, encodeJson(node)); }
+					for (const link of links) { await engine.put('links', link.id, encodeJson(link)); }
+					await engine.put('snapshots', String(snapshot.id), encodeJson(snapshot));
+				} else if (this._backend === 'atomspace') {
+					// Project the live hypergraph into the native AtomSpace table and
+					// attempt a durable persist against the configured Rocks node.
+					this.atomSpaceBackend.importFromHypergraph();
+					await this.atomSpaceBackend.persistAll();
+					// Keep IndexedDB snapshots as the local history trail.
+					const db = await this._getDb();
+					const tx = db.transaction([STORE_SNAPSHOTS], 'readwrite');
+					await idbPut(tx.objectStore(STORE_SNAPSHOTS), snapshot);
+					await new Promise<void>((resolve, reject) => {
+						tx.oncomplete = () => resolve();
+						tx.onerror = () => reject(tx.error);
+					});
+				} else {
+					const db = await this._getDb();
+					// Write nodes, links, snapshot in a single transaction
+					const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_SNAPSHOTS], 'readwrite');
+					const nodeStore = tx.objectStore(STORE_NODES);
+					const linkStore = tx.objectStore(STORE_LINKS);
+					const snapshotStore = tx.objectStore(STORE_SNAPSHOTS);
 
-				await idbClear(nodeStore);
-				await idbClear(linkStore);
+					await idbClear(nodeStore);
+					await idbClear(linkStore);
 
-				for (const node of nodes) { await idbPut(nodeStore, node); }
-				for (const link of links) { await idbPut(linkStore, link); }
-				await idbPut(snapshotStore, snapshot);
+					for (const node of nodes) { await idbPut(nodeStore, node); }
+					for (const link of links) { await idbPut(linkStore, link); }
+					await idbPut(snapshotStore, snapshot);
 
-				await new Promise<void>((resolve, reject) => {
-					tx.oncomplete = () => resolve();
-					tx.onerror = () => reject(tx.error);
-				});
+					await new Promise<void>((resolve, reject) => {
+						tx.oncomplete = () => resolve();
+						tx.onerror = () => reject(tx.error);
+					});
+				}
 
 				this._lastSaveTime = Date.now();
 				this.logService.info(
 					`HypergraphPersistenceService: saved ${nodes.length} nodes, ` +
-					`${links.length} links (label="${label}")`
+					`${links.length} links (label="${label}", backend=${this._backend})`
 				);
 				this._onDidSave.fire(snapshot);
 				this.membraneService.recordActivity('autonomic');
@@ -430,31 +500,55 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 
 	async load(): Promise<HypergraphSnapshot | undefined> {
 		return this._serialize(async () => {
-			const db = await this._getDb();
+			let nodes: HypergraphNode[] = [];
+			let links: HypergraphLink[] = [];
+			let snapshots: HypergraphSnapshot[] = [];
 
-			const [nodes, links, snapshots] = await Promise.all([
-				idbGetAll<HypergraphNode>(db, STORE_NODES),
-				idbGetAll<HypergraphLink>(db, STORE_LINKS),
-				idbGetAll<HypergraphSnapshot>(db, STORE_SNAPSHOTS),
-			]);
+			if (this._backend === 'rocksdb') {
+				const engine = await this._getRocksEngine();
+				nodes = (await engine.range('nodes', '')).map(([, v]) => decodeJson<HypergraphNode>(v));
+				links = (await engine.range('links', '')).map(([, v]) => decodeJson<HypergraphLink>(v));
+				snapshots = (await engine.range('snapshots', '')).map(([, v]) => decodeJson<HypergraphSnapshot>(v));
+			} else if (this._backend === 'atomspace') {
+				// Pull whatever the AtomSpace table currently holds back into the
+				// live hypergraph. Local IndexedDB snapshot metadata is still the
+				// source of listSnapshots().
+				const db = await this._getDb();
+				snapshots = await idbGetAll<HypergraphSnapshot>(db, STORE_SNAPSHOTS);
+				this._withChangeTrackingSuppressed(() => {
+					this.hypergraphStore.clear();
+					this.atomSpaceBackend.exportToHypergraph();
+				});
+				nodes = this.hypergraphStore.getAllNodes();
+				links = this._collectGraph().links;
+			} else {
+				const db = await this._getDb();
+				[nodes, links, snapshots] = await Promise.all([
+					idbGetAll<HypergraphNode>(db, STORE_NODES),
+					idbGetAll<HypergraphLink>(db, STORE_LINKS),
+					idbGetAll<HypergraphSnapshot>(db, STORE_SNAPSHOTS),
+				]);
+			}
 
 			if (nodes.length === 0 && links.length === 0) {
 				this.logService.info('HypergraphPersistenceService: nothing stored to load');
 				return undefined;
 			}
 
-			// Restore into in-memory store
-			this._withChangeTrackingSuppressed(() => {
-				this.hypergraphStore.clear();
-				for (const node of nodes) { this.hypergraphStore.addNode(node); }
-				for (const link of links) { this.hypergraphStore.addLink(link); }
-			});
+			// Restore into in-memory store (atomspace path already did this above)
+			if (this._backend !== 'atomspace') {
+				this._withChangeTrackingSuppressed(() => {
+					this.hypergraphStore.clear();
+					for (const node of nodes) { this.hypergraphStore.addNode(node); }
+					for (const link of links) { this.hypergraphStore.addLink(link); }
+				});
+			}
 
 			const latestSnapshot = snapshots.sort((a, b) => b.timestamp - a.timestamp)[0];
 			this._lastLoadTime = Date.now();
 
 			this.logService.info(
-				`HypergraphPersistenceService: loaded ${nodes.length} nodes, ${links.length} links`
+				`HypergraphPersistenceService: loaded ${nodes.length} nodes, ${links.length} links (backend=${this._backend})`
 			);
 			this.membraneService.recordActivity('autonomic');
 
@@ -478,20 +572,27 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 
 	async clearStorage(): Promise<void> {
 		return this._serialize(async () => {
-			const db = await this._getDb();
-			const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_SNAPSHOTS, STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS, STORE_CHANGELOG], 'readwrite');
-			await Promise.all([
-				idbClear(tx.objectStore(STORE_NODES)),
-				idbClear(tx.objectStore(STORE_LINKS)),
-				idbClear(tx.objectStore(STORE_SNAPSHOTS)),
-				idbClear(tx.objectStore(STORE_ARCHIVE_NODES)),
-				idbClear(tx.objectStore(STORE_ARCHIVE_LINKS)),
-				idbClear(tx.objectStore(STORE_CHANGELOG)),
-			]);
-			await new Promise<void>((resolve, reject) => {
-				tx.oncomplete = () => resolve();
-				tx.onerror = () => reject(tx.error);
-			});
+			if (this._backend === 'rocksdb') {
+				const engine = await this._getRocksEngine();
+				await engine.clear();
+			} else if (this._backend === 'atomspace') {
+				this.atomSpaceBackend.clear();
+				const db = await this._getDb();
+				const tx = db.transaction([...ALL_OBJECT_STORES], 'readwrite');
+				await Promise.all(ALL_OBJECT_STORES.map(name => idbClear(tx.objectStore(name))));
+				await new Promise<void>((resolve, reject) => {
+					tx.oncomplete = () => resolve();
+					tx.onerror = () => reject(tx.error);
+				});
+			} else {
+				const db = await this._getDb();
+				const tx = db.transaction([...ALL_OBJECT_STORES], 'readwrite');
+				await Promise.all(ALL_OBJECT_STORES.map(name => idbClear(tx.objectStore(name))));
+				await new Promise<void>((resolve, reject) => {
+					tx.oncomplete = () => resolve();
+					tx.onerror = () => reject(tx.error);
+				});
+			}
 			// The changelog backing incremental deltas was just wiped, so any
 			// previously reported checkpoint no longer has history behind it -
 			// a caller requesting "since last backup" against the stale value
@@ -502,6 +603,11 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	}
 
 	async listSnapshots(): Promise<HypergraphSnapshot[]> {
+		if (this._backend === 'rocksdb') {
+			const engine = await this._getRocksEngine();
+			const all = (await engine.range('snapshots', '')).map(([, v]) => decodeJson<HypergraphSnapshot>(v));
+			return all.sort((a, b) => b.timestamp - a.timestamp);
+		}
 		const db = await this._getDb();
 		const all = await idbGetAll<HypergraphSnapshot>(db, STORE_SNAPSHOTS);
 		return all.sort((a, b) => b.timestamp - a.timestamp);
@@ -540,6 +646,70 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	// -------------------------------------------------------------------------
 
 	async getStats(): Promise<PersistenceStats> {
+		const rocksDb = this._rocksEngine ? this._toRocksStats(this._rocksEngine) : undefined;
+
+		if (this._backend === 'rocksdb') {
+			if (!this._rocksEngine?.ready) {
+				return {
+					databaseReady: false,
+					storedNodeCount: 0,
+					storedLinkCount: 0,
+					snapshotCount: 0,
+					lastSaveTime: this._lastSaveTime,
+					lastLoadTime: this._lastLoadTime,
+					estimatedBytes: 0,
+					archivedNodeCount: 0,
+					warmNodeCount: 0,
+					lastBackupTime: this._lastBackupTime,
+					backend: this._backend,
+					rocksDb,
+				};
+			}
+			const engine = await this._getRocksEngine();
+			const [storedNodeCount, storedLinkCount, snapshotCount, archivedNodeCount, warmNodeCount] = await Promise.all([
+				engine.count('nodes'),
+				engine.count('links'),
+				engine.count('snapshots'),
+				engine.count('archiveNodes'),
+				engine.count('warmNodes'),
+			]);
+			return {
+				databaseReady: true,
+				storedNodeCount,
+				storedLinkCount,
+				snapshotCount,
+				lastSaveTime: this._lastSaveTime,
+				lastLoadTime: this._lastLoadTime,
+				estimatedBytes: storedNodeCount * AVG_NODE_SIZE_BYTES + storedLinkCount * AVG_LINK_SIZE_BYTES,
+				archivedNodeCount,
+				warmNodeCount,
+				lastBackupTime: this._lastBackupTime,
+				backend: this._backend,
+				rocksDb: this._toRocksStats(engine),
+			};
+		}
+
+		if (this._backend === 'atomspace') {
+			const db = this._dbAvailable ? await this._getDb() : null;
+			const snapshotCount = db ? await idbCount(db, STORE_SNAPSHOTS) : 0;
+			const warmNodeCount = db ? await idbCount(db, STORE_WARM_NODES) : 0;
+			const archivedNodeCount = db ? await idbCount(db, STORE_ARCHIVE_NODES) : 0;
+			return {
+				databaseReady: true,
+				storedNodeCount: this.atomSpaceBackend.atomCount(),
+				storedLinkCount: this.atomSpaceBackend.getAllAtoms().filter(a => a.kind === 'Link').length,
+				snapshotCount,
+				lastSaveTime: this._lastSaveTime,
+				lastLoadTime: this._lastLoadTime,
+				estimatedBytes: this.atomSpaceBackend.atomCount() * AVG_NODE_SIZE_BYTES,
+				archivedNodeCount,
+				warmNodeCount,
+				lastBackupTime: this._lastBackupTime,
+				backend: this._backend,
+				rocksDb,
+			};
+		}
+
 		if (!this._dbAvailable) {
 			return {
 				databaseReady: false,
@@ -550,16 +720,20 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 				lastLoadTime: this._lastLoadTime,
 				estimatedBytes: 0,
 				archivedNodeCount: 0,
+				warmNodeCount: 0,
 				lastBackupTime: this._lastBackupTime,
+				backend: this._backend,
+				rocksDb,
 			};
 		}
 
 		const db = await this._getDb();
-		const [nodeCount, linkCount, snapshotCount, archivedNodeCount] = await Promise.all([
+		const [nodeCount, linkCount, snapshotCount, archivedNodeCount, warmNodeCount] = await Promise.all([
 			idbCount(db, STORE_NODES),
 			idbCount(db, STORE_LINKS),
 			idbCount(db, STORE_SNAPSHOTS),
 			idbCount(db, STORE_ARCHIVE_NODES),
+			idbCount(db, STORE_WARM_NODES),
 		]);
 
 		// Rough size estimate based on average record sizes
@@ -574,7 +748,10 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			lastLoadTime: this._lastLoadTime,
 			estimatedBytes,
 			archivedNodeCount,
+			warmNodeCount,
 			lastBackupTime: this._lastBackupTime,
+			backend: this._backend,
+			rocksDb,
 		};
 	}
 
@@ -600,49 +777,53 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 
 	async archiveLowSalienceNodes(threshold = DEFAULT_ARCHIVE_SALIENCE_THRESHOLD): Promise<ArchiveStats> {
 		return this._serialize(async () => {
-			const db = await this._getDb();
 			const toArchive = this.hypergraphStore.getAllNodes().filter(n => n.salience_score < threshold);
 			if (toArchive.length === 0) {
 				return { archivedNodeCount: 0, archivedLinkCount: 0 };
 			}
 
 			const archiveIds = new Set(toArchive.map(n => n.id));
+			const linksToArchive = this._linksFullyCoveredBy(archiveIds);
 
-			// Only archive a link when every one of its outgoing nodes is also
-			// being archived in this pass, so links with a remaining hot endpoint
-			// stay live rather than dangling.
-			const candidateLinkIds = new Set<string>();
-			for (const node of toArchive) {
-				for (const lid of node.links) { candidateLinkIds.add(lid); }
-			}
-			const linksToArchive: HypergraphLink[] = [];
-			for (const lid of candidateLinkIds) {
-				const link = this.hypergraphStore.getLink(lid);
-				if (link && link.outgoing.every(id => archiveIds.has(id))) {
-					linksToArchive.push(link);
+			if (this._backend === 'rocksdb') {
+				const engine = await this._getRocksEngine();
+				for (const node of toArchive) {
+					await engine.put('archiveNodes', node.id, encodeJson(node));
+					await engine.delete('nodes', node.id);
+					await engine.delete('warmNodes', node.id);
 				}
+				for (const link of linksToArchive) {
+					await engine.put('archiveLinks', link.id, encodeJson(link));
+					await engine.delete('links', link.id);
+					await engine.delete('warmLinks', link.id);
+				}
+			} else {
+				// Move the records: write into the cold tier and delete from the hot
+				// tier in the same transaction, so a later load() (which rebuilds
+				// memory from the hot IndexedDB stores) can't resurrect them.
+				const db = await this._getDb();
+				const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS, STORE_WARM_NODES, STORE_WARM_LINKS], 'readwrite');
+				const nodeStore = tx.objectStore(STORE_NODES);
+				const linkStore = tx.objectStore(STORE_LINKS);
+				const archiveNodeStore = tx.objectStore(STORE_ARCHIVE_NODES);
+				const archiveLinkStore = tx.objectStore(STORE_ARCHIVE_LINKS);
+				const warmNodeStore = tx.objectStore(STORE_WARM_NODES);
+				const warmLinkStore = tx.objectStore(STORE_WARM_LINKS);
+				for (const node of toArchive) {
+					await idbPut(archiveNodeStore, node);
+					await idbDelete(nodeStore, node.id);
+					await idbDelete(warmNodeStore, node.id);
+				}
+				for (const link of linksToArchive) {
+					await idbPut(archiveLinkStore, link);
+					await idbDelete(linkStore, link.id);
+					await idbDelete(warmLinkStore, link.id);
+				}
+				await new Promise<void>((resolve, reject) => {
+					tx.oncomplete = () => resolve();
+					tx.onerror = () => reject(tx.error);
+				});
 			}
-
-			// Move the records: write into the cold tier and delete from the hot
-			// tier in the same transaction, so a later load() (which rebuilds
-			// memory from the hot IndexedDB stores) can't resurrect them.
-			const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
-			const nodeStore = tx.objectStore(STORE_NODES);
-			const linkStore = tx.objectStore(STORE_LINKS);
-			const archiveNodeStore = tx.objectStore(STORE_ARCHIVE_NODES);
-			const archiveLinkStore = tx.objectStore(STORE_ARCHIVE_LINKS);
-			for (const node of toArchive) {
-				await idbPut(archiveNodeStore, node);
-				await idbDelete(nodeStore, node.id);
-			}
-			for (const link of linksToArchive) {
-				await idbPut(archiveLinkStore, link);
-				await idbDelete(linkStore, link.id);
-			}
-			await new Promise<void>((resolve, reject) => {
-				tx.oncomplete = () => resolve();
-				tx.onerror = () => reject(tx.error);
-			});
 
 			for (const link of linksToArchive) { this.hypergraphStore.removeLink(link.id); }
 			for (const node of toArchive) { this.hypergraphStore.removeNode(node.id); }
@@ -658,29 +839,51 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 
 	async restoreArchivedNode(nodeId: string): Promise<HypergraphNode | undefined> {
 		return this._serialize(async () => {
-			const db = await this._getDb();
-			const node = await idbGet<HypergraphNode>(db, STORE_ARCHIVE_NODES, nodeId);
-			if (!node) { return undefined; }
+			let node: HypergraphNode | undefined;
+			let links: HypergraphLink[] = [];
+			let linksToDropFromArchive: HypergraphLink[] = [];
 
-			const links: HypergraphLink[] = [];
-			for (const linkId of node.links) {
-				const link = await idbGet<HypergraphLink>(db, STORE_ARCHIVE_LINKS, linkId);
-				if (link) { links.push(link); }
-			}
+			if (this._backend === 'rocksdb') {
+				const engine = await this._getRocksEngine();
+				const raw = await engine.get('archiveNodes', nodeId);
+				if (!raw) { return undefined; }
+				node = decodeJson<HypergraphNode>(raw);
+				for (const linkId of node.links) {
+					const linkRaw = await engine.get('archiveLinks', linkId);
+					if (linkRaw) { links.push(decodeJson<HypergraphLink>(linkRaw)); }
+				}
+				const otherArchived = (await engine.range('archiveNodes', ''))
+					.map(([, v]) => decodeJson<HypergraphNode>(v))
+					.filter(n => n.id !== nodeId);
+				const stillReferencedInArchive = new Set<string>();
+				for (const other of otherArchived) {
+					for (const lid of other.links) { stillReferencedInArchive.add(lid); }
+				}
+				linksToDropFromArchive = links.filter(l => !stillReferencedInArchive.has(l.id));
+			} else {
+				const db = await this._getDb();
+				node = await idbGet<HypergraphNode>(db, STORE_ARCHIVE_NODES, nodeId);
+				if (!node) { return undefined; }
 
-			// A link is only safe to drop from cold storage once no *other*
-			// still-archived node references it - otherwise that other node
-			// would lose its only durable copy of a link it hasn't been
-			// restored alongside.
-			const otherArchivedNodes = (await idbGetAll<HypergraphNode>(db, STORE_ARCHIVE_NODES)).filter(n => n.id !== nodeId);
-			const stillReferencedInArchive = new Set<string>();
-			for (const other of otherArchivedNodes) {
-				for (const lid of other.links) { stillReferencedInArchive.add(lid); }
+				for (const linkId of node.links) {
+					const link = await idbGet<HypergraphLink>(db, STORE_ARCHIVE_LINKS, linkId);
+					if (link) { links.push(link); }
+				}
+
+				// A link is only safe to drop from cold storage once no *other*
+				// still-archived node references it - otherwise that other node
+				// would lose its only durable copy of a link it hasn't been
+				// restored alongside.
+				const otherArchivedNodes = (await idbGetAll<HypergraphNode>(db, STORE_ARCHIVE_NODES)).filter(n => n.id !== nodeId);
+				const stillReferencedInArchive = new Set<string>();
+				for (const other of otherArchivedNodes) {
+					for (const lid of other.links) { stillReferencedInArchive.add(lid); }
+				}
+				linksToDropFromArchive = links.filter(l => !stillReferencedInArchive.has(l.id));
 			}
-			const linksToDropFromArchive = links.filter(l => !stillReferencedInArchive.has(l.id));
 
 			this._withChangeTrackingSuppressed(() => {
-				this.hypergraphStore.addNode(node);
+				this.hypergraphStore.addNode(node!);
 				for (const link of links) {
 					if (!this.hypergraphStore.getLink(link.id)) {
 						this.hypergraphStore.addLink(link);
@@ -690,30 +893,31 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 
 			// A link only belongs in the hot tier once every one of its
 			// outgoing nodes is actually live - otherwise it would sit in hot
-			// storage referencing a still-archived node. If that stale
-			// endpoint (this restored node, still below the salience
-			// threshold) gets archived again later, archiveLowSalienceNodes()
-			// only pulls a link out of the hot tier when *all* of its
-			// outgoing ids are in that pass; a link whose other endpoint was
-			// never live wouldn't qualify, leaving it permanently orphaned in
-			// hot storage. Links with a still-cold endpoint stay purely
-			// in-memory for this session instead (an explicit save() while
-			// all endpoints happen to be live will persist it normally).
+			// storage referencing a still-archived node.
 			const hotLinks = links.filter(l => l.outgoing.every(id => this.hypergraphStore.getNode(id) !== undefined));
 
-			// Write the restored records into the hot tier and remove the node
-			// (plus any link no other archived node still needs) from the cold
-			// tier, so the restore is durable without requiring a separate
-			// save() call before the next load().
-			const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
-			await idbPut(tx.objectStore(STORE_NODES), node);
-			for (const link of hotLinks) { await idbPut(tx.objectStore(STORE_LINKS), link); }
-			await idbDelete(tx.objectStore(STORE_ARCHIVE_NODES), nodeId);
-			for (const link of linksToDropFromArchive) { await idbDelete(tx.objectStore(STORE_ARCHIVE_LINKS), link.id); }
-			await new Promise<void>((resolve, reject) => {
-				tx.oncomplete = () => resolve();
-				tx.onerror = () => reject(tx.error);
-			});
+			if (this._backend === 'rocksdb') {
+				const engine = await this._getRocksEngine();
+				await engine.put('nodes', node!.id, encodeJson(node!));
+				for (const link of hotLinks) { await engine.put('links', link.id, encodeJson(link)); }
+				await engine.delete('archiveNodes', nodeId);
+				for (const link of linksToDropFromArchive) { await engine.delete('archiveLinks', link.id); }
+			} else {
+				const db = await this._getDb();
+				// Write the restored records into the hot tier and remove the node
+				// (plus any link no other archived node still needs) from the cold
+				// tier, so the restore is durable without requiring a separate
+				// save() call before the next load().
+				const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_ARCHIVE_NODES, STORE_ARCHIVE_LINKS], 'readwrite');
+				await idbPut(tx.objectStore(STORE_NODES), node!);
+				for (const link of hotLinks) { await idbPut(tx.objectStore(STORE_LINKS), link); }
+				await idbDelete(tx.objectStore(STORE_ARCHIVE_NODES), nodeId);
+				for (const link of linksToDropFromArchive) { await idbDelete(tx.objectStore(STORE_ARCHIVE_LINKS), link.id); }
+				await new Promise<void>((resolve, reject) => {
+					tx.oncomplete = () => resolve();
+					tx.onerror = () => reject(tx.error);
+				});
+			}
 
 			this.logService.info(
 				`HypergraphPersistenceService: restored archived node "${nodeId}" ` +
@@ -725,6 +929,10 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	}
 
 	async listArchivedNodes(): Promise<HypergraphNode[]> {
+		if (this._backend === 'rocksdb') {
+			const engine = await this._getRocksEngine();
+			return (await engine.range('archiveNodes', '')).map(([, v]) => decodeJson<HypergraphNode>(v));
+		}
 		const db = await this._getDb();
 		return idbGetAll<HypergraphNode>(db, STORE_ARCHIVE_NODES);
 	}
@@ -747,8 +955,14 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 		if (full) {
 			({ nodes, links } = this._collectGraph());
 		} else {
-			const db = await this._getDb();
-			const changelog = await idbGetAll<ChangeLogEntry>(db, STORE_CHANGELOG);
+			let changelog: ChangeLogEntry[];
+			if (this._backend === 'rocksdb') {
+				const engine = await this._getRocksEngine();
+				changelog = (await engine.range('changelog', '')).map(([, v]) => decodeJson<ChangeLogEntry>(v));
+			} else {
+				const db = await this._getDb();
+				changelog = await idbGetAll<ChangeLogEntry>(db, STORE_CHANGELOG);
+			}
 			const changedNodeIds = new Set(changelog.filter(e => e.entityType === 'node' && e.timestamp > sinceTimestamp).map(e => e.entityId));
 			const changedLinkIds = new Set(changelog.filter(e => e.entityType === 'link' && e.timestamp > sinceTimestamp).map(e => e.entityId));
 			nodes = [...changedNodeIds].map(id => this.hypergraphStore.getNode(id)).filter((n): n is HypergraphNode => n !== undefined);
@@ -779,20 +993,28 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 
 	async importBackup(backup: HypergraphBackup): Promise<BackupImportResult> {
 		return this._serialize(async () => {
-			const db = await this._getDb();
-
 			for (const node of backup.nodes) { this.hypergraphStore.addNode(node); }
 			for (const link of backup.links) { this.hypergraphStore.addLink(link); }
 
-			const tx = db.transaction([STORE_NODES, STORE_LINKS], 'readwrite');
-			const nodeStore = tx.objectStore(STORE_NODES);
-			const linkStore = tx.objectStore(STORE_LINKS);
-			for (const node of backup.nodes) { await idbPut(nodeStore, node); }
-			for (const link of backup.links) { await idbPut(linkStore, link); }
-			await new Promise<void>((resolve, reject) => {
-				tx.oncomplete = () => resolve();
-				tx.onerror = () => reject(tx.error);
-			});
+			if (this._backend === 'rocksdb') {
+				const engine = await this._getRocksEngine();
+				for (const node of backup.nodes) { await engine.put('nodes', node.id, encodeJson(node)); }
+				for (const link of backup.links) { await engine.put('links', link.id, encodeJson(link)); }
+			} else if (this._backend === 'atomspace') {
+				this.atomSpaceBackend.importFromHypergraph();
+				await this.atomSpaceBackend.persistAll();
+			} else {
+				const db = await this._getDb();
+				const tx = db.transaction([STORE_NODES, STORE_LINKS], 'readwrite');
+				const nodeStore = tx.objectStore(STORE_NODES);
+				const linkStore = tx.objectStore(STORE_LINKS);
+				for (const node of backup.nodes) { await idbPut(nodeStore, node); }
+				for (const link of backup.links) { await idbPut(linkStore, link); }
+				await new Promise<void>((resolve, reject) => {
+					tx.oncomplete = () => resolve();
+					tx.onerror = () => reject(tx.error);
+				});
+			}
 
 			this.logService.info(
 				`HypergraphPersistenceService: imported ${backup.full ? 'full' : 'incremental'} backup - ` +
@@ -809,6 +1031,242 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 	}
 
 	// -------------------------------------------------------------------------
+	// Pluggable backend selection
+	// -------------------------------------------------------------------------
+
+	async setBackend(kind: HypergraphPersistenceBackendKind): Promise<void> {
+		if (kind === this._backend) { return; }
+		if (!this.getAvailableBackends().includes(kind)) {
+			throw new Error(`Unsupported persistence backend: ${kind}`);
+		}
+
+		// Capture live state before switching so nothing is lost mid-flight.
+		const live = this._collectGraph();
+		this._backend = kind;
+
+		if (kind === 'rocksdb') {
+			await this._getRocksEngine();
+		}
+
+		// Write the captured live graph through the newly selected backend.
+		this._withChangeTrackingSuppressed(() => {
+			this.hypergraphStore.clear();
+			for (const node of live.nodes) { this.hypergraphStore.addNode(node); }
+			for (const link of live.links) { this.hypergraphStore.addLink(link); }
+		});
+		await this.save(`backend-switch-${kind}`);
+		this.logService.info(`HypergraphPersistenceService: switched backend to ${kind}`);
+		this.membraneService.recordActivity('autonomic');
+	}
+
+	getBackend(): HypergraphPersistenceBackendKind {
+		return this._backend;
+	}
+
+	getAvailableBackends(): HypergraphPersistenceBackendKind[] {
+		return ['indexeddb', 'rocksdb', 'atomspace'];
+	}
+
+	// -------------------------------------------------------------------------
+	// Warm tier
+	// -------------------------------------------------------------------------
+
+	async demoteToWarmTier(threshold = DEFAULT_WARM_SALIENCE_THRESHOLD): Promise<ArchiveStats> {
+		return this._serialize(async () => {
+			const toWarm = this.hypergraphStore.getAllNodes().filter(
+				n => n.salience_score < threshold && n.salience_score >= DEFAULT_ARCHIVE_SALIENCE_THRESHOLD
+			);
+			if (toWarm.length === 0) {
+				return { archivedNodeCount: 0, archivedLinkCount: 0 };
+			}
+			const warmIds = new Set(toWarm.map(n => n.id));
+			const linksToWarm = this._linksFullyCoveredBy(warmIds);
+
+			if (this._backend === 'rocksdb') {
+				const engine = await this._getRocksEngine();
+				for (const node of toWarm) {
+					await engine.put('warmNodes', node.id, encodeJson(node));
+					await engine.delete('nodes', node.id);
+				}
+				for (const link of linksToWarm) {
+					await engine.put('warmLinks', link.id, encodeJson(link));
+					await engine.delete('links', link.id);
+				}
+			} else {
+				const db = await this._getDb();
+				const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_WARM_NODES, STORE_WARM_LINKS], 'readwrite');
+				for (const node of toWarm) {
+					await idbPut(tx.objectStore(STORE_WARM_NODES), node);
+					await idbDelete(tx.objectStore(STORE_NODES), node.id);
+				}
+				for (const link of linksToWarm) {
+					await idbPut(tx.objectStore(STORE_WARM_LINKS), link);
+					await idbDelete(tx.objectStore(STORE_LINKS), link.id);
+				}
+				await new Promise<void>((resolve, reject) => {
+					tx.oncomplete = () => resolve();
+					tx.onerror = () => reject(tx.error);
+				});
+			}
+
+			for (const link of linksToWarm) { this.hypergraphStore.removeLink(link.id); }
+			for (const node of toWarm) { this.hypergraphStore.removeNode(node.id); }
+
+			this.logService.info(
+				`HypergraphPersistenceService: demoted ${toWarm.length} node(s), ` +
+				`${linksToWarm.length} link(s) to warm tier (threshold=${threshold})`
+			);
+			this.membraneService.recordActivity('autonomic');
+			return { archivedNodeCount: toWarm.length, archivedLinkCount: linksToWarm.length };
+		});
+	}
+
+	async restoreWarmNode(nodeId: string): Promise<HypergraphNode | undefined> {
+		return this._serialize(async () => {
+			let node: HypergraphNode | undefined;
+			const links: HypergraphLink[] = [];
+
+			if (this._backend === 'rocksdb') {
+				const engine = await this._getRocksEngine();
+				const raw = await engine.get('warmNodes', nodeId);
+				if (!raw) { return undefined; }
+				node = decodeJson<HypergraphNode>(raw);
+				for (const linkId of node.links) {
+					const linkRaw = await engine.get('warmLinks', linkId);
+					if (linkRaw) { links.push(decodeJson<HypergraphLink>(linkRaw)); }
+				}
+			} else {
+				const db = await this._getDb();
+				node = await idbGet<HypergraphNode>(db, STORE_WARM_NODES, nodeId);
+				if (!node) { return undefined; }
+				for (const linkId of node.links) {
+					const link = await idbGet<HypergraphLink>(db, STORE_WARM_LINKS, linkId);
+					if (link) { links.push(link); }
+				}
+			}
+
+			this._withChangeTrackingSuppressed(() => {
+				this.hypergraphStore.addNode(node!);
+				for (const link of links) {
+					if (!this.hypergraphStore.getLink(link.id)) {
+						this.hypergraphStore.addLink(link);
+					}
+				}
+			});
+
+			const hotLinks = links.filter(l => l.outgoing.every(id => this.hypergraphStore.getNode(id) !== undefined));
+
+			if (this._backend === 'rocksdb') {
+				const engine = await this._getRocksEngine();
+				await engine.put('nodes', node!.id, encodeJson(node!));
+				for (const link of hotLinks) { await engine.put('links', link.id, encodeJson(link)); }
+				await engine.delete('warmNodes', nodeId);
+				for (const link of links) { await engine.delete('warmLinks', link.id); }
+			} else {
+				const db = await this._getDb();
+				const tx = db.transaction([STORE_NODES, STORE_LINKS, STORE_WARM_NODES, STORE_WARM_LINKS], 'readwrite');
+				await idbPut(tx.objectStore(STORE_NODES), node!);
+				for (const link of hotLinks) { await idbPut(tx.objectStore(STORE_LINKS), link); }
+				await idbDelete(tx.objectStore(STORE_WARM_NODES), nodeId);
+				for (const link of links) { await idbDelete(tx.objectStore(STORE_WARM_LINKS), link.id); }
+				await new Promise<void>((resolve, reject) => {
+					tx.oncomplete = () => resolve();
+					tx.onerror = () => reject(tx.error);
+				});
+			}
+
+			this.membraneService.recordActivity('autonomic');
+			return node;
+		});
+	}
+
+	async listWarmNodes(): Promise<HypergraphNode[]> {
+		if (this._backend === 'rocksdb') {
+			const engine = await this._getRocksEngine();
+			return (await engine.range('warmNodes', '')).map(([, v]) => decodeJson<HypergraphNode>(v));
+		}
+		const db = await this._getDb();
+		return idbGetAll<HypergraphNode>(db, STORE_WARM_NODES);
+	}
+
+	// -------------------------------------------------------------------------
+	// Range queries / compaction
+	// -------------------------------------------------------------------------
+
+	async rangeQueryNodes(prefix: string, limit?: number): Promise<HypergraphNode[]> {
+		if (this._backend === 'rocksdb') {
+			const engine = await this._getRocksEngine();
+			const pairs = await engine.prefixScan('nodes', prefix, limit);
+			return pairs.map(([, v]) => decodeJson<HypergraphNode>(v));
+		}
+
+		// IndexedDB / AtomSpace fallback: ordered filter over the hot set.
+		let nodes: HypergraphNode[];
+		if (this._backend === 'atomspace') {
+			nodes = this.hypergraphStore.getAllNodes();
+		} else {
+			const db = await this._getDb();
+			nodes = await idbGetAll<HypergraphNode>(db, STORE_NODES);
+		}
+		const matched = nodes
+			.filter(n => n.id.startsWith(prefix))
+			.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+		return limit !== undefined ? matched.slice(0, limit) : matched;
+	}
+
+	async compactStorage(): Promise<void> {
+		if (this._backend !== 'rocksdb') {
+			this.logService.info(`HypergraphPersistenceService: compactStorage is a no-op for backend=${this._backend}`);
+			return;
+		}
+		const engine = await this._getRocksEngine();
+		await engine.compact();
+		this.membraneService.recordActivity('autonomic');
+		this.logService.info('HypergraphPersistenceService: RocksDB compaction complete');
+	}
+
+	// -------------------------------------------------------------------------
+	// Cloud storage
+	// -------------------------------------------------------------------------
+
+	configureCloudStorage(config: CloudStorageConfig | undefined): void {
+		this._cloudConfig = config ? { ...config } : undefined;
+		this.logService.info(
+			this._cloudConfig
+				? `HypergraphPersistenceService: cloud storage configured (${this._cloudConfig.endpointUrl})`
+				: 'HypergraphPersistenceService: cloud storage disabled'
+		);
+	}
+
+	getCloudStorageConfig(): CloudStorageConfig | undefined {
+		return this._cloudConfig ? { ...this._cloudConfig } : undefined;
+	}
+
+	async uploadBackupToCloud(sinceTimestamp?: number, remoteName?: string): Promise<CloudBackupResult> {
+		const result = await uploadBackupToCloud(
+			this,
+			this._cloudConfig,
+			sinceTimestamp,
+			remoteName,
+			msg => this.logService.warn(msg),
+		);
+		if (result.success) {
+			this.membraneService.recordActivity('autonomic');
+		}
+		return result;
+	}
+
+	async downloadBackupFromCloud(remotePath: string): Promise<BackupImportResult> {
+		const result = await downloadBackupFromCloud(this, this._cloudConfig, remotePath);
+		this.membraneService.recordActivity('autonomic');
+		return result;
+	}
+
+	async listCloudBackups(): Promise<string[]> {
+		return listCloudBackups(this._cloudConfig);
+	}
+
+	// -------------------------------------------------------------------------
 	// Lifecycle
 	// -------------------------------------------------------------------------
 
@@ -818,6 +1276,11 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			this._db.close();
 			this._db = null;
 		}
+		if (this._rocksDurability) {
+			this._rocksDurability.close();
+			this._rocksDurability = null;
+		}
+		this._rocksEngine = null;
 		super.dispose();
 	}
 
@@ -834,6 +1297,55 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 			return db;
 		});
 		return this._dbOpenPromise;
+	}
+
+	private async _getRocksEngine(): Promise<RocksDbEngine> {
+		if (this._rocksEngine?.ready) {
+			return this._rocksEngine;
+		}
+		if (!this._rocksEngine) {
+			this._rocksDurability = new IndexedDbRocksDbDurabilitySink();
+			this._rocksEngine = new RocksDbEngine({
+				memtableFlushThreshold: 128,
+				compactionSstThreshold: 4,
+				bloomBitsPerKey: 10,
+				bloomHashFunctions: 4,
+			}, this._rocksDurability);
+		}
+		await this._rocksEngine.open();
+		return this._rocksEngine;
+	}
+
+	private _toRocksStats(engine: RocksDbEngine): RocksDbPersistenceStats {
+		const s = engine.getStats();
+		return {
+			columnFamilies: [...s.columnFamilies],
+			memtableEntries: s.memtableEntries,
+			sstableCount: s.sstableCount,
+			bloomFilterBits: s.bloomFilterBits,
+			bloomFilterHits: s.bloomFilterHits,
+			bloomFilterMisses: s.bloomFilterMisses,
+			compactionCount: s.compactionCount,
+			estimatedBytes: s.estimatedBytes,
+			ready: s.ready,
+		};
+	}
+
+	private _linksFullyCoveredBy(nodeIds: Set<string>): HypergraphLink[] {
+		const candidateLinkIds = new Set<string>();
+		for (const id of nodeIds) {
+			const node = this.hypergraphStore.getNode(id);
+			if (!node) { continue; }
+			for (const lid of node.links) { candidateLinkIds.add(lid); }
+		}
+		const out: HypergraphLink[] = [];
+		for (const lid of candidateLinkIds) {
+			const link = this.hypergraphStore.getLink(lid);
+			if (link && link.outgoing.every(id => nodeIds.has(id))) {
+				out.push(link);
+			}
+		}
+		return out;
 	}
 
 	/**
@@ -880,10 +1392,15 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 		// this write is always part of what a subsequent createBackup() awaits
 		// - see the field doc for why that ordering matters.
 		this._changeLogWriteQueue = this._changeLogWriteQueue
-			.then(() => this._getDb())
-			.then(db => {
+			.then(async () => {
+				if (this._backend === 'rocksdb') {
+					const engine = await this._getRocksEngine();
+					await engine.put('changelog', entry.id, encodeJson(entry));
+					return;
+				}
+				const db = await this._getDb();
 				const tx = db.transaction([STORE_CHANGELOG], 'readwrite');
-				return idbPut(tx.objectStore(STORE_CHANGELOG), entry);
+				await idbPut(tx.objectStore(STORE_CHANGELOG), entry);
 			})
 			.catch(err => this.logService.warn(`HypergraphPersistenceService: failed to record changelog entry - ${err}`));
 	}

@@ -1058,10 +1058,13 @@ class ZoneCogPersistenceStatsAction extends Action2 {
 			const sizeKb = (stats.estimatedBytes / 1024).toFixed(1);
 
 			notificationService.info(localize('zonecog.persistenceStatsMsg',
-				'Hypergraph Persistence (IndexedDB):\nDB ready: {0}\nStored nodes: {1}\nStored links: {2}\nSnapshots: {3}\nEst. size: {4} KB\nLast save: {5}\nLast load: {6}\nAuto-save: {7}',
+				'Hypergraph Persistence ({0}):\nDB ready: {1}\nHot nodes: {2}\nHot links: {3}\nWarm nodes: {4}\nCold nodes: {5}\nSnapshots: {6}\nEst. size: {7} KB\nLast save: {8}\nLast load: {9}\nAuto-save: {10}',
+				stats.backend,
 				stats.databaseReady ? 'Yes' : 'No',
 				stats.storedNodeCount,
 				stats.storedLinkCount,
+				stats.warmNodeCount,
+				stats.archivedNodeCount,
 				stats.snapshotCount,
 				sizeKb,
 				lastSave,
@@ -1246,6 +1249,205 @@ class ZoneCogImportBackupAction extends Action2 {
 	}
 }
 
+/**
+ * Action to switch the durable hypergraph persistence backend
+ * (IndexedDB / RocksDB / AtomSpace).
+ */
+class ZoneCogPersistenceSelectBackendAction extends Action2 {
+
+	static ID = 'zonecog.persistenceSelectBackend';
+	constructor() {
+		super({
+			id: ZoneCogPersistenceSelectBackendAction.ID,
+			title: { value: localize('zonecog.persistenceSelectBackend', 'Select Hypergraph Persistence Backend'), original: 'Select Hypergraph Persistence Backend' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.server,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		try {
+			const current = persistenceService.getBackend();
+			const pick = await quickInputService.pick(
+				persistenceService.getAvailableBackends().map(kind => ({
+					label: kind,
+					description: kind === current ? localize('zonecog.backendCurrent', 'current') : undefined,
+					id: kind,
+				})),
+				{ placeHolder: localize('zonecog.backendPick', 'Select persistence backend') }
+			);
+			if (!pick) { return; }
+			await persistenceService.setBackend(pick.id as 'indexeddb' | 'rocksdb' | 'atomspace');
+			notificationService.info(localize('zonecog.backendSwitched',
+				'Hypergraph persistence backend switched to {0}.', pick.id));
+		} catch (err) {
+			notificationService.error(localize('zonecog.backendSwitchError',
+				'Failed to switch persistence backend: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to demote mid-salience nodes into the warm tier.
+ */
+class ZoneCogPersistenceDemoteWarmAction extends Action2 {
+
+	static ID = 'zonecog.persistenceDemoteWarm';
+	constructor() {
+		super({
+			id: ZoneCogPersistenceDemoteWarmAction.ID,
+			title: { value: localize('zonecog.persistenceDemoteWarm', 'Demote Nodes to Warm Tier'), original: 'Demote Nodes to Warm Tier' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.arrowDown,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+
+		try {
+			const result = await persistenceService.demoteToWarmTier();
+			notificationService.info(localize('zonecog.persistenceDemotedWarm',
+				'Demoted {0} node(s) and {1} link(s) to the warm tier.',
+				result.archivedNodeCount, result.archivedLinkCount));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceDemoteWarmError',
+				'Failed to demote nodes to warm tier: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to lazily restore a warm-tier node into the live hypergraph.
+ */
+class ZoneCogPersistenceRestoreWarmAction extends Action2 {
+
+	static ID = 'zonecog.persistenceRestoreWarm';
+	constructor() {
+		super({
+			id: ZoneCogPersistenceRestoreWarmAction.ID,
+			title: { value: localize('zonecog.persistenceRestoreWarm', 'Restore Warm-Tier Node'), original: 'Restore Warm-Tier Node' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.arrowUp,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+		const quickInputService = accessor.get(IQuickInputService);
+
+		try {
+			const warm = await persistenceService.listWarmNodes();
+			if (warm.length === 0) {
+				notificationService.info(localize('zonecog.persistenceNoWarmNodes', 'No nodes are currently in the warm tier.'));
+				return;
+			}
+			const pick = await quickInputService.pick(
+				warm.map(n => ({ label: n.id, description: `${n.node_type} · salience ${n.salience_score.toFixed(3)}`, detail: n.content })),
+				{ placeHolder: localize('zonecog.persistenceRestoreWarmPick', 'Select a warm-tier node to restore') }
+			);
+			if (!pick) { return; }
+			const restored = await persistenceService.restoreWarmNode(pick.label);
+			if (!restored) {
+				notificationService.info(localize('zonecog.persistenceRestoreWarmNotFound', 'Node "{0}" is no longer in the warm tier.', pick.label));
+				return;
+			}
+			notificationService.info(localize('zonecog.persistenceRestoredWarm',
+				'Restored warm-tier node "{0}" to the live hypergraph.', restored.id));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceRestoreWarmError',
+				'Failed to restore warm-tier node: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to force RocksDB compaction (no-op on other backends).
+ */
+class ZoneCogPersistenceCompactAction extends Action2 {
+
+	static ID = 'zonecog.persistenceCompact';
+	constructor() {
+		super({
+			id: ZoneCogPersistenceCompactAction.ID,
+			title: { value: localize('zonecog.persistenceCompact', 'Compact Hypergraph Storage'), original: 'Compact Hypergraph Storage' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.fold,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+
+		try {
+			await persistenceService.compactStorage();
+			notificationService.info(localize('zonecog.persistenceCompacted',
+				'Storage compaction complete (backend={0}).', persistenceService.getBackend()));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceCompactError',
+				'Failed to compact storage: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
+/**
+ * Action to upload a hypergraph backup to the configured cloud endpoint.
+ */
+class ZoneCogPersistenceUploadCloudAction extends Action2 {
+
+	static ID = 'zonecog.persistenceUploadCloud';
+	constructor() {
+		super({
+			id: ZoneCogPersistenceUploadCloudAction.ID,
+			title: { value: localize('zonecog.persistenceUploadCloud', 'Upload Hypergraph Backup to Cloud'), original: 'Upload Hypergraph Backup to Cloud' },
+			category: ZONECOG_CATEGORY,
+			icon: Codicon.cloudUpload,
+			f1: true,
+			menu: { id: MenuId.CommandPalette },
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const persistenceService = accessor.get(IHypergraphPersistenceService);
+		const notificationService = accessor.get(INotificationService);
+
+		try {
+			if (!persistenceService.getCloudStorageConfig()) {
+				notificationService.info(localize('zonecog.persistenceCloudNotConfigured',
+					'Cloud storage is not configured. Call configureCloudStorage() with an endpoint URL first.'));
+				return;
+			}
+			const result = await persistenceService.uploadBackupToCloud();
+			if (!result.success) {
+				notificationService.error(localize('zonecog.persistenceCloudUploadFailed',
+					'Cloud upload failed: {0}', result.error ?? 'unknown error'));
+				return;
+			}
+			notificationService.info(localize('zonecog.persistenceCloudUploaded',
+				'Uploaded backup to {0} ({1} bytes in {2} ms).',
+				result.remotePath, result.bytesTransferred, result.durationMs));
+		} catch (err) {
+			notificationService.error(localize('zonecog.persistenceCloudUploadError',
+				'Failed to upload backup: {0}', err instanceof Error ? err.message : String(err)));
+		}
+	}
+}
+
 // Register all actions
 registerAction2(ZoneCogTestAction);
 registerAction2(ZoneCogToggleThinkingAction);
@@ -1275,6 +1477,11 @@ registerAction2(ZoneCogPersistenceArchiveAction);
 registerAction2(ZoneCogPersistenceRestoreArchivedAction);
 registerAction2(ZoneCogExportBackupAction);
 registerAction2(ZoneCogImportBackupAction);
+registerAction2(ZoneCogPersistenceSelectBackendAction);
+registerAction2(ZoneCogPersistenceDemoteWarmAction);
+registerAction2(ZoneCogPersistenceRestoreWarmAction);
+registerAction2(ZoneCogPersistenceCompactAction);
+registerAction2(ZoneCogPersistenceUploadCloudAction);
 
 // =============================================================================
 // Phase 5 actions - Schema Perception, Aphrodite Engine
