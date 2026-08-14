@@ -274,6 +274,22 @@ await rocksDbService.createBackup('checkpoint-2026-08-14');
 await rocksDbService.restoreFromBackup('checkpoint-2026-08-14');
 ```
 
+**Hybrid hypergraph backend (E.2 / E.3):** `HypergraphPersistenceService` can switch
+durable backends at runtime via `setBackend('indexeddb' | 'rocksdb' | 'atomspace')`.
+The `'rocksdb'` path uses `RocksDbEngine` (LSM + optional IndexedDB durability).
+`RocksDbHypergraphPersistenceService` is a standalone `IHypergraphPersistenceService`
+on the same engine. Warm-tier demotion/restore, range queries, compaction, and
+optional HTTP cloud backup (`configureCloudStorage` / `uploadBackupToCloud`) are
+available on the hypergraph persistence surface.
+
+```typescript
+await persistence.setBackend('rocksdb');
+await persistence.demoteToWarmTier();
+await persistence.rangeQueryNodes('tbl_', 50);
+persistence.configureCloudStorage({ endpointUrl: 'https://…' });
+await persistence.uploadBackupToCloud();
+```
+
 ### OpenCog Hyperon AtomSpace Backend (Phase B)
 
 `IAtomSpaceBackendService` / `AtomSpaceBackendService` provides AtomSpace-native
@@ -604,7 +620,10 @@ services/zonecog/
 │   ├── atomSpaceBackendService.ts # AtomSpace-native storage + persistence
 │   ├── hyperonService.ts          # MeTTa interpreter + native PLN deduction
 │   ├── collaborationBackendService.ts # Multi-user sessions, presence, OT sync
-│   ├── rocksDbPersistenceService.ts # RocksDB column families, range queries, bloom filters
+│   ├── rocksDbPersistenceService.ts # IRocksDbPersistenceService (KV API)
+│   ├── rocksDbEngine.ts           # LSM engine (memtable/SST/bloom/compaction)
+│   ├── rocksDbHypergraphPersistenceService.ts # IHypergraphPersistenceService on RocksDbEngine
+│   ├── cloudBackup.ts             # Optional HTTP cloud backup helpers
 │   └── zonecog.contribution.ts    # DI service registration
 ├── test/
 │   └── browser/

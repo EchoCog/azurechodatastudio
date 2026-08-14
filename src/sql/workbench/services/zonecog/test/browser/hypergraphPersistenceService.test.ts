@@ -10,7 +10,7 @@ import {
 	nodesAndLinksToCypher,
 	nodesAndLinksToAtomSpaceScheme,
 } from 'sql/workbench/services/zonecog/browser/hypergraphPersistenceService';
-import { RocksDbPersistenceService } from 'sql/workbench/services/zonecog/browser/rocksDbPersistenceService';
+import { RocksDbHypergraphPersistenceService } from 'sql/workbench/services/zonecog/browser/rocksDbHypergraphPersistenceService';
 import {
 	RocksDbEngine,
 	WasmBloomFilter,
@@ -1030,13 +1030,13 @@ suite('RocksDB Engine', () => {
 });
 
 // ---------------------------------------------------------------------------
-// RocksDbPersistenceService integration tests
+// RocksDbHypergraphPersistenceService integration tests
 // ---------------------------------------------------------------------------
 
-suite('RocksDB Persistence Service', () => {
+suite('RocksDB Hypergraph Persistence Service', () => {
 
 	let instantiationService: TestInstantiationService;
-	let service: RocksDbPersistenceService;
+	let service: RocksDbHypergraphPersistenceService;
 	let hypergraphStore: IHypergraphStore;
 
 	setup(() => {
@@ -1051,7 +1051,7 @@ suite('RocksDB Persistence Service', () => {
 		// Construct directly: the optional engine arg is not a DI service and
 		// createInstance's static typing expects only decorator-injected params.
 		const engine = new RocksDbEngine({ memtableFlushThreshold: 32, compactionSstThreshold: 4 });
-		service = new RocksDbPersistenceService(
+		service = new RocksDbHypergraphPersistenceService(
 			new NullLogService(),
 			hypergraphStore,
 			membraneService,
