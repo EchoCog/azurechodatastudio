@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import assert from 'assert';
+import * as assert from 'assert';
 import { RocksDbPersistenceService } from '../../browser/rocksDbPersistenceService';
 import { NullLogService } from 'vs/platform/log/common/log';
 import { HypergraphNode, HypergraphLink } from '../../common/zonecogService';
-import { DEFAULT_ROCKSDB_CONFIG, IndexDefinition } from '../../common/rocksDbPersistence';
+import { IndexDefinition } from '../../common/rocksDbPersistence';
 
 // Mock CognitiveMembraneService
 class MockCognitiveMembraneService {
