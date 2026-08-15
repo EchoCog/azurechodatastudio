@@ -15,7 +15,7 @@
 | 3 | Intelligence Layer | **Complete** (ECH-61) | AI/LLM integration, pattern mining, reasoning, real AtomSpace transport |
 | 4 | Workbench UX | **Complete** | Visual cognitive maps, interactive exploration |
 | 4.5 | Release Infrastructure | **Complete** (ECH-61) | Multi-platform builds, CI/CD, quality gates |
-| 5 | Post-ADS Migration | **In Progress** | VS Code standalone, portable cognitive workbench |
+| 5 | Post-ADS Migration | **Complete** | VS Code standalone, portable cognitive workbench, Hyperon/FlareCog mesh |
 
 ---
 
