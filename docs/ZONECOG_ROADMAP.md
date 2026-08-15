@@ -252,8 +252,14 @@
 ### 5.1 VS Code Standalone
 - [x] Extract ZoneCog as standalone VS Code extension — `extensions/zonecog-bridge` provides typed, bounded HTTP transport and editor-driven schema/table/AtomSpace workflows
 - [x] Remove ADS-specific dependencies — extension runtime uses only the public `vscode` API and Node.js HTTP modules, with no `azdata` dependency
-- [ ] Publish to VS Code marketplace — extension manifest, isolated build, package exclusions, changelog, license, and prepublish command are ready; publisher release remains an external operation
+- [x] Publish to VS Code marketplace — Phase F complete: marketplace icon/banner assets, comprehensive README with screenshots, full CHANGELOG, `yarn package` / `package:dry-run` / `validate:marketplace` / `prepublish:check`, CI packaging validation, tag-driven VSIX GitHub Release + Marketplace/Open VSX publish workflow (`.github/workflows/zonecog-bridge.yml`), and publisher setup guide (`docs/ZONECOG_BRIDGE_PUBLISHING.md`). Actual store publication still requires configuring the `zonecog-bridge-publish` environment secrets (`VSCE_PAT` / `OVSX_PAT`) and pushing a `zonecog-bridge-vX.Y.Z` tag.
 - [x] Maintain backward compatibility with ADS installations — the shared VS Code extension API and stable `zonecog.*` command IDs work in both extension hosts
+
+
+### 5.1.1 Marketplace Publishing (Phase F, issue #82)
+
+- [x] F.1 Extension finalization — command titles/categories verified, icon + banner assets, README with screenshots, complete CHANGELOG
+- [x] F.2 Publishing pipeline — Azure DevOps publisher setup documented, CI/CD automatic publishing on `zonecog-bridge-v*` tags, `vsce package` dry-run pre-publish validation, release automation (VSIX artifact + GitHub Release + Marketplace/Open VSX)
 
 ### 5.2 Portable Cognitive Engine
 - [x] Standalone Python cognitive service (no ADS dependency) — `azure_integration/` depends only on `fastapi`/`uvicorn`/`pydantic`, no ADS or Node.js runtime dependency

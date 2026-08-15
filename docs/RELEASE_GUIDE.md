@@ -401,6 +401,28 @@ npm version major  # 1.53.0 → 2.0.0
 
 ---
 
+
+
+---
+
+## Zone-Cog Bridge Extension (VS Code Marketplace)
+
+The standalone bridge extension is released independently of the full workbench
+binaries.
+
+- Extension path: `extensions/zonecog-bridge`
+- Publisher guide: [`docs/ZONECOG_BRIDGE_PUBLISHING.md`](./ZONECOG_BRIDGE_PUBLISHING.md)
+- CI/CD workflow: `.github/workflows/zonecog-bridge.yml`
+- Release tag pattern: `zonecog-bridge-vX.Y.Z`
+
+```bash
+cd extensions/zonecog-bridge
+yarn install --frozen-lockfile
+yarn prepublish:check
+# tag and push from repo root after merging:
+# git tag zonecog-bridge-v0.1.0 && git push origin zonecog-bridge-v0.1.0
+```
+
 ## Support
 
 - **Issues**: https://github.com/EchoCog/azurechodatastudio/issues
