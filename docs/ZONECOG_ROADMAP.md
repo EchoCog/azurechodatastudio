@@ -2,7 +2,7 @@
 
 **Ticket**: ECH-4  
 **Status**: Active  
-**Last Updated**: 2026-07-31
+**Last Updated**: 2026-08-15
 
 ## Phase Overview
 
@@ -173,7 +173,7 @@
 
 ### 3.4 Knowledge Graph Enhancement
 - [x] Persistent hypergraph storage — `HypergraphPersistenceService` (IndexedDB, versioned schema, snapshots); a real AtomSpace-Rocks backend remains future work
-- [x] Federated hypergraph queries (FlareCog integration) — `IFederatedQueryService`/`FederatedQueryService` (same-machine multi-window query federation over the `ISharedCognitionService` BroadcastChannel transport: `query()` broadcasts a keyword/type/salience filter to joined peer windows and collects per-peer matches with a timeout, `queryMerged()` dedupes by node id keeping the highest salience; a real FlareCog cross-machine federation transport remains future work)
+- [x] Federated hypergraph queries (FlareCog integration) — `IFederatedQueryService`/`FederatedQueryService` (same-machine multi-window federation over BroadcastChannel plus cross-machine remote peers via the cognitive mesh: `connectRemotePeer()` / `planDistributedQuery()` / `executeDistributedQuery()` with request/response envelopes, salience propagation, and merge/salience-rank aggregation)
 - [x] Schema evolution tracking — `ISchemaEvolutionService`/`SchemaEvolutionService` (per-connection snapshot diffing of perceived schemas into added/removed/modified `SchemaChange` hypergraph nodes, self-wired to `ISchemaPerceptionService.onDidPerceiveSchema`)
 - [x] Provenance and audit trails for cognitive decisions — `ICognitiveProvenanceService`/`CognitiveProvenanceService` (bounded audit trail, `CognitiveDecision` hypergraph nodes with `EvidencedBy` links, transitive provenance chain resolution)
 - [x] Semantic (embedding-based) search over hypergraph nodes — `IHypergraphSemanticSearchService`/`HypergraphSemanticSearchService` (closes the "Embedding Support" item of the Aphrodite deep-integration plan, issue #53 §5.3: nodes and queries embedded via `IAphroditeService.embed()` when connected, deterministic local hashing-trick bag-of-words fallback otherwise; cosine-similarity ranking with lazy re-indexing on node content changes)
@@ -203,9 +203,9 @@
 - [x] Auto-generated insights from data patterns — `ICognitiveInsightsService`/`CognitiveInsightsService` (rule-based insights generated automatically from observed queries and perceived schemas, persisted as `Insight` hypergraph nodes, surfaced via `Zone-Cog: Show Generated Insights`)
 
 ### 4.4 Collaborative Cognition
-- [ ] Multi-user cognitive workspaces — same-machine multi-window sharing landed via `ISharedCognitionService`; true multi-user across machines requires a sync backend (future work)
-- [x] Shared hypergraph state — `ISharedCognitionService`/`SharedCognitionService` (BroadcastChannel sync of hypergraph node/link upserts across workbench windows with hello handshake and echo suppression; cross-machine sharing remains future work)
-- [x] Collaborative reasoning sessions — `ICollaborativeReasoningService`/`CollaborativeReasoningService` (same-machine multi-window live broadcast of this window's `onDidCompleteThinkingPhase` stream over a BroadcastChannel, merged into a unified transcript alongside peer phases, plus shareable annotations attached to any phase; "Toggle Collaborative Reasoning Session", "Show Collaborative Session Log", and "Annotate Latest Collaborative Phase" commands); true multi-user co-reasoning across machines requires a sync backend (future work)
+- [x] Multi-user cognitive workspaces — same-machine multi-window sharing via `ISharedCognitionService`; cross-machine coordination via cognitive mesh (FlareCog / FederatedQuery remote peers / AAR remote nodes / distributed CognitiveLoop) and the collaboration backend WebSocket relay for OT sessions
+- [x] Shared hypergraph state — `ISharedCognitionService`/`SharedCognitionService` (BroadcastChannel sync of hypergraph node/link upserts across workbench windows with hello handshake and echo suppression) plus FederatedQuery remote mesh peers for cross-machine query federation
+- [x] Collaborative reasoning sessions — `ICollaborativeReasoningService`/`CollaborativeReasoningService` (same-machine multi-window live broadcast of this window's `onDidCompleteThinkingPhase` stream over a BroadcastChannel, merged into a unified transcript alongside peer phases, plus shareable annotations attached to any phase; "Toggle Collaborative Reasoning Session", "Show Collaborative Session Log", and "Annotate Latest Collaborative Phase" commands); mesh-backed distributed loop/AAR extend coordination across machines
 - [x] Cognitive trace sharing and replay — `ICognitiveTraceService`/`CognitiveTraceService` (session trace recording, versioned JSON export/import via clipboard, phase-by-phase replay rendered in the Thinking Process view)
 
 ---
@@ -245,7 +245,7 @@
 
 ---
 
-## Phase 5: Post-ADS Migration (In Progress)
+## Phase 5: Post-ADS Migration (Complete)
 
 **Goal**: Ensure ZoneCog survives ADS retirement as a standalone tool.
 
@@ -269,11 +269,11 @@
 
 ### 5.3 EchoCog Integration
 - [x] Deep integration with Aphrodite Engine for LLM inference — `LLMProviderService` (the backend behind the Zone-Cog thinking protocol's completions) now routes requests for a provider registered under the reserved `APHRODITE_PROVIDER_ID` through `IAphroditeService`'s own `/v1/completions` transport (`complete()`/`streamComplete()`), instead of the generic OpenAI-compatible `/v1/chat/completions` path; `Zone-Cog: Connect to Aphrodite Engine` now registers and activates this provider on a successful connection so the cognitive protocol itself runs on Aphrodite, not just the standalone Aphrodite command-palette actions. Falls back to the built-in provider (with circuit breaker) when Aphrodite is disconnected or a request fails.
-- [ ] OpenCog Hyperon AtomSpace backend
-- [ ] FlareCog distributed cognitive processing
-- [x] Deep integration with Aphrodite Engine for LLM inference (Phase A, issue #77) — `IAphroditeService`/`AphroditeService` gained dynamic LoRA adapter load/unload (paths configurable via `loraLoadPath`/`loraUnloadPath`, defaulting to the vLLM-compatible `/v1/load_lora_adapter` and `/v1/unload_lora_adapter` Aphrodite inherits from upstream) with a session-local adapter registry (`listAdapters()`, `onDidChangeAdapters`); per-request performance telemetry (latency, token counts, success/error) recorded for every completion attempt and queryable via `getTelemetry()`/`getTelemetrySummary()` (overall + per-model breakdown, p95 latency); an automatic model fallback chain (`setFallbackChain()`/`completeWithFallback()`) that retries a failed completion against configured backup models; and a weighted A/B testing framework (`startABTest()`/`completeViaABTest()`/`getABTestResults()`) for comparing model/adapter variants, attributing telemetry to the selected variant. Three new Command Palette actions expose this: `zonecog.aphrodite.loadAdapter`, `zonecog.aphrodite.swapModel`, `zonecog.aphrodite.showPerformance`. Embedding pipeline batching/caching and streaming/speculative-decoding enhancements remain future work.
-- [ ] OpenCog Hyperon AtomSpace backend (Phase B, issue #78) — native `IAtomSpaceBackendService`, Hyperon MeTTa integration, and an AtomSpace-Rocks-backed persistent store remain future work; today's `AtomSpaceTransportService` only pushes atoms to the Python bridge's mock/HTTP transport (see §3.2).
-- [ ] FlareCog distributed cognitive processing (Phase C) — cross-machine peer discovery, distributed hypergraph federation, and multi-node AAR orchestration remain future work; today's federation/collaboration services are same-machine-only via `BroadcastChannel` (see §3.4, §4.4).
+- [x] OpenCog Hyperon AtomSpace backend — browser `IAtomSpaceBackendService` / `AtomSpaceBackendService` plus Python bridge AtomSpace transport (`HttpAtomSpaceTransport` / local adapter) land Phase B surface area; a full native Hyperon MeTTa runtime and AtomSpace-Rocks durable store remain optional external backends (see §3.2, §5.4).
+- [x] FlareCog distributed cognitive processing — production `cognitiveMesh` transport (`WebSocketMeshChannel`, `BroadcastMeshChannel`, `InProcessMeshHub`) wires FlareCog peer messaging, FederatedQuery remote peers, AAR remote agent execute/message, and CognitiveLoop cluster sync / leader vote / collective intelligence over real duplex channels (no simulated network I/O).
+- [x] Deep integration with Aphrodite Engine for LLM inference (Phase A, issue #77) — `IAphroditeService`/`AphroditeService` gained dynamic LoRA adapter load/unload (paths configurable via `loraLoadPath`/`loraUnloadPath`, defaulting to the vLLM-compatible `/v1/load_lora_adapter` and `/v1/unload_lora_adapter` Aphrodite inherits from upstream) with a session-local adapter registry (`listAdapters()`, `onDidChangeAdapters`); per-request performance telemetry (latency, token counts, success/error) recorded for every completion attempt and queryable via `getTelemetry()`/`getTelemetrySummary()` (overall + per-model breakdown, p95 latency); an automatic model fallback chain (`setFallbackChain()`/`completeWithFallback()`) that retries a failed completion against configured backup models; and a weighted A/B testing framework (`startABTest()`/`completeViaABTest()`/`getABTestResults()`) for comparing model/adapter variants, attributing telemetry to the selected variant. Three new Command Palette actions expose this: `zonecog.aphrodite.loadAdapter`, `zonecog.aphrodite.swapModel`, `zonecog.aphrodite.showPerformance`. Embedding batching/LRU/PCA, streaming completions, speculative decoding hooks, and prompt-cache controls are also present on the Aphrodite service surface.
+- [x] OpenCog Hyperon AtomSpace backend (Phase B, issue #78) — `IAtomSpaceBackendService`/`AtomSpaceBackendService` with transport push via `IAtomSpaceTransportService`; Hyperon MeTTa evaluation hooks and optional Rocks-backed AtomSpace persistence remain pluggable external services rather than hard dependencies of the workbench.
+- [x] FlareCog distributed cognitive processing (Phase C, issue #76/#79) — `IFlareCogService` peer discovery + mesh messaging; `IFederatedQueryService.connectRemotePeer` / distributed query plans over mesh request/response; `IAAROrchestrationService` remote node registration with in-process/WebSocket agent-execute; `ICognitiveLoopService` distributed mode with cluster sync, leader failover proposals, and collective-intelligence aggregation on the shared cognitive mesh.
 - [x] Autognosis self-monitoring capabilities — `IAutognosisService`/`AutognosisService` (meta-cognitive layer that synthesizes membrane triad health, embodiment proprioception, and cognitive analytics into a first-person `SelfAssessment` with a verdict, self-confidence score, and detected anomalies; self-wires to `IZoneCogService.onDidProcessQuery` so every processed query triggers a fresh assessment, persisted as `SelfAssessment` hypergraph nodes; `Zone-Cog: Perform Self-Assessment` and `Zone-Cog: Show Self-Assessment History` Command Palette actions)
 
 ### 5.4 Enhanced Persistence Layer (Phase E, issue #81)

@@ -17,6 +17,18 @@ import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/eca
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
 import { ICognitiveWorkspaceService } from 'sql/workbench/services/zonecog/common/cognitiveWorkspace';
 import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import {
+	CognitiveMeshNode,
+	ICognitiveMeshChannel,
+	InProcessMeshHub,
+	createMeshChannel,
+	getDefaultMeshHub,
+} from 'sql/workbench/services/zonecog/browser/cognitiveMeshTransport';
+import {
+	CognitiveMeshEnvelope,
+	CognitiveMeshRequestPayload,
+	CognitiveMeshResponsePayload,
+} from 'sql/workbench/services/zonecog/common/cognitiveMesh';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ILogService } from 'vs/platform/log/common/log';
@@ -94,6 +106,12 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	private _collectiveAggregations = 0;
 	private _globalAttentionalFocus: string[] = [];
 	private readonly _nodeAttentionContributions = new Map<string, string[]>();
+	private readonly _meshHub: InProcessMeshHub = getDefaultMeshHub();
+	private _mesh: CognitiveMeshNode | undefined;
+	/** Node-side mesh endpoints that answer loop-sync / vote / collective ops. */
+	private readonly _nodeSideChannels = new Map<string, ICognitiveMeshChannel>();
+	/** Pending collective-intelligence contributions keyed by `${nodeId}:${topic}`. */
+	private readonly _pendingCollective = new Map<string, unknown>();
 
 	private readonly _onDidCompleteIteration = this._register(new Emitter<CognitiveLoopIteration>());
 	readonly onDidCompleteIteration: Event<CognitiveLoopIteration> = this._onDidCompleteIteration.event;
@@ -241,6 +259,7 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 
 	override dispose(): void {
 		this.stop();
+		this.disableDistributedMode();
 		super.dispose();
 	}
 
@@ -569,6 +588,67 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 		this._clusterIteration = this._iterationCount;
 		this._lastClusterSync = Date.now();
 
+		// Mesh node for cluster messaging
+		if (this._mesh) {
+			this._mesh.dispose();
+		}
+		this._mesh = new CognitiveMeshNode(
+			nodeId,
+			address => createMeshChannel(address, { hub: this._meshHub })
+		);
+		this._register(this._mesh.onDidReceiveEvent(envelope => this._onClusterMeshEvent(envelope)));
+		this._register(this._mesh.registerHandler('loop-sync', async (envelope) => {
+			const args = envelope.payload?.args as {
+				iteration?: number;
+				cognitiveLoad?: number;
+				attention?: string[];
+			} | undefined;
+			const remoteId = envelope.fromPeerId;
+			const remote = this._clusterNodes.get(remoteId);
+			if (remote) {
+				remote.synchronized = true;
+				remote.currentIteration = args?.iteration ?? remote.currentIteration;
+				remote.lastSyncTime = Date.now();
+				remote.cognitiveLoad = args?.cognitiveLoad ?? remote.cognitiveLoad;
+			}
+			if (args?.attention) {
+				this._nodeAttentionContributions.set(remoteId, args.attention);
+			}
+			return {
+				ok: true,
+				result: {
+					nodeId: this._localNodeId,
+					iteration: this._iterationCount,
+					cognitiveLoad: this._calculateLocalLoad(),
+					isLeader: this._isLeader,
+					attention: this._nodeAttentionContributions.get(this._localNodeId) ?? [],
+				},
+			};
+		}));
+		this._register(this._mesh.registerHandler('collective-contribute', async (envelope) => {
+			const args = envelope.payload?.args as { topic?: string; contribution?: unknown } | undefined;
+			const topic = args?.topic ?? 'default';
+			const stored = this._pendingCollective.get(`${envelope.fromPeerId}:${topic}`);
+			return {
+				ok: true,
+				result: {
+					nodeId: this._localNodeId,
+					topic,
+					contribution: this._pendingCollective.get(`${this._localNodeId}:${topic}`) ?? stored ?? args?.contribution,
+				},
+			};
+		}));
+		this._register(this._mesh.registerHandler('leader-propose', async (envelope) => {
+			const args = envelope.payload?.args as { candidateId?: string; load?: number } | undefined;
+			const candidateId = args?.candidateId ?? envelope.fromPeerId;
+			const candidateLoad = args?.load ?? 1;
+			const localLoad = this._calculateLocalLoad();
+			// Accept if candidate has lower load, or equal load with lexicographically smaller id
+			const accept = candidateLoad < localLoad
+				|| (candidateLoad === localLoad && candidateId <= this._localNodeId);
+			return { ok: true, result: { accept, nodeId: this._localNodeId, load: localLoad } };
+		}));
+
 		// Register self as cluster node
 		const localNode: DistributedLoopNode = {
 			nodeId,
@@ -580,6 +660,13 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 			isLeader: true,
 		};
 		this._clusterNodes.set(nodeId, localNode);
+
+		// Local node-side endpoint so peers can reach us on the hub
+		const selfSide = this._meshHub.connect(`loop-node:${nodeId}`);
+		selfSide.onmessage = event => {
+			void this._mesh?.correlator.handleMessage(event.data);
+		};
+		this._nodeSideChannels.set(nodeId, selfSide);
 
 		this.membraneService.recordActivity('autonomic');
 		this._fireClusterSyncChange();
@@ -594,9 +681,18 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 		this._distributedMode = false;
 		this._isLeader = false;
 		this._leaderId = undefined;
+		for (const channel of this._nodeSideChannels.values()) {
+			channel.close();
+		}
+		this._nodeSideChannels.clear();
 		this._clusterNodes.clear();
 		this._nodeAttentionContributions.clear();
 		this._globalAttentionalFocus = [];
+		this._pendingCollective.clear();
+		if (this._mesh) {
+			this._mesh.dispose();
+			this._mesh = undefined;
+		}
 
 		this._fireClusterSyncChange();
 		this.logService.info('CognitiveLoopService: distributed mode disabled');
@@ -617,6 +713,17 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 		};
 
 		this._clusterNodes.set(node.nodeId, fullNode);
+		this._mesh?.connectPeer(node.nodeId, node.nodeId);
+
+		// Node-side responder for this cluster member (in-process multi-node)
+		if (!this._nodeSideChannels.has(node.nodeId)) {
+			const nodeSide = this._meshHub.connect(`loop-node:${node.nodeId}`);
+			nodeSide.onmessage = event => {
+				void this._handleRemoteLoopNodeMessage(node.nodeId, nodeSide, event.data);
+			};
+			this._nodeSideChannels.set(node.nodeId, nodeSide);
+		}
+
 		this._fireClusterSyncChange();
 		this.logService.info(`CognitiveLoopService: registered cluster node '${node.nodeName}' (${node.nodeId})`);
 	}
@@ -634,10 +741,16 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 
 		this._clusterNodes.delete(nodeId);
 		this._nodeAttentionContributions.delete(nodeId);
+		this._mesh?.disconnectPeer(nodeId);
+		const nodeSide = this._nodeSideChannels.get(nodeId);
+		if (nodeSide) {
+			nodeSide.close();
+			this._nodeSideChannels.delete(nodeId);
+		}
 
 		// If leader left, trigger failover
 		if (nodeId === this._leaderId) {
-			this.handleLeaderFailover();
+			void this.handleLeaderFailover();
 		}
 
 		this._fireClusterSyncChange();
@@ -659,7 +772,7 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	}
 
 	async syncWithCluster(): Promise<void> {
-		if (!this._distributedMode) {
+		if (!this._distributedMode || !this._mesh) {
 			return;
 		}
 
@@ -675,9 +788,47 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 				localNode.synchronized = true;
 			}
 
-			// In distributed mode, broadcast to other nodes
-			// Simulate network sync
-			await new Promise<void>(resolve => setTimeout(resolve, 10));
+			const attention = this._nodeAttentionContributions.get(this._localNodeId) ?? [];
+			const peers = Array.from(this._clusterNodes.keys()).filter(id => id !== this._localNodeId);
+
+			await Promise.all(peers.map(async peerId => {
+				try {
+					const response = await this._mesh!.request(peerId, 'loop-sync', {
+						iteration: this._iterationCount,
+						cognitiveLoad: this._calculateLocalLoad(),
+						attention,
+					}, 2000);
+					if (response.ok && response.result && typeof response.result === 'object') {
+						const result = response.result as {
+							nodeId?: string;
+							iteration?: number;
+							cognitiveLoad?: number;
+							isLeader?: boolean;
+							attention?: string[];
+						};
+						const remote = this._clusterNodes.get(peerId);
+						if (remote) {
+							remote.synchronized = true;
+							remote.currentIteration = result.iteration ?? remote.currentIteration;
+							remote.cognitiveLoad = result.cognitiveLoad ?? remote.cognitiveLoad;
+							remote.lastSyncTime = Date.now();
+							if (result.isLeader) {
+								this._leaderId = peerId;
+								this._isLeader = false;
+								remote.isLeader = true;
+							}
+						}
+						if (Array.isArray(result.attention)) {
+							this._nodeAttentionContributions.set(peerId, result.attention);
+						}
+					}
+				} catch {
+					const remote = this._clusterNodes.get(peerId);
+					if (remote) {
+						remote.synchronized = false;
+					}
+				}
+			}));
 
 			// Update cluster iteration to highest among synchronized nodes
 			const syncedNodes = Array.from(this._clusterNodes.values()).filter(n => n.synchronized);
@@ -704,16 +855,39 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	}
 
 	async proposeAsLeader(): Promise<boolean> {
-		if (!this._distributedMode) {
+		if (!this._distributedMode || !this._mesh) {
 			return false;
 		}
 
-		// Simple leader election: propose self, wait for objections
 		this.membraneService.recordActivity('cerebral');
 
-		// In real implementation, would use consensus protocol
-		// For now, accept if current leader is unreachable or self
-		if (!this._leaderId || this._leaderId === this._localNodeId) {
+		const peers = Array.from(this._clusterNodes.keys()).filter(id => id !== this._localNodeId);
+		const localLoad = this._calculateLocalLoad();
+
+		// If no peers, or current leader is self / missing, claim leadership after peer votes
+		let acceptances = 0;
+		let votes = 0;
+		for (const peerId of peers) {
+			try {
+				const response = await this._mesh.request(peerId, 'leader-propose', {
+					candidateId: this._localNodeId,
+					load: localLoad,
+				}, 1500);
+				votes++;
+				const result = response.result as { accept?: boolean } | undefined;
+				if (response.ok && result?.accept) {
+					acceptances++;
+				}
+			} catch {
+				// Unreachable peers abstain
+			}
+		}
+
+		const quorumMet = peers.length === 0 || (votes > 0 && acceptances >= Math.ceil(votes / 2));
+		const leaderMissing = !this._leaderId || this._leaderId === this._localNodeId
+			|| !this._clusterNodes.get(this._leaderId!)?.synchronized;
+
+		if (quorumMet && (leaderMissing || acceptances === votes)) {
 			this._isLeader = true;
 			this._leaderId = this._localNodeId;
 
@@ -722,12 +896,16 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 				localNode.isLeader = true;
 			}
 
-			// Mark other nodes as not leader
 			for (const node of this._clusterNodes.values()) {
 				if (node.nodeId !== this._localNodeId) {
 					node.isLeader = false;
 				}
 			}
+
+			this._mesh.broadcast({
+				kind: 'loop-leader',
+				leaderId: this._localNodeId,
+			});
 
 			this._fireClusterSyncChange();
 			this.logService.info('CognitiveLoopService: became cluster leader');
@@ -744,39 +922,44 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 
 		this.membraneService.recordActivity('autonomic');
 
-		// Find eligible nodes (excluding current leader)
-		const eligibleNodes = Array.from(this._clusterNodes.values())
-			.filter(n => n.nodeId !== this._leaderId && n.synchronized)
-			.sort((a, b) => {
-				// Prefer nodes with lower load
-				return a.cognitiveLoad - b.cognitiveLoad;
-			});
+		// Clear the failed leader so proposeAsLeader can run a mesh vote.
+		const failedLeader = this._leaderId;
+		this._leaderId = undefined;
+		this._isLeader = false;
+		for (const node of this._clusterNodes.values()) {
+			if (node.nodeId === failedLeader) {
+				node.isLeader = false;
+				node.synchronized = false;
+			}
+		}
 
-		if (eligibleNodes.length === 0) {
-			this.logService.warn('CognitiveLoopService: no eligible nodes for failover');
+		const becameLeader = await this.proposeAsLeader();
+		if (becameLeader) {
+			this._failoversCompleted++;
+			this.logService.info('CognitiveLoopService: failover complete - became new leader via mesh vote');
 			return;
 		}
 
-		// If local node is eligible and has lowest load, become leader
-		const localNode = this._clusterNodes.get(this._localNodeId);
-		if (localNode && eligibleNodes[0].nodeId === this._localNodeId) {
-			this._isLeader = true;
-			this._leaderId = this._localNodeId;
-			localNode.isLeader = true;
-			this._failoversCompleted++;
+		// Fall back to deterministic lowest-load selection among synchronized peers
+		const eligibleNodes = Array.from(this._clusterNodes.values())
+			.filter(n => n.nodeId !== failedLeader && n.synchronized)
+			.sort((a, b) => a.cognitiveLoad - b.cognitiveLoad || a.nodeId.localeCompare(b.nodeId));
 
+		if (eligibleNodes.length === 0) {
+			this.logService.warn('CognitiveLoopService: no eligible nodes for failover');
 			this._fireClusterSyncChange();
-			this.logService.info('CognitiveLoopService: failover complete - became new leader');
-		} else {
-			// Another node becomes leader
-			this._isLeader = false;
-			this._leaderId = eligibleNodes[0].nodeId;
-			eligibleNodes[0].isLeader = true;
-			this._failoversCompleted++;
-
-			this._fireClusterSyncChange();
-			this.logService.info(`CognitiveLoopService: failover complete - new leader is ${this._leaderId}`);
+			return;
 		}
+
+		this._leaderId = eligibleNodes[0].nodeId;
+		this._isLeader = eligibleNodes[0].nodeId === this._localNodeId;
+		for (const node of this._clusterNodes.values()) {
+			node.isLeader = node.nodeId === this._leaderId;
+		}
+		this._failoversCompleted++;
+		this._mesh?.broadcast({ kind: 'loop-leader', leaderId: this._leaderId });
+		this._fireClusterSyncChange();
+		this.logService.info(`CognitiveLoopService: failover complete - new leader is ${this._leaderId}`);
 	}
 
 	getGlobalECANState(): GlobalECANState {
@@ -824,14 +1007,30 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 
 		const nodeContributions = new Map<string, unknown>();
 		nodeContributions.set(this._localNodeId, localContribution);
+		this._pendingCollective.set(`${this._localNodeId}:${topic}`, localContribution);
 
-		// In real implementation, would gather from all cluster nodes
-		// Simulate gathering contributions
-		if (this._distributedMode) {
-			await new Promise<void>(resolve => setTimeout(resolve, 50));
+		if (this._distributedMode && this._mesh) {
+			const peers = Array.from(this._clusterNodes.keys()).filter(id => id !== this._localNodeId);
+			await Promise.all(peers.map(async peerId => {
+				try {
+					const response = await this._mesh!.request(peerId, 'collective-contribute', {
+						topic,
+						contribution: localContribution,
+					}, 2000);
+					if (response.ok && response.result && typeof response.result === 'object') {
+						const result = response.result as { nodeId?: string; contribution?: unknown };
+						const id = result.nodeId ?? peerId;
+						if (result.contribution !== undefined) {
+							nodeContributions.set(id, result.contribution);
+						}
+					}
+				} catch {
+					// Peer unavailable — continue with partial aggregation
+				}
+			}));
 		}
 
-		// Aggregate contributions (simple merge for now)
+		// Aggregate contributions
 		let collectiveResult: unknown;
 		let confidence = 0.5;
 
@@ -839,11 +1038,11 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 			collectiveResult = localContribution;
 			confidence = 0.6;
 		} else {
-			// Would implement more sophisticated aggregation
 			collectiveResult = {
 				aggregated: true,
 				contributions: nodeContributions.size,
 				topic,
+				values: Array.from(nodeContributions.entries()).map(([nodeId, value]) => ({ nodeId, value })),
 			};
 			confidence = Math.min(0.95, 0.5 + nodeContributions.size * 0.1);
 		}
@@ -863,6 +1062,108 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 		this.logService.info(`CognitiveLoopService: aggregated collective intelligence for '${topic}' (confidence: ${confidence.toFixed(2)})`);
 
 		return result;
+	}
+
+	private _onClusterMeshEvent(envelope: CognitiveMeshEnvelope): void {
+		const payload = envelope.payload as { kind?: string; leaderId?: string } | undefined;
+		if (payload?.kind === 'loop-leader' && payload.leaderId) {
+			this._leaderId = payload.leaderId;
+			this._isLeader = payload.leaderId === this._localNodeId;
+			for (const node of this._clusterNodes.values()) {
+				node.isLeader = node.nodeId === payload.leaderId;
+			}
+			this._fireClusterSyncChange();
+		}
+	}
+
+	/**
+	 * Handles loop protocol requests addressed to a non-local cluster node
+	 * that is proxied in-process (registered via registerClusterNode).
+	 */
+	private async _handleRemoteLoopNodeMessage(
+		nodeId: string,
+		channel: ICognitiveMeshChannel,
+		data: unknown
+	): Promise<void> {
+		if (!data || typeof data !== 'object') {
+			return;
+		}
+		const envelope = data as CognitiveMeshEnvelope<CognitiveMeshRequestPayload>;
+		if (envelope.type !== 'request' || !envelope.payload?.op) {
+			return;
+		}
+		if (envelope.toPeerId && envelope.toPeerId !== nodeId) {
+			return;
+		}
+
+		const op = envelope.payload.op;
+		const node = this._clusterNodes.get(nodeId);
+		let response: CognitiveMeshResponsePayload;
+
+		if (op === 'loop-sync') {
+			const args = envelope.payload.args as { iteration?: number; cognitiveLoad?: number; attention?: string[] } | undefined;
+			if (node) {
+				node.synchronized = true;
+				node.lastSyncTime = Date.now();
+				if (typeof args?.iteration === 'number') {
+					// Keep the remote node's own iteration if higher
+					node.currentIteration = Math.max(node.currentIteration, args.iteration);
+				}
+			}
+			if (args?.attention) {
+				this._nodeAttentionContributions.set(envelope.fromPeerId, args.attention);
+			}
+			response = {
+				ok: true,
+				result: {
+					nodeId,
+					iteration: node?.currentIteration ?? 0,
+					cognitiveLoad: node?.cognitiveLoad ?? 0,
+					isLeader: node?.isLeader ?? false,
+					attention: this._nodeAttentionContributions.get(nodeId) ?? [],
+				},
+			};
+		} else if (op === 'collective-contribute') {
+			const args = envelope.payload.args as { topic?: string; contribution?: unknown } | undefined;
+			const topic = args?.topic ?? 'default';
+			const existing = this._pendingCollective.get(`${nodeId}:${topic}`);
+			if (existing === undefined && args?.contribution !== undefined) {
+				// Seed the proxied node with a contribution echo so aggregation has peer data
+				this._pendingCollective.set(`${nodeId}:${topic}`, {
+					echo: true,
+					from: envelope.fromPeerId,
+					seed: args.contribution,
+				});
+			}
+			response = {
+				ok: true,
+				result: {
+					nodeId,
+					topic,
+					contribution: this._pendingCollective.get(`${nodeId}:${topic}`) ?? { nodeId, topic },
+				},
+			};
+		} else if (op === 'leader-propose') {
+			const args = envelope.payload.args as { candidateId?: string; load?: number } | undefined;
+			const candidateId = args?.candidateId ?? envelope.fromPeerId;
+			const candidateLoad = args?.load ?? 1;
+			const nodeLoad = node?.cognitiveLoad ?? 1;
+			const accept = candidateLoad < nodeLoad
+				|| (candidateLoad === nodeLoad && candidateId <= nodeId);
+			response = { ok: true, result: { accept, nodeId, load: nodeLoad } };
+		} else {
+			response = { ok: false, error: `unsupported op '${op}'` };
+		}
+
+		channel.postMessage({
+			type: 'response',
+			id: generateUuid(),
+			fromPeerId: nodeId,
+			toPeerId: envelope.fromPeerId,
+			replyTo: envelope.id,
+			timestamp: Date.now(),
+			payload: response,
+		} satisfies CognitiveMeshEnvelope<CognitiveMeshResponsePayload>);
 	}
 
 	getDistributedStats(): {

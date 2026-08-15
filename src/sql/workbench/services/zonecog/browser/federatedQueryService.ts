@@ -17,6 +17,17 @@ import {
 } from 'sql/workbench/services/zonecog/common/federatedQuery';
 import { IHypergraphStore, ICognitiveMembraneService, HypergraphNode } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { ISharedCognitionChannel } from 'sql/workbench/services/zonecog/browser/sharedCognitionService';
+import {
+	ICognitiveMeshChannel,
+	InProcessMeshChannel,
+	createMeshChannel,
+	getDefaultMeshHub,
+} from 'sql/workbench/services/zonecog/browser/cognitiveMeshTransport';
+import {
+	CognitiveMeshEnvelope,
+	CognitiveMeshRequestPayload,
+	CognitiveMeshResponsePayload,
+} from 'sql/workbench/services/zonecog/common/cognitiveMesh';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ILogService } from 'vs/platform/log/common/log';
@@ -80,6 +91,14 @@ export class FederatedQueryService extends Disposable implements IFederatedQuery
 	private readonly _pending = new Map<string, PendingQuery>();
 	private readonly _pendingDistributed = new Map<string, PendingDistributedQuery>();
 	private readonly _remotePeers = new Map<string, RemotePeerConnection>();
+	/** Live mesh channels keyed by remote peer id. */
+	private readonly _remoteChannels = new Map<string, ICognitiveMeshChannel>();
+	/** Pending remote request resolvers keyed by envelope id. */
+	private readonly _remotePending = new Map<string, {
+		resolve: (payload: CognitiveMeshResponsePayload) => void;
+		reject: (error: Error) => void;
+		timer: ReturnType<typeof setTimeout>;
+	}>();
 	private _channel: ISharedCognitionChannel | undefined;
 	private _queriesSent = 0;
 	private _responsesReceived = 0;
@@ -161,6 +180,14 @@ export class FederatedQueryService extends Disposable implements IFederatedQuery
 
 	override dispose(): void {
 		this.stopSession();
+		for (const peerId of [...this._remotePeers.keys()]) {
+			this.disconnectRemotePeer(peerId);
+		}
+		for (const pending of this._remotePending.values()) {
+			clearTimeout(pending.timer);
+			pending.reject(new Error('FederatedQueryService disposed'));
+		}
+		this._remotePending.clear();
 		super.dispose();
 	}
 
@@ -227,8 +254,8 @@ export class FederatedQueryService extends Disposable implements IFederatedQuery
 	// -- Transport ------------------------------------------------------------------------
 
 	/**
-	 * Create the underlying channel. Overridable so tests can substitute a
-	 * fake transport; returns undefined when BroadcastChannel is unavailable.
+	 * Create the underlying BroadcastChannel. Overridable so tests can
+	 * substitute a hub transport; returns undefined when unavailable.
 	 */
 	protected _createChannel(name: string): ISharedCognitionChannel | undefined {
 		if (typeof BroadcastChannel === 'undefined') {
@@ -242,6 +269,23 @@ export class FederatedQueryService extends Disposable implements IFederatedQuery
 		};
 		raw.onmessage = event => adapter.onmessage?.({ data: event.data });
 		return adapter;
+	}
+
+	/**
+	 * Create a cross-machine mesh channel for a remote peer URL.
+	 * Overridable so tests can substitute an in-process hub channel.
+	 */
+	protected _createRemoteChannel(wsUrl: string): ICognitiveMeshChannel | undefined {
+		return createMeshChannel(wsUrl, {
+			hub: getDefaultMeshHub(),
+			onLog: (level, message) => {
+				if (level === 'warn') {
+					this.logService.warn(message);
+				} else {
+					this.logService.info(message);
+				}
+			},
+		});
 	}
 
 	private _post(message: FederatedQueryMessage): void {
@@ -323,8 +367,12 @@ export class FederatedQueryService extends Disposable implements IFederatedQuery
 			}
 		}
 
-		// In browser environment, WebSocket connections may be restricted
-		// This creates a simulated connection for the distributed architecture
+		const channel = this._createRemoteChannel(wsUrl);
+		if (!channel) {
+			this.logService.warn(`FederatedQueryService: unable to open mesh channel for ${wsUrl}`);
+			return undefined;
+		}
+
 		const connection: RemotePeerConnection = {
 			peerId: generateUuid(),
 			wsUrl,
@@ -336,17 +384,52 @@ export class FederatedQueryService extends Disposable implements IFederatedQuery
 		};
 
 		this._remotePeers.set(connection.peerId, connection);
+		this._remoteChannels.set(connection.peerId, channel);
 		this._onDidChangeRemotePeer.fire(connection);
 
-		// Simulate connection establishment
-		await new Promise<void>(resolve => setTimeout(resolve, 100));
+		channel.onmessage = event => {
+			void this._onRemoteMeshMessage(connection, event.data);
+		};
 
-		connection.state = 'connected';
+		const opened = await new Promise<boolean>(resolve => {
+			let settled = false;
+			const finish = (open: boolean) => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				resolve(open);
+			};
+
+			// In-process channels are immediately usable.
+			if (channel instanceof InProcessMeshChannel) {
+				finish(true);
+				return;
+			}
+
+			const prior = channel.onopen;
+			channel.onopen = ev => {
+				prior?.(ev);
+				if (ev.open) {
+					finish(true);
+				}
+			};
+
+			// Bound wait so callers are not blocked forever on unreachable hosts.
+			setTimeout(() => finish(channel instanceof InProcessMeshChannel), 150);
+		});
+
+		if (opened || channel instanceof InProcessMeshChannel) {
+			connection.state = 'connected';
+		} else {
+			// Keep the channel for reconnect; report connecting so callers can retry.
+			connection.state = 'connecting';
+		}
 		connection.lastActivity = Date.now();
 		this._onDidChangeRemotePeer.fire(connection);
 		this._onDidChangeSessionState.fire(this.getState());
 
-		this.logService.info(`FederatedQueryService: connected to remote peer ${connection.peerId} at ${wsUrl}`);
+		this.logService.info(`FederatedQueryService: mesh peer ${connection.peerId} at ${wsUrl} state=${connection.state}`);
 		return connection;
 	}
 
@@ -354,6 +437,14 @@ export class FederatedQueryService extends Disposable implements IFederatedQuery
 		const connection = this._remotePeers.get(peerId);
 		if (!connection) {
 			return;
+		}
+
+		const channel = this._remoteChannels.get(peerId);
+		if (channel) {
+			channel.onmessage = null;
+			channel.onopen = null;
+			channel.close();
+			this._remoteChannels.delete(peerId);
 		}
 
 		connection.state = 'disconnected';
@@ -519,24 +610,133 @@ export class FederatedQueryService extends Disposable implements IFederatedQuery
 		filter: FederatedQueryFilter,
 		timeoutMs: number
 	): Promise<FederatedQueryResult> {
+		const channel = this._remoteChannels.get(connection.peerId);
+		if (!channel || connection.state !== 'connected') {
+			return { peerId: connection.peerId, isSelf: false, nodes: [] };
+		}
+
 		connection.pendingQueries++;
 		connection.queriesSent++;
 
-		// In browser environment, simulate remote query
-		// Real implementation would use WebSocket communication
-		await new Promise<void>(resolve => setTimeout(resolve, Math.min(50, timeoutMs / 4)));
+		const requestId = generateUuid();
+		const envelope: CognitiveMeshEnvelope<CognitiveMeshRequestPayload> = {
+			type: 'request',
+			id: requestId,
+			fromPeerId: this._peerId,
+			toPeerId: connection.peerId,
+			timestamp: Date.now(),
+			payload: { op: 'federated-query', args: { filter } },
+		};
 
-		connection.pendingQueries--;
-		connection.responsesReceived++;
+		try {
+			const response = await new Promise<CognitiveMeshResponsePayload>((resolve, reject) => {
+				const timer = setTimeout(() => {
+					this._remotePending.delete(requestId);
+					reject(new Error(`remote query to ${connection.peerId} timed out`));
+				}, timeoutMs);
+				this._remotePending.set(requestId, { resolve, reject, timer });
+				channel.postMessage(envelope);
+			});
+
+			connection.pendingQueries--;
+			connection.responsesReceived++;
+			connection.lastActivity = Date.now();
+
+			const nodes = (response.ok && Array.isArray(response.result))
+				? response.result as HypergraphNode[]
+				: [];
+
+			return {
+				peerId: connection.peerId,
+				isSelf: false,
+				nodes,
+			};
+		} catch {
+			connection.pendingQueries--;
+			connection.lastActivity = Date.now();
+			return { peerId: connection.peerId, isSelf: false, nodes: [] };
+		}
+	}
+
+	private async _onRemoteMeshMessage(connection: RemotePeerConnection, data: unknown): Promise<void> {
+		if (!data || typeof data !== 'object') {
+			return;
+		}
+		const envelope = data as CognitiveMeshEnvelope;
+		if (typeof envelope.type !== 'string' || typeof envelope.id !== 'string') {
+			return;
+		}
+
 		connection.lastActivity = Date.now();
 
-		// Simulate empty result from remote peer
-		// Real implementation would parse WebSocket response
-		return {
-			peerId: connection.peerId,
-			isSelf: false,
-			nodes: [],
-		};
+		if (envelope.type === 'response' && envelope.replyTo) {
+			const pending = this._remotePending.get(envelope.replyTo);
+			if (pending) {
+				clearTimeout(pending.timer);
+				this._remotePending.delete(envelope.replyTo);
+				pending.resolve((envelope.payload as CognitiveMeshResponsePayload) ?? { ok: false, error: 'empty' });
+			}
+			return;
+		}
+
+		if (envelope.type === 'request') {
+			const req = envelope as CognitiveMeshEnvelope<CognitiveMeshRequestPayload>;
+			const op = req.payload?.op;
+			let response: CognitiveMeshResponsePayload;
+
+			if (op === 'federated-query') {
+				const filter = (req.payload?.args as { filter?: FederatedQueryFilter } | undefined)?.filter ?? {};
+				const nodes = this._matchLocal(filter);
+				this._requestsAnswered++;
+				response = { ok: true, result: nodes };
+			} else if (op === 'salience-propagation') {
+				const args = req.payload?.args as { nodeId: string; delta: number; depth: number } | undefined;
+				if (args?.nodeId) {
+					const request: SaliencePropagationRequest = {
+						nodeId: args.nodeId,
+						salienceDelta: args.delta,
+						depth: args.depth ?? 1,
+						originPeerId: envelope.fromPeerId,
+						timestamp: envelope.timestamp,
+					};
+					this._saliencePropagationsReceived++;
+					this._onDidReceiveSaliencePropagation.fire(request);
+					this._applySaliencePropagation(request);
+				}
+				response = { ok: true };
+			} else {
+				response = { ok: false, error: `unsupported op '${op}'` };
+			}
+
+			const channel = this._remoteChannels.get(connection.peerId);
+			channel?.postMessage({
+				type: 'response',
+				id: generateUuid(),
+				fromPeerId: this._peerId,
+				toPeerId: envelope.fromPeerId,
+				replyTo: envelope.id,
+				timestamp: Date.now(),
+				payload: response,
+			} satisfies CognitiveMeshEnvelope<CognitiveMeshResponsePayload>);
+			return;
+		}
+
+		// Event-style salience propagation (fire-and-forget)
+		if (envelope.type === 'event' || envelope.type === 'broadcast') {
+			const payload = envelope.payload as { kind?: string; nodeId?: string; delta?: number; depth?: number } | undefined;
+			if (payload?.kind === 'salience-propagation' && payload.nodeId) {
+				const request: SaliencePropagationRequest = {
+					nodeId: payload.nodeId,
+					salienceDelta: payload.delta ?? 0,
+					depth: payload.depth ?? 1,
+					originPeerId: envelope.fromPeerId,
+					timestamp: envelope.timestamp,
+				};
+				this._saliencePropagationsReceived++;
+				this._onDidReceiveSaliencePropagation.fire(request);
+				this._applySaliencePropagation(request);
+			}
+		}
 	}
 
 	private _aggregateResults(
@@ -647,10 +847,26 @@ export class FederatedQueryService extends Disposable implements IFederatedQuery
 		// Broadcast to local peers
 		this._post(message);
 
-		// Send to remote peers
-		for (const connection of this._remotePeers.values()) {
-			if (connection.state === 'connected') {
-				// In real implementation, would send via WebSocket
+		// Send to remote peers over live mesh channels
+		const envelope: CognitiveMeshEnvelope = {
+			type: 'event',
+			id: generateUuid(),
+			fromPeerId: this._peerId,
+			timestamp: Date.now(),
+			payload: {
+				kind: 'salience-propagation',
+				nodeId,
+				delta: salienceDelta,
+				depth,
+			},
+		};
+		for (const [peerId, connection] of this._remotePeers) {
+			if (connection.state !== 'connected') {
+				continue;
+			}
+			const channel = this._remoteChannels.get(peerId);
+			if (channel) {
+				channel.postMessage({ ...envelope, toPeerId: peerId });
 				connection.lastActivity = Date.now();
 			}
 		}

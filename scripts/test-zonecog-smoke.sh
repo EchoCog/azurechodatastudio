@@ -43,6 +43,13 @@ CORE_SERVICES=(
 	"cognitiveWorkspaceService.ts"
 	"ecanAttentionService.ts"
 	"cognitiveLoopService.ts"
+	"cognitiveMeshTransport.ts"
+	"flareCogService.ts"
+	"federatedQueryService.ts"
+	"aarOrchestrationService.ts"
+	"collaborationBackendService.ts"
+	"atomSpaceBackendService.ts"
+	"hyperonService.ts"
 )
 
 MISSING=0
@@ -73,6 +80,13 @@ INTERFACE_FILES=(
 	"cognitiveWorkspace.ts"
 	"ecanAttention.ts"
 	"cognitiveLoop.ts"
+	"cognitiveMesh.ts"
+	"flareCog.ts"
+	"federatedQuery.ts"
+	"aarOrchestration.ts"
+	"collaborationBackend.ts"
+	"atomSpaceBackend.ts"
+	"hyperon.ts"
 )
 
 for IFACE in "${INTERFACE_FILES[@]}"; do
@@ -141,6 +155,11 @@ echo ""
 echo "7. Verifying test infrastructure..."
 TEST_FILES=(
 	"zonecogService.test.ts"
+	"cognitiveMeshTransport.test.ts"
+	"flareCogService.test.ts"
+	"federatedQueryService.test.ts"
+	"aarOrchestrationService.test.ts"
+	"cognitiveLoopService.test.ts"
 )
 
 for TEST in "${TEST_FILES[@]}"; do

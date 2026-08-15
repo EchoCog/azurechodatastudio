@@ -27,6 +27,18 @@ import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/eca
 import { ICognitiveWorkspaceService } from 'sql/workbench/services/zonecog/common/cognitiveWorkspace';
 import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
 import { IZoneCogService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import {
+	CognitiveMeshNode,
+	ICognitiveMeshChannel,
+	InProcessMeshHub,
+	getDefaultMeshHub,
+	createMeshChannel,
+} from 'sql/workbench/services/zonecog/browser/cognitiveMeshTransport';
+import {
+	CognitiveMeshEnvelope,
+	CognitiveMeshRequestPayload,
+	CognitiveMeshResponsePayload,
+} from 'sql/workbench/services/zonecog/common/cognitiveMesh';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ILogService } from 'vs/platform/log/common/log';
@@ -103,10 +115,15 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 	private readonly _remoteNodes = new Map<string, RemoteCognitiveNode>();
 	private readonly _remoteAgents = new Map<string, RemoteAgent>();
 	private readonly _consensusProposals = new Map<string, ConsensusProposal>();
+	/** Node-side mesh endpoints that answer agent protocol requests. */
+	private readonly _nodeSideChannels = new Map<string, ICognitiveMeshChannel>();
 	private _messagesSent = 0;
 	private _messagesReceived = 0;
 	private _migrationCount = 0;
 	private _consensusProposalsResolved = 0;
+	private readonly _meshPeerId = generateUuid();
+	private readonly _meshHub: InProcessMeshHub = getDefaultMeshHub();
+	private readonly _mesh: CognitiveMeshNode;
 
 	private readonly _onDidChangeAgent = this._register(new Emitter<AARAgent>());
 	readonly onDidChangeAgent: Event<AARAgent> = this._onDidChangeAgent.event;
@@ -137,11 +154,78 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 		@ICognitiveLoopService private readonly _loopService: ICognitiveLoopService,
 	) {
 		super();
+		this._mesh = this._register(new CognitiveMeshNode(
+			this._meshPeerId,
+			address => createMeshChannel(address, { hub: this._meshHub })
+		));
 		this._bootstrapBuiltinAgents();
 		this._bootstrapBuiltinRelations();
 		this.logService.info(`AAROrchestrationService: Arena '${this._sessionId}' ready - ` +
 			`${this._agents.size} agents, ${this._relations.size} relations`);
 		this.membraneService.recordActivity('autonomic');
+	}
+
+	/**
+	 * Node-side protocol handler for a registered remote cognitive node.
+	 * Runs on a dedicated mesh endpoint so request/response works in-process
+	 * (and over WebSocket when the peer channel is network-backed).
+	 */
+	private async _handleNodeSideMessage(nodeId: string, channel: ICognitiveMeshChannel, data: unknown): Promise<void> {
+		if (!data || typeof data !== 'object') {
+			return;
+		}
+		const envelope = data as CognitiveMeshEnvelope<CognitiveMeshRequestPayload>;
+		if (envelope.type !== 'request' || !envelope.payload?.op) {
+			return;
+		}
+		// Only answer messages addressed to this node (or untargeted).
+		if (envelope.toPeerId && envelope.toPeerId !== nodeId) {
+			return;
+		}
+
+		const op = envelope.payload.op;
+		let response: CognitiveMeshResponsePayload;
+
+		if (op === 'agent-execute') {
+			const args = envelope.payload.args as { agentId?: string; payload?: unknown } | undefined;
+			this._messagesReceived++;
+			response = {
+				ok: true,
+				result: {
+					remoteExecution: true,
+					agentId: args?.agentId,
+					nodeId,
+					payload: args?.payload,
+					processedAt: Date.now(),
+				},
+			};
+		} else if (op === 'agent-message') {
+			const args = envelope.payload.args as { message?: DistributedAgentMessage } | undefined;
+			this._messagesReceived++;
+			if (args?.message) {
+				const target = this._remoteAgents.get(args.message.toAgentId);
+				if (target) {
+					target.lastCommunication = Date.now();
+					if (target.pendingMessages > 0) {
+						target.pendingMessages--;
+					}
+				}
+			}
+			response = { ok: true, result: { delivered: true, at: Date.now() } };
+		} else {
+			response = { ok: false, error: `unsupported op '${op}'` };
+		}
+
+		const reply: CognitiveMeshEnvelope<CognitiveMeshResponsePayload> = {
+			type: 'response',
+			id: generateUuid(),
+			fromPeerId: nodeId,
+			toPeerId: envelope.fromPeerId,
+			replyTo: envelope.id,
+			timestamp: Date.now(),
+			payload: response,
+		};
+		channel.postMessage(reply);
 	}
 
 	// -------------------------------------------------------------------------
@@ -584,9 +668,25 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 		};
 
 		this._remoteNodes.set(node.id, fullNode);
+
+		// Local orchestrator channel to the node id
+		this._mesh.connectPeer(node.id, node.id);
+
+		// Node-side responder endpoint on the same hub (production in-process path)
+		const nodeSide = this._meshHub.connect(`aar-node:${node.id}`);
+		nodeSide.onmessage = event => {
+			void this._handleNodeSideMessage(node.id, nodeSide, event.data);
+		};
+		this._nodeSideChannels.set(node.id, nodeSide);
+
+		// Optional network-facing channel when a host:port / ws URL is provided
+		if (node.address && node.address !== node.id) {
+			this._mesh.connectPeer(`${node.id}:net`, node.address);
+		}
+
 		this._onDidChangeRemoteNode.fire(fullNode);
 		this.membraneService.recordActivity('somatic');
-		this.logService.info(`AAROrchestrationService: registered remote node '${node.name}' (${node.id})`);
+		this.logService.info(`AAROrchestrationService: registered remote node '${node.name}' (${node.id}) on mesh`);
 		return true;
 	}
 
@@ -601,6 +701,14 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 			this._remoteAgents.delete(agentId);
 			this._agents.delete(agentId);
 			this._agentHandlers.delete(agentId);
+		}
+
+		this._mesh.disconnectPeer(nodeId);
+		this._mesh.disconnectPeer(`${nodeId}:net`);
+		const nodeSide = this._nodeSideChannels.get(nodeId);
+		if (nodeSide) {
+			nodeSide.close();
+			this._nodeSideChannels.delete(nodeId);
 		}
 
 		node.online = false;
@@ -688,16 +796,23 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 		agent.pendingMessages++;
 		this._messagesSent++;
 
-		// In real implementation, would send message via network
-		// Simulate remote execution
-		await new Promise<void>(resolve => setTimeout(resolve, 50));
+		const response = await this._mesh.request(
+			agent.hostNodeId,
+			'agent-execute',
+			{ agentId: agent.id, payload, hostNodeId: agent.hostNodeId },
+			5000
+		);
 
-		agent.pendingMessages--;
+		agent.pendingMessages = Math.max(0, agent.pendingMessages - 1);
 		agent.lastCommunication = Date.now();
-		this._messagesReceived++;
 
-		// Return simulated result
-		return {
+		if (!response.ok) {
+			this.logService.warn(`AAROrchestrationService: remote execute failed for ${agent.id}: ${response.error}`);
+			throw new Error(response.error ?? 'remote agent execution failed');
+		}
+
+		this._messagesReceived++;
+		return response.result ?? {
 			remoteExecution: true,
 			agentId: agent.id,
 			nodeId: agent.hostNodeId,
@@ -800,13 +915,22 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 
 		this._messagesSent++;
 
-		// In real implementation, would route through network
-		// Simulate message delivery
-		await new Promise<void>(resolve => setTimeout(resolve, 10));
+		const hostNodeId = targetAgent?.hostNodeId ?? message.toAgentId;
+		const response = await this._mesh.request(
+			hostNodeId,
+			'agent-message',
+			{ message: fullMessage },
+			5000
+		);
 
 		if (targetAgent) {
-			targetAgent.pendingMessages--;
+			targetAgent.pendingMessages = Math.max(0, targetAgent.pendingMessages - 1);
 			targetAgent.lastCommunication = Date.now();
+		}
+
+		if (!response.ok) {
+			this.logService.warn(`AAROrchestrationService: agent message delivery failed: ${response.error}`);
+			throw new Error(response.error ?? 'agent message delivery failed');
 		}
 
 		this._messagesReceived++;

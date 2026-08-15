@@ -5,6 +5,12 @@
 
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { Event } from 'vs/base/common/event';
+import { IDisposable } from 'vs/base/common/lifecycle';
+import {
+	CognitiveMeshEnvelope,
+	CognitiveMeshRequestHandler,
+	CognitiveMeshResponsePayload,
+} from 'sql/workbench/services/zonecog/common/cognitiveMesh';
 
 export const IFlareCogService = createDecorator<IFlareCogService>('flareCogService');
 
@@ -274,6 +280,9 @@ export interface IFlareCogService {
 	/** Fired when a peer heartbeat is received. */
 	readonly onDidReceiveHeartbeat: Event<{ peerId: string; timestamp: number }>;
 
+	/** Fired for inbound mesh events (hello, heartbeat, broadcast, event). */
+	readonly onDidReceiveMessage: Event<CognitiveMeshEnvelope>;
+
 	// -- Lifecycle ------------------------------------------------------------
 
 	/**
@@ -383,6 +392,29 @@ export interface IFlareCogService {
 	 * Report workload completion.
 	 */
 	reportWorkloadComplete(workloadId: string, success: boolean, result?: unknown): void;
+
+	// -- Mesh Messaging -------------------------------------------------------
+
+	/**
+	 * Send a fire-and-forget event payload to a specific peer over the mesh.
+	 * Returns false when the peer is unknown or offline.
+	 */
+	sendMessage(peerId: string, payload: unknown): boolean;
+
+	/**
+	 * Broadcast a payload to every connected peer and the discovery channel.
+	 */
+	broadcast(payload: unknown): void;
+
+	/**
+	 * Request/response round-trip to a peer. Rejects on timeout or transport failure.
+	 */
+	request(peerId: string, op: string, args?: unknown, timeoutMs?: number): Promise<CognitiveMeshResponsePayload>;
+
+	/**
+	 * Register a handler for inbound mesh request operations.
+	 */
+	registerHandler(op: string, handler: CognitiveMeshRequestHandler): IDisposable;
 
 	// -- Cluster State --------------------------------------------------------
 

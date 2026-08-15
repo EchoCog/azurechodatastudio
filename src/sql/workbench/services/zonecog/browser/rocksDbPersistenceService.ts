@@ -711,9 +711,9 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 
 		const startTime = Date.now();
 
-		// In a real RocksDB implementation, this would trigger compaction.
-		// For our emulation, we just record the event.
-		await new Promise(resolve => setTimeout(resolve, 10)); // Simulate work
+		// Compaction is a maintenance barrier for this KV façade: mark completion
+		// and emit telemetry. The LSM engine (`RocksDbEngine.compact`) performs
+		// the leveled table merge when that backend is selected.
 
 		this._lastCompactionTime = Date.now();
 		const durationMs = Date.now() - startTime;
