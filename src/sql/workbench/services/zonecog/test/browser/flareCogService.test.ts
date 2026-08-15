@@ -8,7 +8,11 @@ import { FlareCogService } from 'sql/workbench/services/zonecog/browser/flareCog
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
 import { NullLogService } from 'vs/platform/log/common/log';
-import { FlareCogPeer, CognitiveWorkload, DEFAULT_FLARECOG_CONFIG } from 'sql/workbench/services/zonecog/common/flareCog';
+import {
+	FlareCogPeer,
+	DEFAULT_FLARECOG_CONFIG,
+	WorkloadPartitionStrategy,
+} from 'sql/workbench/services/zonecog/common/flareCog';
 
 suite('FlareCog Service Tests', () => {
 	let logService: NullLogService;
@@ -27,335 +31,263 @@ suite('FlareCog Service Tests', () => {
 		service.dispose();
 	});
 
-	test('should not be running until initialized and started', () => {
-		const state = service.getState();
-		assert.strictEqual(state.initialized, false);
-		assert.strictEqual(state.running, false);
-		assert.strictEqual(state.localNode, undefined);
+	test('should not be running until started', () => {
+		assert.strictEqual(service.isRunning(), false);
+		const localPeer = service.getLocalPeer();
+		assert.ok(localPeer);
+		assert.ok(localPeer.id.length > 0);
+		assert.strictEqual(localPeer.online, true);
 	});
 
-	test('should initialize with default config', () => {
-		const config = service.initialize();
-		assert.ok(config);
-		assert.strictEqual(config.enableAutoDiscovery, DEFAULT_FLARECOG_CONFIG.enableAutoDiscovery);
-		assert.strictEqual(config.transportSecure, DEFAULT_FLARECOG_CONFIG.transportSecure);
-		const state = service.getState();
-		assert.strictEqual(state.initialized, true);
-		assert.ok(state.localNode);
-		assert.ok(state.localNode!.id.length > 0);
+	test('should initialize with default config', async () => {
+		await service.initialize({});
+		const config = service.getConfig();
+		assert.strictEqual(config.nodeName, DEFAULT_FLARECOG_CONFIG.nodeName);
+		assert.strictEqual(config.listenAddress, DEFAULT_FLARECOG_CONFIG.listenAddress);
+		assert.strictEqual(config.enableMdns, DEFAULT_FLARECOG_CONFIG.enableMdns);
+		assert.strictEqual(config.defaultPartitionStrategy, DEFAULT_FLARECOG_CONFIG.defaultPartitionStrategy);
 	});
 
-	test('should initialize with custom config', () => {
-		const customConfig = {
-			...DEFAULT_FLARECOG_CONFIG,
-			localNodeName: 'TestNode',
-			defaultPort: 9999,
-			enableAutoDiscovery: false,
-		};
-		const config = service.initialize(customConfig);
-		assert.strictEqual(config.localNodeName, 'TestNode');
-		assert.strictEqual(config.defaultPort, 9999);
-		assert.strictEqual(config.enableAutoDiscovery, false);
+	test('should initialize with custom config', async () => {
+		await service.initialize({
+			nodeName: 'TestNode',
+			listenAddress: '127.0.0.1:9999',
+			enableMdns: false,
+		});
+		const config = service.getConfig();
+		assert.strictEqual(config.nodeName, 'TestNode');
+		assert.strictEqual(config.listenAddress, '127.0.0.1:9999');
+		assert.strictEqual(config.enableMdns, false);
+		assert.strictEqual(service.getLocalPeer().name, 'TestNode');
 	});
 
 	test('should start and stop correctly', async () => {
-		service.initialize();
+		await service.initialize({});
 		await service.start();
-		const state1 = service.getState();
-		assert.strictEqual(state1.running, true);
+		assert.strictEqual(service.isRunning(), true);
 
 		await service.stop();
-		const state2 = service.getState();
-		assert.strictEqual(state2.running, false);
+		assert.strictEqual(service.isRunning(), false);
 	});
 
-	test('should fail to start without initialization', async () => {
-		try {
-			await service.start();
-			assert.fail('Should have thrown an error');
-		} catch {
-			// Expected
-		}
+	test('should start with default config when initialize is skipped', async () => {
+		await service.start();
+		assert.strictEqual(service.isRunning(), true);
+		assert.strictEqual(service.getConfig().nodeName, DEFAULT_FLARECOG_CONFIG.nodeName);
 	});
 
-	test('should manage peers correctly', () => {
-		service.initialize();
-		const peer: FlareCogPeer = {
-			id: 'peer1',
-			name: 'Test Peer',
-			address: 'localhost',
-			port: 8765,
-			capabilities: ['hypergraph', 'llm'],
-			status: 'connected',
-			lastSeen: Date.now(),
-			latencyMs: 10,
-		};
+	test('should manage peers correctly', async () => {
+		await service.initialize({});
+		const peer = await service.addPeer('localhost:8765');
+		assert.ok(peer);
+		assert.strictEqual(peer!.address, 'localhost:8765');
+		assert.strictEqual(peer!.discoveryMethod, 'manual');
+		assert.strictEqual(peer!.online, false);
 
-		service.registerPeer(peer);
-		const peers = service.getPeers();
-		assert.strictEqual(peers.length, 1);
-		assert.strictEqual(peers[0].id, 'peer1');
-		assert.strictEqual(peers[0].name, 'Test Peer');
+		const peers = service.getAllPeers();
+		// local peer + added peer
+		assert.strictEqual(peers.length, 2);
+		assert.ok(peers.some(p => p.id === peer!.id));
+		assert.ok(service.getPeer(peer!.id));
 	});
 
-	test('should unregister peers', () => {
-		service.initialize();
-		const peer: FlareCogPeer = {
-			id: 'peer1',
-			name: 'Test Peer',
-			address: 'localhost',
-			port: 8765,
-			capabilities: [],
-			status: 'connected',
-			lastSeen: Date.now(),
-		};
+	test('should remove peers', async () => {
+		await service.initialize({});
+		const peer = await service.addPeer('localhost:8765');
+		assert.ok(peer);
+		assert.strictEqual(service.getAllPeers().length, 2);
 
-		service.registerPeer(peer);
-		assert.strictEqual(service.getPeers().length, 1);
-
-		service.unregisterPeer('peer1');
-		assert.strictEqual(service.getPeers().length, 0);
+		const removed = service.removePeer(peer!.id);
+		assert.strictEqual(removed, true);
+		assert.strictEqual(service.getAllPeers().length, 1);
+		assert.strictEqual(service.getPeer(peer!.id), undefined);
 	});
 
-	test('should filter connected peers', () => {
-		service.initialize();
-
-		const peer1: FlareCogPeer = {
-			id: 'peer1',
-			name: 'Connected Peer',
-			address: 'localhost',
-			port: 8765,
-			capabilities: [],
-			status: 'connected',
-			lastSeen: Date.now(),
-		};
-
-		const peer2: FlareCogPeer = {
-			id: 'peer2',
-			name: 'Disconnected Peer',
-			address: 'localhost',
-			port: 8766,
-			capabilities: [],
-			status: 'disconnected',
-			lastSeen: Date.now() - 10000,
-		};
-
-		service.registerPeer(peer1);
-		service.registerPeer(peer2);
-
-		const connected = service.getConnectedPeers();
-		assert.strictEqual(connected.length, 1);
-		assert.strictEqual(connected[0].id, 'peer1');
+	test('should not remove the local peer', async () => {
+		await service.initialize({});
+		const local = service.getLocalPeer();
+		assert.strictEqual(service.removePeer(local.id), false);
+		assert.ok(service.getPeer(local.id));
 	});
 
-	test('should authenticate peers', async () => {
-		service.initialize();
-		const token = await service.authenticate('peer1', 'test-secret');
+	test('should filter online peers', async () => {
+		await service.initialize({});
+		const offlinePeer = await service.addPeer('localhost:8765');
+		assert.ok(offlinePeer);
+		assert.strictEqual(offlinePeer!.online, false);
+
+		const online = service.getOnlinePeers();
+		assert.ok(online.every(p => p.online));
+		assert.ok(online.some(p => p.id === service.getLocalPeer().id));
+		assert.ok(!online.some(p => p.id === offlinePeer!.id));
+	});
+
+	test('should generate and validate authentication tokens', async () => {
+		await service.initialize({});
+		const token = service.generateToken('peer1', ['query:read', 'agent:spawn']);
 		assert.ok(token);
 		assert.ok(token.token.length > 0);
 		assert.ok(token.expiresAt > Date.now());
 		assert.strictEqual(token.peerId, 'peer1');
+		assert.deepStrictEqual(token.scopes, ['query:read', 'agent:spawn']);
+
+		const validated = service.validateToken(token.token);
+		assert.ok(validated);
+		assert.strictEqual(validated!.peerId, 'peer1');
+
+		assert.strictEqual(service.revokeToken(token.token), true);
+		assert.strictEqual(service.validateToken(token.token), undefined);
 	});
 
-	test('should create and distribute workloads', async () => {
-		service.initialize();
+	test('should submit workloads for distribution', async () => {
+		await service.initialize({});
+		await service.start();
 
-		// Add some peers with capabilities
-		const peer1: FlareCogPeer = {
-			id: 'peer1',
-			name: 'LLM Peer',
-			address: 'localhost',
-			port: 8765,
-			capabilities: ['llm', 'hypergraph'],
-			status: 'connected',
-			lastSeen: Date.now(),
-		};
-
-		const peer2: FlareCogPeer = {
-			id: 'peer2',
-			name: 'Agent Peer',
-			address: 'localhost',
-			port: 8766,
-			capabilities: ['agent', 'hypergraph'],
-			status: 'connected',
-			lastSeen: Date.now(),
-		};
-
-		service.registerPeer(peer1);
-		service.registerPeer(peer2);
-
-		const workload: CognitiveWorkload = {
-			id: 'wl1',
+		const assignment = await service.submitWorkload({
 			type: 'query',
 			payload: { query: 'test' },
-			priority: 1,
-			requiredCapabilities: ['hypergraph'],
-			createdAt: Date.now(),
-			status: 'pending',
-		};
+			priority: 0.8,
+			requiredCapabilities: [],
+			estimatedCost: 0.2,
+		});
 
-		const result = await service.distributeWorkload(workload, 'capability-match');
-		assert.ok(result);
-		assert.strictEqual(result.workloadId, 'wl1');
-		assert.ok(result.selectedPeers.length > 0);
+		assert.ok(assignment);
+		assert.ok(assignment.workload.id.length > 0);
+		assert.strictEqual(assignment.workload.type, 'query');
+		assert.strictEqual(assignment.assignedPeerId, service.getLocalPeer().id);
+		assert.ok(assignment.reason.length > 0);
 	});
 
 	test('should use different partitioning strategies', async () => {
-		service.initialize();
+		await service.initialize({});
+		await service.start();
 
-		// Add peers
-		for (let i = 0; i < 3; i++) {
-			service.registerPeer({
-				id: `peer${i}`,
-				name: `Peer ${i}`,
-				address: 'localhost',
-				port: 8765 + i,
-				capabilities: ['hypergraph'],
-				status: 'connected',
-				lastSeen: Date.now(),
+		const strategies: WorkloadPartitionStrategy[] = [
+			{ name: 'RR', type: 'round-robin', config: {} },
+			{ name: 'LB', type: 'load-balanced', config: {} },
+			{ name: 'SB', type: 'salience-based', config: {} },
+			{ name: 'CM', type: 'capability-match', config: {} },
+			{ name: 'LOC', type: 'locality', config: {} },
+		];
+
+		for (const strategy of strategies) {
+			service.setPartitionStrategy(strategy);
+			assert.strictEqual(service.getPartitionStrategy().type, strategy.type);
+
+			const assignment = await service.submitWorkload({
+				type: 'query',
+				payload: {},
+				priority: 0.5,
+				requiredCapabilities: [],
+				estimatedCost: 0.1,
 			});
+			assert.ok(assignment.workload.id.length > 0);
+			assert.strictEqual(assignment.assignedPeerId, service.getLocalPeer().id);
 		}
-
-		const workload: CognitiveWorkload = {
-			id: 'wl1',
-			type: 'query',
-			payload: {},
-			priority: 1,
-			requiredCapabilities: [],
-			createdAt: Date.now(),
-			status: 'pending',
-		};
-
-		// Test round-robin
-		const result1 = await service.distributeWorkload(workload, 'round-robin');
-		assert.ok(result1);
-		assert.ok(result1.selectedPeers.length > 0);
-
-		// Test load-balanced
-		const workload2 = { ...workload, id: 'wl2' };
-		const result2 = await service.distributeWorkload(workload2, 'load-balanced');
-		assert.ok(result2);
-
-		// Test salience-based
-		const workload3 = { ...workload, id: 'wl3' };
-		const result3 = await service.distributeWorkload(workload3, 'salience-based');
-		assert.ok(result3);
 	});
 
-	test('should fire events on peer status changes', async () => {
-		service.initialize();
+	test('should fire events on peer changes', async () => {
+		await service.initialize({});
 		let firedEvent: FlareCogPeer | undefined;
 
-		service.onDidChangePeerStatus(event => {
+		service.onDidChangePeer(event => {
 			firedEvent = event;
 		});
 
-		const peer: FlareCogPeer = {
-			id: 'peer1',
-			name: 'Test Peer',
-			address: 'localhost',
-			port: 8765,
-			capabilities: [],
-			status: 'connected',
-			lastSeen: Date.now(),
-		};
-
-		service.registerPeer(peer);
-
-		// Update peer status
-		service.updatePeerStatus('peer1', 'disconnected');
-
+		const peer = await service.addPeer('localhost:8765');
 		assert.ok(firedEvent);
-		assert.strictEqual(firedEvent!.id, 'peer1');
-		assert.strictEqual(firedEvent!.status, 'disconnected');
+		assert.strictEqual(firedEvent!.id, peer!.id);
+		assert.strictEqual(firedEvent!.address, 'localhost:8765');
 	});
 
-	test('should get statistics', () => {
-		service.initialize();
+	test('should fire events on workload assignment', async () => {
+		await service.initialize({});
+		let fired = false;
+		service.onDidAssignWorkload(() => { fired = true; });
 
-		const peer: FlareCogPeer = {
-			id: 'peer1',
-			name: 'Test Peer',
-			address: 'localhost',
-			port: 8765,
-			capabilities: ['hypergraph'],
-			status: 'connected',
-			lastSeen: Date.now(),
-		};
+		await service.submitWorkload({
+			type: 'thinking',
+			payload: { prompt: 'hello' },
+			priority: 0.6,
+			requiredCapabilities: [],
+			estimatedCost: 0.3,
+		});
 
-		service.registerPeer(peer);
-
-		const stats = service.getStatistics();
-		assert.strictEqual(stats.totalPeers, 1);
-		assert.strictEqual(stats.connectedPeers, 1);
-		assert.strictEqual(stats.availableCapabilities.includes('hypergraph'), true);
+		assert.ok(fired);
 	});
 
-	test('should track workload distribution stats', async () => {
-		service.initialize();
+	test('should get cluster statistics', async () => {
+		await service.initialize({});
+		await service.addPeer('localhost:8765');
 
-		const peer: FlareCogPeer = {
-			id: 'peer1',
-			name: 'Test Peer',
-			address: 'localhost',
-			port: 8765,
-			capabilities: [],
-			status: 'connected',
-			lastSeen: Date.now(),
-		};
+		const stats = service.getClusterStats();
+		assert.strictEqual(stats.totalPeers, 2);
+		assert.strictEqual(stats.onlinePeers, 1); // only local is online
+		assert.ok(stats.totalCapacity >= 0);
+		assert.strictEqual(stats.workloadsProcessed, 0);
+	});
 
-		service.registerPeer(peer);
-
-		const workload: CognitiveWorkload = {
-			id: 'wl1',
+	test('should track workload completion stats', async () => {
+		await service.initialize({});
+		const assignment = await service.submitWorkload({
 			type: 'query',
 			payload: {},
-			priority: 1,
+			priority: 0.4,
 			requiredCapabilities: [],
-			createdAt: Date.now(),
-			status: 'pending',
-		};
+			estimatedCost: 0.1,
+		});
 
-		await service.distributeWorkload(workload, 'round-robin');
-
-		const stats = service.getStatistics();
-		assert.strictEqual(stats.workloadsDistributed, 1);
+		service.reportWorkloadComplete(assignment.workload.id, true, { ok: true });
+		const stats = service.getClusterStats();
+		assert.strictEqual(stats.workloadsProcessed, 1);
+		assert.ok(stats.averageLatencyMs >= 0);
 	});
 
-	test('should handle graceful shutdown', async () => {
-		service.initialize();
-
-		const peer: FlareCogPeer = {
-			id: 'peer1',
-			name: 'Test Peer',
-			address: 'localhost',
-			port: 8765,
-			capabilities: [],
-			status: 'connected',
-			lastSeen: Date.now(),
-		};
-
-		service.registerPeer(peer);
+	test('should handle graceful reset', async () => {
+		await service.initialize({});
+		const peer = await service.addPeer('localhost:8765');
 		await service.start();
-		assert.strictEqual(service.getState().running, true);
+		assert.strictEqual(service.isRunning(), true);
+		assert.strictEqual(service.getAllPeers().length, 2);
 
-		await service.shutdown();
-		assert.strictEqual(service.getState().running, false);
-		assert.strictEqual(service.getPeers().length, 0);
+		service.reset();
+		assert.strictEqual(service.isRunning(), false);
+		assert.strictEqual(service.getAllPeers().length, 1);
+		assert.strictEqual(service.getPeer(peer!.id), undefined);
+		assert.ok(service.getLocalPeer().online);
 	});
 
-	test('should reject workload distribution when not initialized', async () => {
-		const workload: CognitiveWorkload = {
-			id: 'wl1',
-			type: 'query',
-			payload: {},
-			priority: 1,
-			requiredCapabilities: [],
-			createdAt: Date.now(),
-			status: 'pending',
-		};
+	test('should expose cluster state and health', async () => {
+		await service.initialize({ nodeName: 'health-node' });
+		await service.start();
 
-		const result = await service.distributeWorkload(workload, 'round-robin');
-		assert.strictEqual(result, undefined);
+		const state = service.getClusterState();
+		assert.strictEqual(state.localPeerId, service.getLocalPeer().id);
+		assert.strictEqual(state.localPeer.name, 'health-node');
+		assert.ok(state.onlinePeerCount >= 1);
+		assert.ok(state.healthy);
+		assert.ok(service.isClusterHealthy());
+	});
+
+	test('should update configuration', async () => {
+		await service.initialize({});
+		service.updateConfig({ heartbeatIntervalMs: 2500, peerTimeoutMs: 8000 });
+		const config = service.getConfig();
+		assert.strictEqual(config.heartbeatIntervalMs, 2500);
+		assert.strictEqual(config.peerTimeoutMs, 8000);
+	});
+
+	test('should select local peer for locality strategy', async () => {
+		await service.initialize({});
+		service.setPartitionStrategy({ name: 'Local', type: 'locality', config: {} });
+		const selected = service.selectPeerForWorkload({
+			type: 'action',
+			payload: {},
+			priority: 0.5,
+			requiredCapabilities: [],
+			estimatedCost: 0.1,
+		});
+		assert.ok(selected);
+		assert.strictEqual(selected!.id, service.getLocalPeer().id);
 	});
 });
