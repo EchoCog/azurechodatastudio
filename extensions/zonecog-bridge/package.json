@@ -1,18 +1,20 @@
 {
   "name": "zonecog-bridge",
   "displayName": "Zone-Cog Cognitive Bridge",
-  "description": "Connect VS Code or Azure Data Studio to the standalone ZoneCog cognitive service.",
+  "description": "Connect VS Code or Azure Data Studio to the standalone ZoneCog cognitive service for schema ingestion, table grounding, and AtomSpace-style reasoning.",
   "publisher": "EchoCog",
   "version": "0.1.0",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/EchoCog/azurechodatastudio.git"
+    "url": "https://github.com/EchoCog/azurechodatastudio.git",
+    "directory": "extensions/zonecog-bridge"
   },
   "bugs": {
     "url": "https://github.com/EchoCog/azurechodatastudio/issues"
   },
   "homepage": "https://github.com/EchoCog/azurechodatastudio/tree/main/extensions/zonecog-bridge",
+  "qna": "https://github.com/EchoCog/azurechodatastudio/issues",
   "icon": "media/icon.png",
   "galleryBanner": {
     "color": "#111321",
@@ -33,16 +35,11 @@
     "cognitive",
     "atomspace",
     "sql",
-    "reasoning"
+    "reasoning",
+    "schema",
+    "data-analysis"
   ],
   "main": "./out/extension.js",
-  "files": [
-    "out/**/*.js",
-    "media/icon.png",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE"
-  ],
   "activationEvents": [
     "onCommand:zonecog.checkBridgeHealth",
     "onCommand:zonecog.ingestSchema",
@@ -51,9 +48,12 @@
     "onCommand:zonecog.setBridgeAuthToken"
   ],
   "capabilities": {
-    "virtualWorkspaces": true,
-    "untrustedWorkspaces": {
+    "virtualWorkspaces": {
       "supported": true
+    },
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "Zone-Cog Bridge only contacts the configured cognitive service URL and stores tokens in SecretStorage."
     }
   },
   "contributes": {
@@ -92,31 +92,34 @@
           "type": "string",
           "default": "http://127.0.0.1:7807",
           "format": "uri",
-          "description": "Base URL for the ZoneCog cognitive service. In remote workspaces, loopback addresses refer to the remote extension host."
+          "markdownDescription": "Base URL for the ZoneCog cognitive service (`GET /health`, `POST /ingest/*`, `POST /reason`). In remote workspaces, loopback addresses refer to the remote extension host."
         },
         "zonecog.bridge.requestTimeout": {
           "type": "integer",
           "default": 15000,
           "minimum": 100,
           "maximum": 300000,
-          "description": "Maximum time in milliseconds to wait for a bridge response."
+          "markdownDescription": "Maximum time in milliseconds to wait for a bridge response before failing the command."
         },
         "zonecog.bridge.maxResponseBytes": {
           "type": "integer",
           "default": 1048576,
           "minimum": 1024,
           "maximum": 16777216,
-          "description": "Maximum accepted bridge response size in bytes."
+          "markdownDescription": "Maximum accepted bridge response size in bytes. Larger responses are rejected."
         }
       }
     }
   },
   "scripts": {
     "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
     "test": "yarn compile && node --test test/*.test.js",
+    "validate:marketplace": "node --test test/marketplaceReadiness.test.js",
     "vscode:prepublish": "yarn compile",
     "package": "npx --yes @vscode/vsce package --no-dependencies",
-    "package:dry-run": "npx --yes @vscode/vsce package --no-dependencies --out zonecog-bridge-dry-run.vsix && node -e \"require('fs').unlinkSync('zonecog-bridge-dry-run.vsix')\""
+    "package:dry-run": "npx --yes @vscode/vsce package --no-dependencies --out zonecog-bridge-dry-run.vsix && node -e \"require('fs').unlinkSync('zonecog-bridge-dry-run.vsix')\"",
+    "prepublish:check": "yarn test && yarn validate:marketplace && yarn package:dry-run"
   },
   "devDependencies": {
     "@types/node": "20.14.10",

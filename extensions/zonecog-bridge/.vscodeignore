@@ -6,4 +6,6 @@ test/**
 tsconfig.json
 yarn.lock
 **/*.map
+**/*.ts
 *.vsix
+.vscode/**
