@@ -208,185 +208,126 @@ suite('Federated Query Service Tests', () => {
 		assert.strictEqual(remotePeers.length, 0);
 	});
 
-	test('should register remote peer connection', () => {
+	test('should connect remote peer via websocket url', async () => {
 		const { service } = makeParticipant(new FakeChannelHub());
-		service.registerRemotePeer({
-			peerId: 'remote-1',
-			peerName: 'Remote Peer 1',
-			address: 'remote-host',
-			port: 9876,
-			state: 'connected',
-		});
+		const connection = await service.connectRemotePeer('ws://remote-host:9876');
+
+		assert.ok(connection);
+		assert.strictEqual(connection!.wsUrl, 'ws://remote-host:9876');
+		assert.strictEqual(connection!.state, 'connected');
+		assert.ok(connection!.peerId.length > 0);
 
 		const remotePeers = service.getRemotePeers();
 		assert.strictEqual(remotePeers.length, 1);
-		assert.strictEqual(remotePeers[0].peerId, 'remote-1');
-		assert.strictEqual(remotePeers[0].state, 'connected');
+		assert.strictEqual(remotePeers[0].peerId, connection!.peerId);
 	});
 
-	test('should unregister remote peer connection', () => {
+	test('should reconnect return existing peer for same url', async () => {
 		const { service } = makeParticipant(new FakeChannelHub());
-		service.registerRemotePeer({
-			peerId: 'remote-1',
-			peerName: 'Remote Peer 1',
-			address: 'remote-host',
-			port: 9876,
-			state: 'connected',
-		});
-		service.unregisterRemotePeer('remote-1');
+		const first = await service.connectRemotePeer('ws://remote-host:9876');
+		const second = await service.connectRemotePeer('ws://remote-host:9876');
 
-		const remotePeers = service.getRemotePeers();
-		assert.strictEqual(remotePeers.length, 0);
+		assert.ok(first);
+		assert.ok(second);
+		assert.strictEqual(first!.peerId, second!.peerId);
+		assert.strictEqual(service.getRemotePeers().length, 1);
 	});
 
-	test('should update remote peer state', () => {
+	test('should disconnect remote peer connection', async () => {
 		const { service } = makeParticipant(new FakeChannelHub());
-		service.registerRemotePeer({
-			peerId: 'remote-1',
-			peerName: 'Remote Peer 1',
-			address: 'remote-host',
-			port: 9876,
-			state: 'connecting',
-		});
+		const connection = await service.connectRemotePeer('ws://remote-host:9876');
+		assert.ok(connection);
 
-		service.updateRemotePeerState('remote-1', 'connected');
-
-		const remotePeers = service.getRemotePeers();
-		assert.strictEqual(remotePeers[0].state, 'connected');
+		service.disconnectRemotePeer(connection!.peerId);
+		assert.strictEqual(service.getRemotePeers().length, 0);
 	});
 
-	test('should create distributed query plan', () => {
+	test('should create distributed query plan', async () => {
 		const { service } = makeParticipant(new FakeChannelHub());
-		service.registerRemotePeer({
-			peerId: 'remote-1',
-			peerName: 'Remote Peer 1',
-			address: 'remote-host',
-			port: 9876,
-			state: 'connected',
-		});
+		const connection = await service.connectRemotePeer('ws://remote-host:9876');
+		assert.ok(connection);
 
 		const plan = service.planDistributedQuery({ keyword: 'test' });
 		assert.ok(plan);
 		assert.ok(plan.id.length > 0);
-		assert.ok(plan.targetPeers.length > 0);
+		assert.ok(plan.targetPeers.includes(connection!.peerId));
+		assert.strictEqual(plan.includeLocal, true);
+		assert.strictEqual(plan.aggregationStrategy, 'merge');
+		assert.strictEqual(plan.conflictResolution, 'highest-salience');
 	});
 
-	test('should execute distributed query', async () => {
+	test('should execute distributed query with local results', async () => {
 		const { service, store } = makeParticipant(new FakeChannelHub());
-		store.addNode(node('local-1', 'test content'));
+		store.addNode(node('local-1', 'test content', 0.7));
 
-		service.registerRemotePeer({
-			peerId: 'remote-1',
-			peerName: 'Remote Peer 1',
-			address: 'remote-host',
-			port: 9876,
-			state: 'connected',
+		await service.connectRemotePeer('ws://remote-host:9876');
+
+		const plan = service.planDistributedQuery({ keyword: 'test' }, {
+			includeLocal: true,
+			aggregationStrategy: 'merge',
+			conflictResolution: 'highest-salience',
 		});
-
-		const plan = service.planDistributedQuery({ keyword: 'test' });
 		const results = await service.executeDistributedQuery(plan);
 
 		assert.ok(results);
 		assert.ok(results.mergedNodes.length > 0);
+		assert.ok(results.mergedNodes.some(n => n.id === 'local-1'));
+		assert.ok(results.totalDurationMs >= 0);
+		assert.ok(results.peerResults.some(r => r.isSelf));
 	});
 
 	test('should propagate salience to remote peers', async () => {
 		const { service } = makeParticipant(new FakeChannelHub());
 		service.startSession();
+		await service.connectRemotePeer('ws://remote-host:9876');
 
-		service.registerRemotePeer({
-			peerId: 'remote-1',
-			peerName: 'Remote Peer 1',
-			address: 'remote-host',
-			port: 9876,
-			state: 'connected',
-		});
+		service.propagateSalience('test-node', 0.15, 2);
 
-		const success = await service.propagateSalience({
-			nodeId: 'test-node',
-			salienceValue: 0.85,
-			targetPeers: ['remote-1'],
-		});
-
-		assert.ok(success);
+		const stats = service.getDistributedStats();
+		assert.strictEqual(stats.saliencePropagationsSent, 1);
+		assert.strictEqual(stats.remotePeerCount, 1);
 	});
 
-	test('should aggregate results with merge strategy', async () => {
+	test('should honor aggregation and conflict options in plan', async () => {
 		const { service, store } = makeParticipant(new FakeChannelHub());
-		store.addNode(node('n1', 'test', 0.6));
+		store.addNode(node('shared', 'content', 0.3));
 
-		const results = await service.aggregateResults(
-			[{
-				peerId: 'local',
-				peerName: 'Local',
-				isSelf: true,
-				nodes: [node('n1', 'test', 0.6), node('n2', 'another', 0.4)],
-			}],
-			'merge'
-		);
-
-		assert.ok(results.length >= 2);
-	});
-
-	test('should aggregate results with highest-salience conflict resolution', async () => {
-		const { service } = makeParticipant(new FakeChannelHub());
-
-		const results = await service.aggregateResults(
-			[
-				{
-					peerId: 'peer1',
-					peerName: 'Peer 1',
-					isSelf: true,
-					nodes: [node('shared', 'content', 0.3)],
-				},
-				{
-					peerId: 'peer2',
-					peerName: 'Peer 2',
-					isSelf: false,
-					nodes: [node('shared', 'content', 0.9)],
-				},
-			],
-			'merge',
-			'highest-salience'
-		);
-
-		const sharedNode = results.find(n => n.id === 'shared');
-		assert.ok(sharedNode);
-		assert.strictEqual(sharedNode!.salience_score, 0.9);
-	});
-
-	test('should get distributed state statistics', () => {
-		const { service } = makeParticipant(new FakeChannelHub());
-		service.registerRemotePeer({
-			peerId: 'remote-1',
-			peerName: 'Remote Peer 1',
-			address: 'remote-host',
-			port: 9876,
-			state: 'connected',
+		const plan = service.planDistributedQuery({ keyword: 'content' }, {
+			includeLocal: true,
+			aggregationStrategy: 'salience-rank',
+			conflictResolution: 'highest-salience',
+			targetPeers: [],
 		});
 
-		const state = service.getDistributedState();
-		assert.strictEqual(state.remotePeerCount, 1);
-		assert.strictEqual(state.connectedPeerCount, 1);
+		const results = await service.executeDistributedQuery(plan);
+		assert.strictEqual(results.plan.aggregationStrategy, 'salience-rank');
+		assert.strictEqual(results.plan.conflictResolution, 'highest-salience');
+		assert.ok(results.mergedNodes.some(n => n.id === 'shared'));
 	});
 
-	test('should fire onDidChangeRemotePeer event', () => {
+	test('should get distributed stats', async () => {
+		const { service } = makeParticipant(new FakeChannelHub());
+		await service.connectRemotePeer('ws://remote-host:9876');
+
+		const stats = service.getDistributedStats();
+		assert.strictEqual(stats.remotePeerCount, 1);
+		assert.strictEqual(typeof stats.distributedQueriesSent, 'number');
+		assert.strictEqual(typeof stats.distributedResponsesReceived, 'number');
+		assert.strictEqual(typeof stats.averageDistributedLatencyMs, 'number');
+		assert.strictEqual(typeof stats.saliencePropagationsSent, 'number');
+		assert.strictEqual(typeof stats.saliencePropagationsReceived, 'number');
+	});
+
+	test('should fire onDidChangeRemotePeer event', async () => {
 		const { service } = makeParticipant(new FakeChannelHub());
 		let firedEvent: unknown;
 		service.onDidChangeRemotePeer(event => { firedEvent = event; });
 
-		service.registerRemotePeer({
-			peerId: 'remote-1',
-			peerName: 'Remote Peer 1',
-			address: 'remote-host',
-			port: 9876,
-			state: 'connected',
-		});
-
+		await service.connectRemotePeer('ws://remote-host:9876');
 		assert.ok(firedEvent);
 	});
 
-	test('should fire onDidCompletedDistributedQuery event', async () => {
+	test('should fire onDidCompleteDistributedQuery event', async () => {
 		const { service, store } = makeParticipant(new FakeChannelHub());
 		let firedEvent: unknown;
 		service.onDidCompleteDistributedQuery(event => { firedEvent = event; });
@@ -399,27 +340,31 @@ suite('Federated Query Service Tests', () => {
 		assert.ok(firedEvent);
 	});
 
-	test('should filter connected remote peers only', () => {
+	test('should filter connected remote peers only', async () => {
 		const { service } = makeParticipant(new FakeChannelHub());
 
-		service.registerRemotePeer({
-			peerId: 'remote-1',
-			peerName: 'Connected Peer',
-			address: 'host1',
-			port: 9876,
-			state: 'connected',
-		});
+		const connected = await service.connectRemotePeer('ws://host1:9876');
+		assert.ok(connected);
 
-		service.registerRemotePeer({
-			peerId: 'remote-2',
-			peerName: 'Disconnected Peer',
-			address: 'host2',
-			port: 9877,
-			state: 'disconnected',
-		});
+		// Second peer starts connected via connectRemotePeer
+		const second = await service.connectRemotePeer('ws://host2:9877');
+		assert.ok(second);
 
-		const connected = service.getConnectedRemotePeers();
-		assert.strictEqual(connected.length, 1);
-		assert.strictEqual(connected[0].peerId, 'remote-1');
+		// Disconnect one
+		service.disconnectRemotePeer(second!.peerId);
+
+		const remaining = service.getRemotePeers().filter(p => p.state === 'connected');
+		assert.strictEqual(remaining.length, 1);
+		assert.strictEqual(remaining[0].peerId, connected!.peerId);
+	});
+
+	test('should include distributedActive and remotePeers in session state', async () => {
+		const { service } = makeParticipant(new FakeChannelHub());
+		service.startSession();
+		const connection = await service.connectRemotePeer('ws://remote-host:9876');
+		assert.ok(connection);
+
+		const state = service.getState();
+		assert.ok(state.remotePeers.includes(connection!.peerId));
 	});
 });

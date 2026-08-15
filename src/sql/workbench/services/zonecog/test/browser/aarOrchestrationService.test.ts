@@ -232,70 +232,55 @@ suite('AAR Orchestration Service Tests', () => {
 
 	// --- Distributed AAR Orchestration Tests (Phase C.3: FlareCog) ---
 
+	function remoteNode(id: string, name: string, address: string, online = true) {
+		return {
+			id,
+			name,
+			address,
+			online,
+			lastHeartbeat: Date.now(),
+			maxAgents: 10,
+		};
+	}
+
 	test('should have empty remote nodes initially', () => {
 		const nodes = aarService.getRemoteNodes();
 		assert.strictEqual(nodes.length, 0);
 	});
 
 	test('should register remote cognitive node', () => {
-		const node = {
-			nodeId: 'remote-node-1',
-			nodeName: 'Remote Node 1',
-			address: 'remote-host',
-			port: 8765,
-			capabilities: ['agent', 'hypergraph'],
-		};
+		const ok = aarService.registerRemoteNode(remoteNode('remote-node-1', 'Remote Node 1', 'remote-host:8765'));
+		assert.ok(ok);
 
-		aarService.registerRemoteNode(node);
 		const nodes = aarService.getRemoteNodes();
-
 		assert.strictEqual(nodes.length, 1);
-		assert.strictEqual(nodes[0].nodeId, 'remote-node-1');
-		assert.strictEqual(nodes[0].status, 'unknown');
+		assert.strictEqual(nodes[0].id, 'remote-node-1');
+		assert.strictEqual(nodes[0].name, 'Remote Node 1');
+		assert.strictEqual(nodes[0].online, true);
+		assert.deepStrictEqual(nodes[0].hostedAgents, []);
+		assert.strictEqual(nodes[0].load, 0);
 	});
 
 	test('should not register duplicate remote nodes', () => {
-		const node = {
-			nodeId: 'remote-node-1',
-			nodeName: 'Remote Node 1',
-			address: 'remote-host',
-			port: 8765,
-			capabilities: [],
-		};
-
-		aarService.registerRemoteNode(node);
-		aarService.registerRemoteNode(node);
-
-		const nodes = aarService.getRemoteNodes();
-		assert.strictEqual(nodes.length, 1);
+		const node = remoteNode('remote-node-1', 'Remote Node 1', 'remote-host:8765');
+		assert.ok(aarService.registerRemoteNode(node));
+		assert.ok(!aarService.registerRemoteNode(node));
+		assert.strictEqual(aarService.getRemoteNodes().length, 1);
 	});
 
 	test('should unregister remote cognitive node', () => {
-		aarService.registerRemoteNode({
-			nodeId: 'remote-node-1',
-			nodeName: 'Remote Node 1',
-			address: 'remote-host',
-			port: 8765,
-			capabilities: [],
-		});
-
-		aarService.unregisterRemoteNode('remote-node-1');
-		const nodes = aarService.getRemoteNodes();
-		assert.strictEqual(nodes.length, 0);
+		aarService.registerRemoteNode(remoteNode('remote-node-1', 'Remote Node 1', 'remote-host:8765'));
+		assert.ok(aarService.unregisterRemoteNode('remote-node-1'));
+		assert.strictEqual(aarService.getRemoteNodes().length, 0);
 	});
 
 	test('should spawn remote agent', async () => {
-		aarService.registerRemoteNode({
-			nodeId: 'remote-node-1',
-			nodeName: 'Remote Node 1',
-			address: 'remote-host',
-			port: 8765,
-			capabilities: ['agent'],
-		});
+		aarService.registerRemoteNode(remoteNode('remote-node-1', 'Remote Node 1', 'remote-host:8765'));
 
-		const agent = await aarService.spawnRemoteAgent({
+		const result = await aarService.spawnRemoteAgent({
 			targetNodeId: 'remote-node-1',
-			agentConfig: {
+			priority: 0.7,
+			agent: {
 				id: 'remote-agent-1',
 				name: 'Remote Agent 1',
 				role: 'custom',
@@ -304,15 +289,18 @@ suite('AAR Orchestration Service Tests', () => {
 			},
 		});
 
-		assert.ok(agent);
-		assert.strictEqual(agent.agentId, 'remote-agent-1');
-		assert.strictEqual(agent.nodeId, 'remote-node-1');
+		assert.ok(result.success);
+		assert.ok(result.agent);
+		assert.strictEqual(result.agent!.id, 'remote-agent-1');
+		assert.strictEqual(result.agent!.hostNodeId, 'remote-node-1');
+		assert.strictEqual(result.nodeId, 'remote-node-1');
 	});
 
-	test('should return undefined when spawning agent on unknown node', async () => {
-		const agent = await aarService.spawnRemoteAgent({
+	test('should fail when spawning agent on unknown node', async () => {
+		const result = await aarService.spawnRemoteAgent({
 			targetNodeId: 'unknown-node',
-			agentConfig: {
+			priority: 0.5,
+			agent: {
 				id: 'remote-agent-1',
 				name: 'Remote Agent 1',
 				role: 'custom',
@@ -321,21 +309,33 @@ suite('AAR Orchestration Service Tests', () => {
 			},
 		});
 
-		assert.strictEqual(agent, undefined);
+		assert.strictEqual(result.success, false);
+		assert.ok(result.error);
 	});
 
-	test('should get remote agents for a node', async () => {
-		aarService.registerRemoteNode({
-			nodeId: 'remote-node-1',
-			nodeName: 'Remote Node 1',
-			address: 'remote-host',
-			port: 8765,
-			capabilities: ['agent'],
+	test('should fail when spawning agent on offline node', async () => {
+		aarService.registerRemoteNode(remoteNode('offline-node', 'Offline', 'host:1', false));
+		const result = await aarService.spawnRemoteAgent({
+			targetNodeId: 'offline-node',
+			priority: 0.5,
+			agent: {
+				id: 'remote-agent-1',
+				name: 'Remote Agent 1',
+				role: 'custom',
+				capabilities: [],
+				active: true,
+			},
 		});
+		assert.strictEqual(result.success, false);
+	});
+
+	test('should get remote agents', async () => {
+		aarService.registerRemoteNode(remoteNode('remote-node-1', 'Remote Node 1', 'remote-host:8765'));
 
 		await aarService.spawnRemoteAgent({
 			targetNodeId: 'remote-node-1',
-			agentConfig: {
+			priority: 0.5,
+			agent: {
 				id: 'remote-agent-1',
 				name: 'Remote Agent 1',
 				role: 'custom',
@@ -344,32 +344,20 @@ suite('AAR Orchestration Service Tests', () => {
 			},
 		});
 
-		const agents = aarService.getRemoteAgents('remote-node-1');
+		const agents = aarService.getRemoteAgents();
 		assert.strictEqual(agents.length, 1);
-		assert.strictEqual(agents[0].agentId, 'remote-agent-1');
+		assert.strictEqual(agents[0].id, 'remote-agent-1');
+		assert.strictEqual(agents[0].hostNodeId, 'remote-node-1');
 	});
 
 	test('should migrate agent between nodes', async () => {
-		// Register two remote nodes
-		aarService.registerRemoteNode({
-			nodeId: 'node-1',
-			nodeName: 'Node 1',
-			address: 'host1',
-			port: 8765,
-			capabilities: ['agent'],
-		});
-		aarService.registerRemoteNode({
-			nodeId: 'node-2',
-			nodeName: 'Node 2',
-			address: 'host2',
-			port: 8766,
-			capabilities: ['agent'],
-		});
+		aarService.registerRemoteNode(remoteNode('node-1', 'Node 1', 'host1:8765'));
+		aarService.registerRemoteNode(remoteNode('node-2', 'Node 2', 'host2:8766'));
 
-		// Spawn agent on node-1
 		await aarService.spawnRemoteAgent({
 			targetNodeId: 'node-1',
-			agentConfig: {
+			priority: 0.5,
+			agent: {
 				id: 'migrating-agent',
 				name: 'Migrating Agent',
 				role: 'custom',
@@ -378,7 +366,6 @@ suite('AAR Orchestration Service Tests', () => {
 			},
 		});
 
-		// Migrate to node-2
 		const result = await aarService.migrateAgent({
 			agentId: 'migrating-agent',
 			sourceNodeId: 'node-1',
@@ -386,51 +373,37 @@ suite('AAR Orchestration Service Tests', () => {
 			reason: 'load-balancing',
 		});
 
-		assert.ok(result);
-		assert.strictEqual(result.success, true);
+		assert.ok(result.success);
 		assert.strictEqual(result.agentId, 'migrating-agent');
-		assert.strictEqual(result.newNodeId, 'node-2');
+		assert.strictEqual(result.sourceNodeId, 'node-1');
+		assert.strictEqual(result.targetNodeId, 'node-2');
+
+		const agents = aarService.getRemoteAgents();
+		assert.strictEqual(agents[0].hostNodeId, 'node-2');
 	});
 
 	test('should fail migration for unknown agent', async () => {
-		aarService.registerRemoteNode({
-			nodeId: 'node-1',
-			nodeName: 'Node 1',
-			address: 'host1',
-			port: 8765,
-			capabilities: [],
-		});
-		aarService.registerRemoteNode({
-			nodeId: 'node-2',
-			nodeName: 'Node 2',
-			address: 'host2',
-			port: 8766,
-			capabilities: [],
-		});
+		aarService.registerRemoteNode(remoteNode('node-1', 'Node 1', 'host1:8765'));
+		aarService.registerRemoteNode(remoteNode('node-2', 'Node 2', 'host2:8766'));
 
 		const result = await aarService.migrateAgent({
 			agentId: 'unknown-agent',
 			sourceNodeId: 'node-1',
 			targetNodeId: 'node-2',
-			reason: 'test',
+			reason: 'manual',
 		});
 
-		assert.ok(result);
 		assert.strictEqual(result.success, false);
+		assert.ok(result.error);
 	});
 
 	test('should send message to remote agent', async () => {
-		aarService.registerRemoteNode({
-			nodeId: 'remote-node-1',
-			nodeName: 'Remote Node 1',
-			address: 'remote-host',
-			port: 8765,
-			capabilities: ['agent'],
-		});
+		aarService.registerRemoteNode(remoteNode('remote-node-1', 'Remote Node 1', 'remote-host:8765'));
 
 		await aarService.spawnRemoteAgent({
 			targetNodeId: 'remote-node-1',
-			agentConfig: {
+			priority: 0.5,
+			agent: {
 				id: 'remote-agent-1',
 				name: 'Remote Agent 1',
 				role: 'custom',
@@ -439,96 +412,88 @@ suite('AAR Orchestration Service Tests', () => {
 			},
 		});
 
-		const success = await aarService.sendDistributedMessage({
-			id: 'msg-1',
-			sourceAgentId: BUILTIN_AGENT_IDS.ORCHESTRATOR,
-			targetAgentId: 'remote-agent-1',
-			targetNodeId: 'remote-node-1',
+		await aarService.sendAgentMessage({
+			fromAgentId: BUILTIN_AGENT_IDS.ORCHESTRATOR,
+			toAgentId: 'remote-agent-1',
+			type: 'request',
 			payload: { action: 'test' },
-			timestamp: Date.now(),
-		});
-
-		assert.ok(success);
-	});
-
-	test('should propose consensus', async () => {
-		const result = await aarService.proposeConsensus({
-			id: 'consensus-1',
-			topic: 'test-decision',
-			options: ['option-a', 'option-b', 'option-c'],
-			deadline: Date.now() + 5000,
-			requiredQuorum: 0.5,
-		});
-
-		assert.ok(result);
-		assert.ok(result.selectedOption);
-		assert.ok(result.votes instanceof Map);
-	});
-
-	test('should vote on consensus proposal', async () => {
-		const proposal = {
-			id: 'consensus-2',
-			topic: 'another-decision',
-			options: ['yes', 'no'],
-			deadline: Date.now() + 5000,
-			requiredQuorum: 0.5,
-		};
-
-		// Start consensus
-		await aarService.proposeConsensus(proposal);
-
-		// Vote on it
-		const voted = await aarService.voteOnConsensus('consensus-2', 'yes');
-		assert.ok(voted);
-	});
-
-	test('should get distributed orchestration stats', () => {
-		aarService.registerRemoteNode({
-			nodeId: 'remote-node-1',
-			nodeName: 'Remote Node 1',
-			address: 'remote-host',
-			port: 8765,
-			capabilities: [],
 		});
 
 		const stats = aarService.getDistributedStats();
-
-		assert.strictEqual(stats.remoteNodeCount, 1);
-		assert.strictEqual(typeof stats.remoteAgentCount, 'number');
-		assert.strictEqual(typeof stats.messagesSent, 'number');
-		assert.strictEqual(typeof stats.consensusProposals, 'number');
+		assert.ok(stats.messagesSent >= 1);
+		assert.ok(stats.messagesReceived >= 1);
 	});
 
-	test('should fire onDidRegisterRemoteNode event', () => {
+	test('should propose consensus and accept votes', async () => {
+		const voters = [BUILTIN_AGENT_IDS.THINKER, BUILTIN_AGENT_IDS.ACTOR];
+		const proposal = await aarService.proposeConsensus(
+			'decision',
+			{ topic: 'test-decision', options: ['option-a', 'option-b'] },
+			voters,
+			0.5,
+			5000
+		);
+
+		assert.ok(proposal.id.length > 0);
+		assert.strictEqual(proposal.status, 'pending');
+		assert.strictEqual(proposal.type, 'decision');
+		assert.deepStrictEqual(proposal.voters, voters);
+		assert.ok(proposal.votes instanceof Map);
+
+		const pending = aarService.getPendingConsensusProposals();
+		assert.ok(pending.some(p => p.id === proposal.id));
+
+		assert.ok(aarService.voteOnConsensus(proposal.id, BUILTIN_AGENT_IDS.THINKER, true));
+		assert.ok(aarService.voteOnConsensus(proposal.id, BUILTIN_AGENT_IDS.ACTOR, true));
+
+		const resolvedPending = aarService.getPendingConsensusProposals();
+		assert.ok(!resolvedPending.some(p => p.id === proposal.id));
+	});
+
+	test('should reject unauthorized consensus votes', async () => {
+		const proposal = await aarService.proposeConsensus(
+			'action',
+			{ action: 'deploy' },
+			[BUILTIN_AGENT_IDS.THINKER],
+			1.0,
+			5000
+		);
+
+		assert.strictEqual(
+			aarService.voteOnConsensus(proposal.id, BUILTIN_AGENT_IDS.ACTOR, true),
+			false
+		);
+	});
+
+	test('should get distributed orchestration stats', () => {
+		aarService.registerRemoteNode(remoteNode('remote-node-1', 'Remote Node 1', 'remote-host:8765'));
+
+		const stats = aarService.getDistributedStats();
+		assert.strictEqual(stats.remoteNodeCount, 1);
+		assert.strictEqual(stats.onlineNodeCount, 1);
+		assert.strictEqual(typeof stats.remoteAgentCount, 'number');
+		assert.strictEqual(typeof stats.messagesSent, 'number');
+		assert.strictEqual(typeof stats.consensusProposalsResolved, 'number');
+	});
+
+	test('should fire onDidChangeRemoteNode event', () => {
 		let firedNode: unknown;
-		aarService.onDidRegisterRemoteNode(node => { firedNode = node; });
+		aarService.onDidChangeRemoteNode(node => { firedNode = node; });
 
-		aarService.registerRemoteNode({
-			nodeId: 'event-test-node',
-			nodeName: 'Event Test Node',
-			address: 'event-host',
-			port: 8765,
-			capabilities: [],
-		});
-
+		aarService.registerRemoteNode(remoteNode('event-test-node', 'Event Test Node', 'event-host:8765'));
 		assert.ok(firedNode);
 	});
 
-	test('should fire onDidSpawnRemoteAgent event', async () => {
+	test('should fire onDidChangeAgent when spawning remote agent', async () => {
 		let firedAgent: unknown;
-		aarService.onDidSpawnRemoteAgent(agent => { firedAgent = agent; });
+		aarService.onDidChangeAgent(agent => { firedAgent = agent; });
 
-		aarService.registerRemoteNode({
-			nodeId: 'spawn-event-node',
-			nodeName: 'Spawn Event Node',
-			address: 'spawn-host',
-			port: 8765,
-			capabilities: ['agent'],
-		});
+		aarService.registerRemoteNode(remoteNode('spawn-event-node', 'Spawn Event Node', 'spawn-host:8765'));
 
 		await aarService.spawnRemoteAgent({
 			targetNodeId: 'spawn-event-node',
-			agentConfig: {
+			priority: 0.5,
+			agent: {
 				id: 'spawn-event-agent',
 				name: 'Spawn Event Agent',
 				role: 'custom',
@@ -540,18 +505,57 @@ suite('AAR Orchestration Service Tests', () => {
 		assert.ok(firedAgent);
 	});
 
-	test('should fire onDidReachConsensus event', async () => {
+	test('should fire onDidResolveConsensus event', async () => {
 		let firedResult: unknown;
-		aarService.onDidReachConsensus(result => { firedResult = result; });
+		aarService.onDidResolveConsensus(result => { firedResult = result; });
 
-		await aarService.proposeConsensus({
-			id: 'event-consensus',
-			topic: 'event-test',
-			options: ['a', 'b'],
-			deadline: Date.now() + 5000,
-			requiredQuorum: 0.5,
+		const proposal = await aarService.proposeConsensus(
+			'decision',
+			{ topic: 'event-test' },
+			[BUILTIN_AGENT_IDS.THINKER],
+			1.0,
+			5000
+		);
+
+		aarService.voteOnConsensus(proposal.id, BUILTIN_AGENT_IDS.THINKER, true);
+		assert.ok(firedResult);
+	});
+
+	test('should fire onDidMigrateAgent event', async () => {
+		let firedMigration: unknown;
+		aarService.onDidMigrateAgent(result => { firedMigration = result; });
+
+		aarService.registerRemoteNode(remoteNode('node-a', 'Node A', 'a:1'));
+		aarService.registerRemoteNode(remoteNode('node-b', 'Node B', 'b:2'));
+
+		await aarService.spawnRemoteAgent({
+			targetNodeId: 'node-a',
+			priority: 0.5,
+			agent: {
+				id: 'migrate-event-agent',
+				name: 'Migrate Event Agent',
+				role: 'custom',
+				capabilities: [],
+				active: true,
+			},
 		});
 
-		assert.ok(firedResult);
+		await aarService.migrateAgent({
+			agentId: 'migrate-event-agent',
+			sourceNodeId: 'node-a',
+			targetNodeId: 'node-b',
+			reason: 'optimization',
+		});
+
+		assert.ok(firedMigration);
+	});
+
+	test('should list online remote nodes only', () => {
+		aarService.registerRemoteNode(remoteNode('online-node', 'Online', 'on:1', true));
+		aarService.registerRemoteNode(remoteNode('offline-node', 'Offline', 'off:1', false));
+
+		const online = aarService.getOnlineRemoteNodes();
+		assert.strictEqual(online.length, 1);
+		assert.strictEqual(online[0].id, 'online-node');
 	});
 });
