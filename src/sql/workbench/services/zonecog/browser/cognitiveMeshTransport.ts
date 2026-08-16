@@ -16,6 +16,8 @@ import { generateUuid } from 'vs/base/common/uuid';
 import { Disposable, IDisposable, toDisposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 
+export type { ICognitiveMeshChannel } from 'sql/workbench/services/zonecog/common/cognitiveMesh';
+
 /** Bound on messages queued while a WebSocket is opening / reconnecting. */
 const MAX_QUEUED_MESSAGES = 256;
 
