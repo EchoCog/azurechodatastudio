@@ -6,6 +6,7 @@
 import * as assert from 'assert';
 import { FederatedQueryService } from 'sql/workbench/services/zonecog/browser/federatedQueryService';
 import { ISharedCognitionChannel } from 'sql/workbench/services/zonecog/browser/sharedCognitionService';
+import { ICognitiveMeshChannel, InProcessMeshHub } from 'sql/workbench/services/zonecog/browser/cognitiveMeshTransport';
 import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
@@ -49,6 +50,7 @@ class FakeChannel implements ISharedCognitionChannel {
 class TestFederatedQueryService extends FederatedQueryService {
 	constructor(
 		private readonly hub: FakeChannelHub | undefined,
+		private readonly remoteHub: InProcessMeshHub | undefined,
 		logService: ILogService,
 		hypergraphStore: IHypergraphStore,
 		membraneService: ICognitiveMembraneService
@@ -58,15 +60,24 @@ class TestFederatedQueryService extends FederatedQueryService {
 	protected override _createChannel(): ISharedCognitionChannel | undefined {
 		return this.hub?.connect();
 	}
+	protected override _createRemoteChannel(wsUrl: string): ICognitiveMeshChannel | undefined {
+		// Production WebSocket path is covered by cognitiveMeshTransport tests.
+		// Unit tests use a shared in-process hub so two services can answer
+		// each other's federated-query requests without a network server.
+		return this.remoteHub?.connect(wsUrl);
+	}
 }
 
 suite('Federated Query Service Tests', () => {
 
-	function makeParticipant(hub: FakeChannelHub | undefined): { service: TestFederatedQueryService; store: IHypergraphStore } {
+	function makeParticipant(
+		hub: FakeChannelHub | undefined,
+		remoteHub?: InProcessMeshHub
+	): { service: TestFederatedQueryService; store: IHypergraphStore } {
 		const logService = new NullLogService();
 		const store = new HypergraphStore(logService);
 		const membrane = new CognitiveMembraneService(logService);
-		const service = new TestFederatedQueryService(hub, logService, store, membrane);
+		const service = new TestFederatedQueryService(hub, remoteHub, logService, store, membrane);
 		return { service, store };
 	}
 
@@ -203,13 +214,15 @@ suite('Federated Query Service Tests', () => {
 	// --- Distributed Federation Tests (Phase C.2: FlareCog) ---
 
 	test('should have no remote peers initially', () => {
-		const { service } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service } = makeParticipant(new FakeChannelHub(), remoteHub);
 		const remotePeers = service.getRemotePeers();
 		assert.strictEqual(remotePeers.length, 0);
 	});
 
 	test('should connect remote peer via websocket url', async () => {
-		const { service } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service } = makeParticipant(new FakeChannelHub(), remoteHub);
 		const connection = await service.connectRemotePeer('ws://remote-host:9876');
 
 		assert.ok(connection);
@@ -223,7 +236,8 @@ suite('Federated Query Service Tests', () => {
 	});
 
 	test('should reconnect return existing peer for same url', async () => {
-		const { service } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service } = makeParticipant(new FakeChannelHub(), remoteHub);
 		const first = await service.connectRemotePeer('ws://remote-host:9876');
 		const second = await service.connectRemotePeer('ws://remote-host:9876');
 
@@ -234,7 +248,8 @@ suite('Federated Query Service Tests', () => {
 	});
 
 	test('should disconnect remote peer connection', async () => {
-		const { service } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service } = makeParticipant(new FakeChannelHub(), remoteHub);
 		const connection = await service.connectRemotePeer('ws://remote-host:9876');
 		assert.ok(connection);
 
@@ -243,7 +258,8 @@ suite('Federated Query Service Tests', () => {
 	});
 
 	test('should create distributed query plan', async () => {
-		const { service } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service } = makeParticipant(new FakeChannelHub(), remoteHub);
 		const connection = await service.connectRemotePeer('ws://remote-host:9876');
 		assert.ok(connection);
 
@@ -257,15 +273,20 @@ suite('Federated Query Service Tests', () => {
 	});
 
 	test('should execute distributed query with local results', async () => {
-		const { service, store } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service, store } = makeParticipant(new FakeChannelHub(), remoteHub);
 		store.addNode(node('local-1', 'test content', 0.7));
 
-		await service.connectRemotePeer('ws://remote-host:9876');
+		const remote = await service.connectRemotePeer('ws://remote-host:9876');
+		assert.ok(remote);
 
 		const plan = service.planDistributedQuery({ keyword: 'test' }, {
 			includeLocal: true,
+			// No remote target — only local merge path under test
+			targetPeers: [],
 			aggregationStrategy: 'merge',
 			conflictResolution: 'highest-salience',
+			peerTimeoutMs: 50,
 		});
 		const results = await service.executeDistributedQuery(plan);
 
@@ -276,8 +297,37 @@ suite('Federated Query Service Tests', () => {
 		assert.ok(results.peerResults.some(r => r.isSelf));
 	});
 
+	test('should exchange distributed query results across mesh peers', async () => {
+		const remoteHub = new InProcessMeshHub();
+		const a = makeParticipant(new FakeChannelHub(), remoteHub);
+		const b = makeParticipant(new FakeChannelHub(), remoteHub);
+		a.store.addNode(node('a-only', 'alpha knowledge', 0.8));
+		b.store.addNode(node('b-only', 'beta knowledge', 0.9));
+
+		// Both attach channels on the shared hub so request/response routes.
+		const aConn = await a.service.connectRemotePeer('ws://cluster-a:9000');
+		const bConn = await b.service.connectRemotePeer('ws://cluster-b:9000');
+		assert.ok(aConn);
+		assert.ok(bConn);
+		assert.strictEqual(aConn!.state, 'connected');
+		assert.strictEqual(bConn!.state, 'connected');
+
+		// A queries its remote mesh peer; B's channel on the same hub answers.
+		const plan = a.service.planDistributedQuery({ keyword: 'knowledge' }, {
+			includeLocal: true,
+			targetPeers: [aConn!.peerId],
+			peerTimeoutMs: 500,
+		});
+		const results = await a.service.executeDistributedQuery(plan);
+		assert.ok(results);
+		assert.ok(results.mergedNodes.some(n => n.id === 'a-only'), 'local A node present');
+		assert.ok(results.mergedNodes.some(n => n.id === 'b-only'), 'remote B node present via mesh');
+		assert.ok(results.peerResults.some(r => !r.isSelf && r.nodes.some(n => n.id === 'b-only')));
+	});
+
 	test('should propagate salience to remote peers', async () => {
-		const { service } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service } = makeParticipant(new FakeChannelHub(), remoteHub);
 		service.startSession();
 		await service.connectRemotePeer('ws://remote-host:9876');
 
@@ -289,7 +339,8 @@ suite('Federated Query Service Tests', () => {
 	});
 
 	test('should honor aggregation and conflict options in plan', async () => {
-		const { service, store } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service, store } = makeParticipant(new FakeChannelHub(), remoteHub);
 		store.addNode(node('shared', 'content', 0.3));
 
 		const plan = service.planDistributedQuery({ keyword: 'content' }, {
@@ -306,7 +357,8 @@ suite('Federated Query Service Tests', () => {
 	});
 
 	test('should get distributed stats', async () => {
-		const { service } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service } = makeParticipant(new FakeChannelHub(), remoteHub);
 		await service.connectRemotePeer('ws://remote-host:9876');
 
 		const stats = service.getDistributedStats();
@@ -319,7 +371,8 @@ suite('Federated Query Service Tests', () => {
 	});
 
 	test('should fire onDidChangeRemotePeer event', async () => {
-		const { service } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service } = makeParticipant(new FakeChannelHub(), remoteHub);
 		let firedEvent: unknown;
 		service.onDidChangeRemotePeer(event => { firedEvent = event; });
 
@@ -328,7 +381,8 @@ suite('Federated Query Service Tests', () => {
 	});
 
 	test('should fire onDidCompleteDistributedQuery event', async () => {
-		const { service, store } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service, store } = makeParticipant(new FakeChannelHub(), remoteHub);
 		let firedEvent: unknown;
 		service.onDidCompleteDistributedQuery(event => { firedEvent = event; });
 
@@ -341,7 +395,8 @@ suite('Federated Query Service Tests', () => {
 	});
 
 	test('should filter connected remote peers only', async () => {
-		const { service } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service } = makeParticipant(new FakeChannelHub(), remoteHub);
 
 		const connected = await service.connectRemotePeer('ws://host1:9876');
 		assert.ok(connected);
@@ -359,7 +414,8 @@ suite('Federated Query Service Tests', () => {
 	});
 
 	test('should include distributedActive and remotePeers in session state', async () => {
-		const { service } = makeParticipant(new FakeChannelHub());
+		const remoteHub = new InProcessMeshHub();
+		const { service } = makeParticipant(new FakeChannelHub(), remoteHub);
 		service.startSession();
 		const connection = await service.connectRemotePeer('ws://remote-host:9876');
 		assert.ok(connection);

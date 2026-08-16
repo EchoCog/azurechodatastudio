@@ -7,6 +7,7 @@ import * as assert from 'assert';
 import { FlareCogService } from 'sql/workbench/services/zonecog/browser/flareCogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
+import { InProcessMeshHub } from 'sql/workbench/services/zonecog/browser/cognitiveMeshTransport';
 import { NullLogService } from 'vs/platform/log/common/log';
 import {
 	FlareCogPeer,
@@ -289,5 +290,102 @@ suite('FlareCog Service Tests', () => {
 		});
 		assert.ok(selected);
 		assert.strictEqual(selected!.id, service.getLocalPeer().id);
+	});
+
+	// --- Mesh messaging -------------------------------------------------------
+
+	test('should deliver sendMessage to local peer via onDidReceiveMessage', () => {
+		const localId = service.getLocalPeer().id;
+		let received: unknown;
+		service.onDidReceiveMessage(msg => { received = msg; });
+		assert.ok(service.sendMessage(localId, { ping: true }));
+		assert.ok(received);
+	});
+
+	test('should fail sendMessage for unknown peers', () => {
+		assert.strictEqual(service.sendMessage('no-such-peer', { x: 1 }), false);
+	});
+
+	test('should request/respond over in-process mesh between two nodes', async () => {
+		const hub = new InProcessMeshHub();
+
+		class MeshFlareCog extends FlareCogService {
+			protected override _createPeerChannel(address: string) {
+				return hub.connect(address);
+			}
+		}
+
+		const a = new MeshFlareCog(logService, store, membrane);
+		const bStore = new HypergraphStore(logService);
+		const bMembrane = new CognitiveMembraneService(logService);
+		const b = new MeshFlareCog(logService, bStore, bMembrane);
+
+		await a.initialize({
+			nodeName: 'A',
+			enableMdns: false,
+			security: {
+				tokenAuthEnabled: false,
+				requireAuthForQueries: false,
+				requireAuthForMigration: false,
+				tokenExpirationMs: 60_000,
+			},
+		});
+		await b.initialize({
+			nodeName: 'B',
+			enableMdns: false,
+			security: {
+				tokenAuthEnabled: false,
+				requireAuthForQueries: false,
+				requireAuthForMigration: false,
+				tokenExpirationMs: 60_000,
+			},
+		});
+
+		// A opens a logical in-process channel; a second hub endpoint answers
+		// as the remote peer (same pattern as AAR node-side responders).
+		const peerOnA = await a.addPeer('flare-peer-b');
+		assert.ok(peerOnA);
+		assert.ok(peerOnA!.online, 'in-process channel should open immediately');
+
+		const bId = b.getLocalPeer().id;
+		const responder = hub.connect('flare-peer-b-responder');
+		responder.onmessage = event => {
+			const envelope = event.data as {
+				type?: string;
+				id?: string;
+				fromPeerId?: string;
+				payload?: { op?: string; args?: unknown };
+			};
+			if (envelope?.type !== 'request' || !envelope.id) {
+				return;
+			}
+			responder.postMessage({
+				type: 'response',
+				id: `r-${envelope.id}`,
+				fromPeerId: bId,
+				toPeerId: envelope.fromPeerId,
+				replyTo: envelope.id,
+				timestamp: Date.now(),
+				payload: { ok: true, result: { echoed: envelope.payload?.args } },
+			});
+		};
+
+		const response = await a.request(peerOnA!.id, 'echo', { msg: 'tokamak' }, 1000);
+		assert.strictEqual(response.ok, true);
+		assert.deepStrictEqual(response.result, { echoed: { msg: 'tokamak' } });
+
+		// sendMessage over the live peer channel should succeed
+		assert.ok(a.sendMessage(peerOnA!.id, { hello: 'b' }));
+
+		a.dispose();
+		b.dispose();
+		responder.close();
+	});
+
+	test('should broadcast payloads without throwing', async () => {
+		await service.initialize({});
+		await service.start();
+		service.broadcast({ kind: 'flarecog-announce', ts: Date.now() });
+		assert.ok(true);
 	});
 });

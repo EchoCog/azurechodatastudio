@@ -16,8 +16,20 @@ import {
 	PeerCapabilities,
 	DEFAULT_FLARECOG_CONFIG,
 } from 'sql/workbench/services/zonecog/common/flareCog';
+import {
+	CognitiveMeshEnvelope,
+	CognitiveMeshRequestHandler,
+	CognitiveMeshResponsePayload,
+	normalizeMeshAddress,
+} from 'sql/workbench/services/zonecog/common/cognitiveMesh';
+import {
+	CognitiveMeshNode,
+	ICognitiveMeshChannel,
+	createMeshChannel,
+	getDefaultMeshHub,
+} from 'sql/workbench/services/zonecog/browser/cognitiveMeshTransport';
 import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
-import { Disposable } from 'vs/base/common/lifecycle';
+import { Disposable, IDisposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ILogService } from 'vs/platform/log/common/log';
 import { generateUuid } from 'vs/base/common/uuid';
@@ -37,15 +49,19 @@ const DEFAULT_PEER_TIMEOUT_MS = 15000;
  */
 const DEFAULT_TOKEN_EXPIRATION_MS = 3600000;
 
+/** Discovery channel for same-machine FlareCog peers. */
+const FLARECOG_DISCOVERY_CHANNEL = 'zonecog-flarecog-discovery';
+
 /**
  * FlareCog Distributed Cognition Service.
  *
- * Implements peer discovery, secure transport, and workload partitioning
+ * Implements peer discovery, secure mesh transport, and workload partitioning
  * for distributed Zone-Cog cognitive processing across multiple nodes.
  *
- * In the browser environment, actual network operations are simulated
- * or delegated to extension hosts. The service maintains the cluster
- * state model and partitioning logic.
+ * Transport:
+ * - WebSocket mesh channels for cross-machine peers (`ws://` / `host:port`)
+ * - BroadcastChannel discovery for same-machine workbench windows
+ * - In-process mesh hub for same-realm multi-node registration
  */
 export class FlareCogService extends Disposable implements IFlareCogService {
 
@@ -67,6 +83,7 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 		type: 'load-balanced',
 		config: {},
 	};
+	private readonly _mesh: CognitiveMeshNode;
 
 	private readonly _onDidChangePeer = this._register(new Emitter<FlareCogPeer>());
 	readonly onDidChangePeer: Event<FlareCogPeer> = this._onDidChangePeer.event;
@@ -80,14 +97,62 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 	private readonly _onDidReceiveHeartbeat = this._register(new Emitter<{ peerId: string; timestamp: number }>());
 	readonly onDidReceiveHeartbeat: Event<{ peerId: string; timestamp: number }> = this._onDidReceiveHeartbeat.event;
 
+	private readonly _onDidReceiveMessage = this._register(new Emitter<CognitiveMeshEnvelope>());
+	readonly onDidReceiveMessage: Event<CognitiveMeshEnvelope> = this._onDidReceiveMessage.event;
+
 	constructor(
 		@ILogService private readonly logService: ILogService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService
 	) {
 		super();
+		this._mesh = this._register(new CognitiveMeshNode(
+			this._localPeerId,
+			address => this._createPeerChannel(address)
+		));
+		this._register(this._mesh.onDidReceiveEvent(envelope => this._handleMeshEvent(envelope)));
+		this._register(this._mesh.onDidChangePeerConnection(conn => {
+			const peer = this._peers.get(conn.peerId);
+			if (peer) {
+				const wasOnline = peer.online;
+				peer.online = conn.open;
+				if (conn.open) {
+					peer.lastHeartbeat = Date.now();
+				}
+				if (wasOnline !== peer.online) {
+					this._onDidChangePeer.fire(peer);
+					this._fireClusterStateChange();
+				}
+			}
+		}));
+		// Local listen endpoint so peers that address us by localPeerId
+		// (same-realm multi-node / in-process hub) reach this node's handlers.
+		const localListen = this._createPeerChannel(this._localPeerId);
+		if (localListen) {
+			localListen.onmessage = event => {
+				void this._mesh.correlator.handleMessage(event.data);
+			};
+			this._register({ dispose: () => localListen.close() });
+		}
 		this._initializeLocalPeer();
 		this.logService.info(`FlareCogService: initialized with local peer ${this._localPeerId}`);
+	}
+
+	/**
+	 * Override point for tests to substitute mesh channels.
+	 * Production opens WebSocket / in-process / broadcast via createMeshChannel.
+	 */
+	protected _createPeerChannel(address: string): ICognitiveMeshChannel | undefined {
+		return createMeshChannel(address, {
+			hub: getDefaultMeshHub(),
+			onLog: (level, message) => {
+				if (level === 'warn') {
+					this.logService.warn(message);
+				} else {
+					this.logService.info(message);
+				}
+			},
+		});
 	}
 
 	// -- Initialization -------------------------------------------------------
@@ -147,6 +212,9 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 		this._running = true;
 		this._clusterFormedAt = Date.now();
 
+		// Same-machine discovery over BroadcastChannel
+		this._mesh.joinDiscovery(FLARECOG_DISCOVERY_CHANNEL);
+
 		// Start heartbeat timer
 		this._heartbeatTimer = setInterval(() => {
 			this._sendHeartbeat();
@@ -155,6 +223,12 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 
 		// Perform initial discovery
 		await this.refreshDiscovery();
+
+		// Announce presence on the discovery mesh
+		this._mesh.broadcast({
+			kind: 'flarecog-hello',
+			peer: this.getLocalPeer(),
+		});
 
 		this.membraneService.recordActivity('somatic');
 		this._fireClusterStateChange();
@@ -170,6 +244,14 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 		if (this._heartbeatTimer !== null) {
 			clearInterval(this._heartbeatTimer);
 			this._heartbeatTimer = null;
+		}
+
+		// Drop peer mesh channels (local peer record retained)
+		for (const peer of this._peers.values()) {
+			if (peer.id !== this._localPeerId) {
+				this._mesh.disconnectPeer(peer.id);
+				peer.online = false;
+			}
 		}
 
 		this._running = false;
@@ -191,21 +273,27 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 	async addPeer(address: string): Promise<FlareCogPeer | undefined> {
 		this.membraneService.recordActivity('somatic');
 
+		const normalized = normalizeMeshAddress(address) || address;
+
 		// Check if peer already exists by address
 		for (const peer of this._peers.values()) {
-			if (peer.address === address) {
+			if (peer.address === address || peer.address === normalized) {
 				this.logService.info(`FlareCogService: peer at ${address} already registered`);
+				// Ensure mesh channel exists
+				if (!this._mesh.getPeer(peer.id)) {
+					this._mesh.connectPeer(peer.id, peer.address);
+				}
 				return peer;
 			}
 		}
 
-		// Create new peer (in real implementation, would establish connection)
+		const peerId = generateUuid();
 		const peer: FlareCogPeer = {
-			id: generateUuid(),
+			id: peerId,
 			name: `peer-${address}`,
-			address,
+			address: normalized || address,
 			discoveryMethod: 'manual',
-			online: false, // Will become online when heartbeat received
+			online: false,
 			lastHeartbeat: 0,
 			capabilities: {
 				maxConcurrentTasks: 5,
@@ -220,10 +308,25 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 		};
 
 		this._peers.set(peer.id, peer);
+
+		// Open real mesh channel (WebSocket / in-process)
+		const connection = this._mesh.connectPeer(peer.id, peer.address);
+		if (connection?.open) {
+			peer.online = true;
+			peer.lastHeartbeat = Date.now();
+			// Authenticate with a freshly minted token when token auth is enabled
+			if (this._config.security.tokenAuthEnabled) {
+				const token = this.generateToken(peer.id, ['query:read', 'query:write', 'loop:sync']);
+				peer.authenticated = !!this.validateToken(token.token);
+			} else {
+				peer.authenticated = true;
+			}
+		}
+
 		this._onDidChangePeer.fire(peer);
 		this._fireClusterStateChange();
 
-		this.logService.info(`FlareCogService: added peer ${peer.id} at ${address}`);
+		this.logService.info(`FlareCogService: added peer ${peer.id} at ${peer.address} (online=${peer.online})`);
 		return peer;
 	}
 
@@ -238,6 +341,7 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 			return false;
 		}
 
+		this._mesh.disconnectPeer(peerId);
 		this._peers.delete(peerId);
 		peer.online = false;
 		this._onDidChangePeer.fire(peer);
@@ -266,17 +370,31 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 	async refreshDiscovery(): Promise<void> {
 		this.membraneService.recordActivity('somatic');
 
-		// In browser environment, mDNS is not directly available
-		// This would delegate to an extension host in a real implementation
+		// Browser workbench: mDNS requires a native host bridge. Discovery is
+		// performed via BroadcastChannel + configured manual peers / WebSocket.
 		if (this._config.enableMdns) {
-			this.logService.info('FlareCogService: mDNS discovery not available in browser environment');
+			this.logService.info('FlareCogService: mDNS discovery requires host bridge; using BroadcastChannel + manual peers');
+		}
+
+		// Ensure discovery channel is joined when running
+		if (this._running) {
+			this._mesh.joinDiscovery(FLARECOG_DISCOVERY_CHANNEL);
+			this._mesh.broadcast({
+				kind: 'flarecog-hello',
+				peer: this.getLocalPeer(),
+			});
 		}
 
 		// Re-check manual peers
 		for (const address of this._config.manualPeers) {
-			const existing = Array.from(this._peers.values()).find(p => p.address === address);
+			const normalized = normalizeMeshAddress(address) || address;
+			const existing = Array.from(this._peers.values()).find(
+				p => p.address === address || p.address === normalized
+			);
 			if (!existing) {
 				await this.addPeer(address);
+			} else if (!this._mesh.getPeer(existing.id)) {
+				this._mesh.connectPeer(existing.id, existing.address);
 			}
 		}
 	}
@@ -540,6 +658,52 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 		this.logService.info(`FlareCogService: workload ${workloadId} completed (${success ? 'success' : 'failure'}, ${duration}ms)`);
 	}
 
+	// -- Mesh Messaging -------------------------------------------------------
+
+	sendMessage(peerId: string, payload: unknown): boolean {
+		this.membraneService.recordActivity('somatic');
+		if (peerId === this._localPeerId) {
+			this._onDidReceiveMessage.fire({
+				type: 'event',
+				id: generateUuid(),
+				fromPeerId: this._localPeerId,
+				toPeerId: peerId,
+				timestamp: Date.now(),
+				payload,
+			});
+			return true;
+		}
+		const peer = this._peers.get(peerId);
+		if (!peer) {
+			return false;
+		}
+		if (!this._mesh.getPeer(peerId)) {
+			this._mesh.connectPeer(peerId, peer.address);
+		}
+		return this._mesh.sendTo(peerId, 'event', payload);
+	}
+
+	broadcast(payload: unknown): void {
+		this.membraneService.recordActivity('somatic');
+		this._mesh.broadcast(payload);
+	}
+
+	request(peerId: string, op: string, args?: unknown, timeoutMs?: number): Promise<CognitiveMeshResponsePayload> {
+		this.membraneService.recordActivity('somatic');
+		const peer = this._peers.get(peerId);
+		if (!peer && peerId !== this._localPeerId) {
+			return Promise.resolve({ ok: false, error: `unknown peer '${peerId}'` });
+		}
+		if (peer && !this._mesh.getPeer(peerId)) {
+			this._mesh.connectPeer(peerId, peer.address);
+		}
+		return this._mesh.request(peerId, op, args, timeoutMs);
+	}
+
+	registerHandler(op: string, handler: CognitiveMeshRequestHandler): IDisposable {
+		return this._mesh.registerHandler(op, handler);
+	}
+
 	// -- Cluster State --------------------------------------------------------
 
 	getClusterState(): FlareCogClusterState {
@@ -610,7 +774,14 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 	}
 
 	reset(): void {
-		this.stop();
+		void this.stop();
+
+		// Disconnect mesh peers
+		for (const peer of this._peers.values()) {
+			if (peer.id !== this._localPeerId) {
+				this._mesh.disconnectPeer(peer.id);
+			}
+		}
 
 		// Clear peers except local
 		const localPeer = this._peers.get(this._localPeerId);
@@ -642,7 +813,7 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 		this.logService.info('FlareCogService: reset');
 	}
 
-	// -- Private: Heartbeat ---------------------------------------------------
+	// -- Private: Heartbeat & mesh events -------------------------------------
 
 	private _sendHeartbeat(): void {
 		const localPeer = this._peers.get(this._localPeerId);
@@ -651,11 +822,106 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 			localPeer.cognitiveLoad = this._calculateLocalLoad();
 		}
 
-		// In a real implementation, would broadcast heartbeat to all peers
+		const timestamp = Date.now();
+		this._mesh.broadcast({
+			kind: 'flarecog-heartbeat',
+			peerId: this._localPeerId,
+			cognitiveLoad: localPeer?.cognitiveLoad ?? 0,
+			capabilities: localPeer?.capabilities,
+			timestamp,
+		});
+
 		this._onDidReceiveHeartbeat.fire({
 			peerId: this._localPeerId,
-			timestamp: Date.now(),
+			timestamp,
 		});
+	}
+
+	private _handleMeshEvent(envelope: CognitiveMeshEnvelope): void {
+		this._onDidReceiveMessage.fire(envelope);
+
+		const payload = envelope.payload as {
+			kind?: string;
+			peer?: FlareCogPeer;
+			peerId?: string;
+			cognitiveLoad?: number;
+			capabilities?: PeerCapabilities;
+			timestamp?: number;
+		} | undefined;
+
+		if (!payload || typeof payload !== 'object') {
+			return;
+		}
+
+		if (payload.kind === 'flarecog-hello' && payload.peer && payload.peer.id !== this._localPeerId) {
+			this._ingestDiscoveredPeer(payload.peer, envelope.fromPeerId);
+			return;
+		}
+
+		if (payload.kind === 'flarecog-heartbeat') {
+			const peerId = payload.peerId || envelope.fromPeerId;
+			if (peerId === this._localPeerId) {
+				return;
+			}
+			let peer = this._peers.get(peerId);
+			if (!peer && payload.peer) {
+				this._ingestDiscoveredPeer(payload.peer as FlareCogPeer, peerId);
+				peer = this._peers.get(peerId);
+			}
+			if (peer) {
+				peer.online = true;
+				peer.lastHeartbeat = payload.timestamp ?? envelope.timestamp;
+				if (typeof payload.cognitiveLoad === 'number') {
+					peer.cognitiveLoad = payload.cognitiveLoad;
+				}
+				if (payload.capabilities) {
+					peer.capabilities = payload.capabilities;
+				}
+				this._onDidReceiveHeartbeat.fire({ peerId: peer.id, timestamp: peer.lastHeartbeat });
+				this._onDidChangePeer.fire(peer);
+			}
+		}
+	}
+
+	private _ingestDiscoveredPeer(discovered: FlareCogPeer, fromPeerId: string): void {
+		const id = discovered.id || fromPeerId;
+		if (id === this._localPeerId) {
+			return;
+		}
+		let peer = this._peers.get(id);
+		if (!peer) {
+			peer = {
+				id,
+				name: discovered.name || `peer-${id.substring(0, 8)}`,
+				address: discovered.address || id,
+				discoveryMethod: discovered.discoveryMethod || 'broadcast',
+				online: true,
+				lastHeartbeat: Date.now(),
+				capabilities: discovered.capabilities || {
+					maxConcurrentTasks: 5,
+					supportedAgentRoles: [],
+					availableLLMProviders: [],
+					hypergraphCapacity: 50000,
+					acceptsMigration: true,
+					customCapabilities: [],
+				},
+				cognitiveLoad: discovered.cognitiveLoad ?? 0,
+				authenticated: !this._config.security.tokenAuthEnabled,
+			};
+			this._peers.set(id, peer);
+			// Prefer logical in-process routing by peer id when no network address
+			this._mesh.connectPeer(id, peer.address || id);
+			this._onDidChangePeer.fire(peer);
+			this._fireClusterStateChange();
+			this.logService.info(`FlareCogService: discovered peer ${id} via mesh`);
+		} else {
+			peer.online = true;
+			peer.lastHeartbeat = Date.now();
+			if (discovered.capabilities) {
+				peer.capabilities = discovered.capabilities;
+			}
+			this._onDidChangePeer.fire(peer);
+		}
 	}
 
 	private _checkPeerTimeouts(): void {
@@ -667,7 +933,7 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 				continue;
 			}
 
-			if (peer.online && now - peer.lastHeartbeat > timeout) {
+			if (peer.online && peer.lastHeartbeat > 0 && now - peer.lastHeartbeat > timeout) {
 				peer.online = false;
 				this._onDidChangePeer.fire(peer);
 				this._fireClusterStateChange();
