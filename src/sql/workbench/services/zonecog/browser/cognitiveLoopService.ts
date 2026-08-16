@@ -94,7 +94,6 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 	// Distributed cognitive loop state (Phase C: FlareCog)
 	private _distributedMode = false;
 	private _localNodeId = '';
-	private _localNodeName = '';
 	private _isLeader = false;
 	private _leaderId: string | undefined;
 	private readonly _clusterNodes = new Map<string, DistributedLoopNode>();
@@ -582,7 +581,6 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 
 		this._distributedMode = true;
 		this._localNodeId = nodeId;
-		this._localNodeName = nodeName;
 		this._isLeader = true; // First node becomes leader by default
 		this._leaderId = nodeId;
 		this._clusterIteration = this._iterationCount;

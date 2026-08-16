@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
-import { ICognitiveLoopService, CognitiveLoopState, CognitiveLoopIteration, ClusterSyncState, GlobalECANState, CollectiveIntelligenceResult } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
+import { ICognitiveLoopService, CognitiveLoopState, CognitiveLoopIteration } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
 import { CognitiveLoopService } from 'sql/workbench/services/zonecog/browser/cognitiveLoopService';
 import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
 import { ECANAttentionService } from 'sql/workbench/services/zonecog/browser/ecanAttentionService';

@@ -324,20 +324,18 @@ suite('FlareCog Service Tests', () => {
 			nodeName: 'A',
 			enableMdns: false,
 			security: {
+				tlsRequired: false,
+				verifyPeerCert: false,
 				tokenAuthEnabled: false,
-				requireAuthForQueries: false,
-				requireAuthForMigration: false,
-				tokenExpirationMs: 60_000,
 			},
 		});
 		await b.initialize({
 			nodeName: 'B',
 			enableMdns: false,
 			security: {
+				tlsRequired: false,
+				verifyPeerCert: false,
 				tokenAuthEnabled: false,
-				requireAuthForQueries: false,
-				requireAuthForMigration: false,
-				tokenExpirationMs: 60_000,
 			},
 		});
 

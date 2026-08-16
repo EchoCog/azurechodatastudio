@@ -58,17 +58,6 @@ interface PendingQuery {
 	resolve: (results: FederatedQueryResult[]) => void;
 }
 
-interface PendingDistributedQuery {
-	plan: DistributedQueryPlan;
-	results: FederatedQueryResult[];
-	peerDurations: Record<string, number>;
-	startTimes: Record<string, number>;
-	awaiting: Set<string>;
-	failedPeers: string[];
-	timer: ReturnType<typeof setTimeout>;
-	resolve: (result: DistributedQueryResult) => void;
-}
-
 /**
  * Implementation of the federated hypergraph query service.
  *
@@ -89,7 +78,6 @@ export class FederatedQueryService extends Disposable implements IFederatedQuery
 	private readonly _peerId = generateUuid();
 	private readonly _knownPeers = new Set<string>();
 	private readonly _pending = new Map<string, PendingQuery>();
-	private readonly _pendingDistributed = new Map<string, PendingDistributedQuery>();
 	private readonly _remotePeers = new Map<string, RemotePeerConnection>();
 	/** Live mesh channels keyed by remote peer id. */
 	private readonly _remoteChannels = new Map<string, ICognitiveMeshChannel>();
