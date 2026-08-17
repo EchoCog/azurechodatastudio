@@ -210,7 +210,7 @@ export class BroadcastMeshChannel implements ICognitiveMeshChannel {
  *
  * Delivers every posted envelope to every other open endpoint on the same hub.
  * This is the production path for same-realm multi-node registration (AAR
- * remote nodes, cognitive-loop cluster members, unit tests) — real message
+ * remote nodes, cognitive-loop cluster members, unit tests) - real message
  * routing with no artificial delay.
  */
 export class InProcessMeshHub {
@@ -343,7 +343,7 @@ export function createMeshChannel(address: string, options: CreateMeshChannelOpt
 	}
 
 	if (!normalized || (!isWebSocketUrl(normalized) && !isWebSocketUrl(address))) {
-		// Logical id — attach to default/in-process hub.
+		// Logical id - attach to default/in-process hub.
 		const hub = options.hub ?? getDefaultMeshHub();
 		return hub.connect(address || generateUuid());
 	}

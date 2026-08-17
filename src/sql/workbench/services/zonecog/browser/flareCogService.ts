@@ -291,7 +291,7 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 		const peer: FlareCogPeer = {
 			id: peerId,
 			name: `peer-${address}`,
-			address: normalized || address,
+			address,
 			discoveryMethod: 'manual',
 			online: false,
 			lastHeartbeat: 0,

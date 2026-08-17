@@ -989,13 +989,22 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 
 	voteOnConsensus(proposalId: string, agentId: string, vote: boolean): boolean {
 		const proposal = this._consensusProposals.get(proposalId);
-		if (!proposal || proposal.status !== 'pending') {
+		if (!proposal) {
 			return false;
 		}
 
 		if (!proposal.voters.includes(agentId)) {
 			this.logService.warn(`AAROrchestrationService: agent '${agentId}' not authorized to vote on proposal '${proposalId}'`);
 			return false;
+		}
+
+		// A proposal can resolve (quorum reached) before every voter has cast a
+		// ballot. Still record late votes from authorized voters for the audit
+		// trail, but don't re-evaluate or re-fire resolution for an already
+		// decided/expired proposal.
+		if (proposal.status !== 'pending') {
+			proposal.votes.set(agentId, vote);
+			return true;
 		}
 
 		proposal.votes.set(agentId, vote);

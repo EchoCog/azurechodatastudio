@@ -32,10 +32,10 @@ export interface HypergraphSnapshot {
 /**
  * Pluggable durable backends for the hybrid persistence layer (Phase E.2).
  *
- * - `indexeddb` — browser IndexedDB object stores (default).
- * - `rocksdb` — RocksDB-compatible LSM engine with column families, bloom
+ * - `indexeddb` - browser IndexedDB object stores (default).
+ * - `rocksdb` - RocksDB-compatible LSM engine with column families, bloom
  *   filters (WebAssembly memory), range queries and leveled compaction.
- * - `atomspace` — OpenCog AtomSpace backend via {@link IAtomSpaceBackendService}.
+ * - `atomspace` - OpenCog AtomSpace backend via {@link IAtomSpaceBackendService}.
  */
 export type HypergraphPersistenceBackendKind = 'indexeddb' | 'rocksdb' | 'atomspace';
 

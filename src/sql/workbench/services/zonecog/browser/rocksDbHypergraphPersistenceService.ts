@@ -496,6 +496,7 @@ export class RocksDbHypergraphPersistenceService extends Disposable implements I
 		const full = sinceTimestamp === undefined;
 		let nodes: HypergraphNode[];
 		let links: HypergraphLink[];
+		let createdAt = Date.now();
 
 		if (full) {
 			({ nodes, links } = this._collectGraph());
@@ -503,15 +504,21 @@ export class RocksDbHypergraphPersistenceService extends Disposable implements I
 			await this._ensureOpen();
 			const changelog = (await this._engine.range('changelog', ''))
 				.map(([, v]) => decodeJson<ChangeLogEntry>(v));
-			const changedNodeIds = new Set(changelog.filter(e => e.entityType === 'node' && e.timestamp > sinceTimestamp).map(e => e.entityId));
-			const changedLinkIds = new Set(changelog.filter(e => e.entityType === 'link' && e.timestamp > sinceTimestamp).map(e => e.entityId));
+			// Inclusive lower bound - see HypergraphPersistenceService.createBackup
+			// for why a strict `>` would drop same-millisecond changes.
+			const relevant = changelog.filter(e => e.timestamp >= sinceTimestamp);
+			const changedNodeIds = new Set(relevant.filter(e => e.entityType === 'node').map(e => e.entityId));
+			const changedLinkIds = new Set(relevant.filter(e => e.entityType === 'link').map(e => e.entityId));
 			nodes = [...changedNodeIds].map(id => this.hypergraphStore.getNode(id)).filter((n): n is HypergraphNode => n !== undefined);
 			links = [...changedLinkIds].map(id => this.hypergraphStore.getLink(id)).filter((l): l is HypergraphLink => l !== undefined);
+
+			const maxIncluded = relevant.reduce((max, e) => Math.max(max, e.timestamp), sinceTimestamp);
+			createdAt = Math.max(createdAt, maxIncluded + 1);
 		}
 
 		const backup: HypergraphBackup = {
 			formatVersion: HYPERGRAPH_BACKUP_FORMAT_VERSION,
-			createdAt: Date.now(),
+			createdAt,
 			full,
 			sinceTimestamp,
 			nodes,
