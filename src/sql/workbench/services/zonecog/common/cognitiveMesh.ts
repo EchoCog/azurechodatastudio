@@ -89,7 +89,7 @@ export function normalizeMeshAddress(address: string): string {
 	}
 	// host:port or host
 	if (trimmed.includes('://')) {
-		// Unknown scheme — leave untouched for caller to reject.
+		// Unknown scheme - leave untouched for caller to reject.
 		return trimmed;
 	}
 	return `ws://${trimmed}`;

@@ -205,14 +205,7 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 			? nodeTypes.flatMap(type => this.hypergraphStore.getNodesByType(type))
 			: this.hypergraphStore.getAllNodes();
 
-		let indexed = 0;
-		for (const node of nodes) {
-			const before = this._index.get(node.id);
-			await this._ensureIndexed(node);
-			if (!before || before !== this._index.get(node.id)) {
-				indexed++;
-			}
-		}
+		const indexed = await this._ensureIndexedBatch(nodes);
 		this.logService.info(`HypergraphSemanticSearchService: indexed ${indexed}/${nodes.length} node(s)`);
 		return indexed;
 	}
@@ -230,9 +223,7 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 			return [];
 		}
 
-		for (const node of candidates) {
-			await this._ensureIndexed(node);
-		}
+		await this._ensureIndexedBatch(candidates);
 
 		const queryVector = await this._embed(query);
 		const results: SemanticSearchResult[] = [];
@@ -285,6 +276,80 @@ export class HypergraphSemanticSearchService extends Disposable implements IHype
 
 		// LRU eviction if cache exceeds size limit
 		this._enforceMaxCacheSize();
+	}
+
+	/**
+	 * Index every node in `nodes` that isn't already cached under its current
+	 * content hash / embedding source, embedding all of them in as few
+	 * `embed()` calls as the connected backend's batch size allows instead of
+	 * one call per node. Returns the number of nodes (re-)indexed.
+	 */
+	private async _ensureIndexedBatch(nodes: readonly HypergraphNode[]): Promise<number> {
+		const source = this._currentSource();
+		const toIndex: { node: HypergraphNode; contentHash: string }[] = [];
+		for (const node of nodes) {
+			const contentHash = this._contentHash(node);
+			const existing = this._index.get(node.id);
+			if (existing && existing.contentHash === contentHash && existing.source === source) {
+				continue;
+			}
+			toIndex.push({ node, contentHash });
+		}
+
+		if (toIndex.length === 0) {
+			return 0;
+		}
+
+		this.membraneService.recordActivity('cerebral');
+		const vectors = await this._embedTextsBatched(toIndex.map(({ node }) => nodeEmbeddingText(node)));
+
+		for (let i = 0; i < toIndex.length; i++) {
+			const { node, contentHash } = toIndex[i];
+			this._index.set(node.id, { vector: vectors[i], contentHash, source, lastAccessTime: Date.now() });
+			this._staleNodeIds.delete(node.id);
+			this._reIndexedCount++;
+			this._onDidIndexNode.fire(node.id);
+		}
+
+		// LRU eviction if cache exceeds size limit
+		this._enforceMaxCacheSize();
+
+		return toIndex.length;
+	}
+
+	/**
+	 * Embed multiple texts using as few `embed()` calls as the connected
+	 * backend's configured batch size allows (chunking when there are more
+	 * texts than fit in one request). Falls back to the local hashing-trick
+	 * embedding per-text when disconnected - there's no network call to
+	 * batch in that case.
+	 */
+	private async _embedTextsBatched(texts: string[]): Promise<number[][]> {
+		if (texts.length === 0) {
+			return [];
+		}
+		if (!this.aphroditeService.isConnected()) {
+			return texts.map(text => localEmbed(text));
+		}
+
+		const batchSize = Math.max(1, this.aphroditeService.getConfig().maxBatchSize);
+		const vectors: number[][] = new Array(texts.length);
+		for (let i = 0; i < texts.length; i += batchSize) {
+			const chunk = texts.slice(i, i + batchSize);
+			try {
+				const response = await this.aphroditeService.embed({ texts: chunk });
+				for (let j = 0; j < chunk.length; j++) {
+					const vector = response.embeddings[j];
+					vectors[i + j] = vector && vector.length > 0 ? vector : localEmbed(chunk[j]);
+				}
+			} catch (err) {
+				this.logService.warn(`HypergraphSemanticSearchService: batch embed() failed, falling back to local embedding: ${err instanceof Error ? err.message : String(err)}`);
+				for (let j = 0; j < chunk.length; j++) {
+					vectors[i + j] = localEmbed(chunk[j]);
+				}
+			}
+		}
+		return vectors;
 	}
 
 	private _currentSource(): SemanticEmbeddingSource {

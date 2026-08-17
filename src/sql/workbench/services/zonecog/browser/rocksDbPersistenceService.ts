@@ -711,7 +711,7 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 
 		const startTime = Date.now();
 
-		// Compaction is a maintenance barrier for this KV façade: mark completion
+		// Compaction is a maintenance barrier for this KV facade: mark completion
 		// and emit telemetry. The LSM engine (`RocksDbEngine.compact`) performs
 		// the leveled table merge when that backend is selected.
 
@@ -1011,7 +1011,7 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 					return null;
 				}
 			}
-			return value != null ? String(value) : null;
+			return value !== null && value !== undefined ? String(value) : null;
 		} catch {
 			return null;
 		}

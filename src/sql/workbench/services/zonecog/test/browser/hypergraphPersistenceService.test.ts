@@ -769,8 +769,13 @@ suite('Hypergraph Persistence Service Tests', () => {
 	test('should not record a changelog entry for nodes restored by load(), keeping incremental backups from re-including untouched state', async () => {
 		hypergraphStore.addNode({ id: 'suppressed-node', node_type: 'T', content: '', links: [], metadata: {}, salience_score: 0.5 });
 		await persistenceService.save();
-		const checkpoint = Date.now();
+		// The changelog put triggered by addNode() is recorded off an
+		// inclusive checkpoint boundary (see createBackup()), so it must be
+		// separated from `checkpoint` by more than a clock tick - otherwise a
+		// fast/mocked save() can land in the same millisecond as Date.now()
+		// below and make this checkpoint ambiguous with that entry.
 		await new Promise(r => setTimeout(r, 10));
+		const checkpoint = Date.now();
 
 		hypergraphStore.clear();
 		await persistenceService.load();

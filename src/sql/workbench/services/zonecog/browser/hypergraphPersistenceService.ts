@@ -951,6 +951,7 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 		const full = sinceTimestamp === undefined;
 		let nodes: HypergraphNode[];
 		let links: HypergraphLink[];
+		let createdAt = Date.now();
 
 		if (full) {
 			({ nodes, links } = this._collectGraph());
@@ -963,15 +964,29 @@ export class HypergraphPersistenceService extends Disposable implements IHypergr
 				const db = await this._getDb();
 				changelog = await idbGetAll<ChangeLogEntry>(db, STORE_CHANGELOG);
 			}
-			const changedNodeIds = new Set(changelog.filter(e => e.entityType === 'node' && e.timestamp > sinceTimestamp).map(e => e.entityId));
-			const changedLinkIds = new Set(changelog.filter(e => e.entityType === 'link' && e.timestamp > sinceTimestamp).map(e => e.entityId));
+			// Inclusive lower bound: millisecond-resolution `Date.now()` timestamps
+			// mean a change recorded in the same tick as `sinceTimestamp` (e.g. a
+			// mutation immediately followed by a backup call with no intervening
+			// await) must still count as "since" that checkpoint, not be dropped
+			// by a clock-resolution tie.
+			const relevant = changelog.filter(e => e.timestamp >= sinceTimestamp);
+			const changedNodeIds = new Set(relevant.filter(e => e.entityType === 'node').map(e => e.entityId));
+			const changedLinkIds = new Set(relevant.filter(e => e.entityType === 'link').map(e => e.entityId));
 			nodes = [...changedNodeIds].map(id => this.hypergraphStore.getNode(id)).filter((n): n is HypergraphNode => n !== undefined);
 			links = [...changedLinkIds].map(id => this.hypergraphStore.getLink(id)).filter((l): l is HypergraphLink => l !== undefined);
+
+			// `createdAt` becomes the next call's `sinceTimestamp`. It must land
+			// strictly after every entry just included above, or the same
+			// millisecond-resolution tie that made this backup inclusive would
+			// let those entries reappear - and be double-counted - in the very
+			// next incremental delta.
+			const maxIncluded = relevant.reduce((max, e) => Math.max(max, e.timestamp), sinceTimestamp);
+			createdAt = Math.max(createdAt, maxIncluded + 1);
 		}
 
 		const backup: HypergraphBackup = {
 			formatVersion: HYPERGRAPH_BACKUP_FORMAT_VERSION,
-			createdAt: Date.now(),
+			createdAt,
 			full,
 			sinceTimestamp,
 			nodes,

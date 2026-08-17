@@ -1023,7 +1023,7 @@ export class CognitiveLoopService extends Disposable implements ICognitiveLoopSe
 						}
 					}
 				} catch {
-					// Peer unavailable — continue with partial aggregation
+					// Peer unavailable - continue with partial aggregation
 				}
 			}));
 		}
