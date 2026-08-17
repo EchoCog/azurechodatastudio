@@ -1011,7 +1011,7 @@ export class RocksDbPersistenceService extends Disposable implements IRocksDbPer
 					return null;
 				}
 			}
-			return value != null ? String(value) : null;
+			return value !== null && value !== undefined ? String(value) : null;
 		} catch {
 			return null;
 		}
