@@ -264,7 +264,7 @@ export class FlareCogService extends Disposable implements IFlareCogService {
 	}
 
 	override dispose(): void {
-		this.stop();
+		void this.stop();
 		super.dispose();
 	}
 
