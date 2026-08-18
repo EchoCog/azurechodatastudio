@@ -162,7 +162,7 @@ impl<T: DeserializeOwned> tokio_util::codec::Decoder for MsgPackCodec<T> {
 	}
 }
 
-		let msg = src[U32_SIZE..].to_vec();
+#[cfg(test)]
 mod tests {
 	use serde::{Deserialize, Serialize};
 
@@ -183,7 +183,7 @@ mod tests {
 		buf.extend_from_slice(rmp_serde::to_vec_named(&Msg { x: 1 }).unwrap().as_slice());
 		buf.extend_from_slice(rmp_serde::to_vec_named(&Msg { x: 2 }).unwrap().as_slice());
 
-		src.resize(0, 0);
+		assert_eq!(
 			c.decode(&mut buf).unwrap().expect("expected msg1").obj,
 			Msg { x: 1 }
 		);
