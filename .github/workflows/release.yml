@@ -177,16 +177,27 @@ jobs:
         if: ${{ github.event.inputs.skip_tests != 'true' }}
         run: .\scripts\test.bat
 
+      # upload-artifact@v4 rejects paths containing '..'; keep archives under github.workspace
       - name: Create Windows x64 ZIP
+        shell: pwsh
         run: |
-          cd ..
-          7z a -tzip "${{ github.workspace }}/azuredatastudio-win32-x64-${{ needs.compile.outputs.version }}.zip" azuredatastudio-win32-x64
+          $version = "${{ needs.compile.outputs.version }}"
+          $src = Join-Path (Split-Path "${{ github.workspace }}" -Parent) "azuredatastudio-win32-x64"
+          $outDir = Join-Path "${{ github.workspace }}" ".build/release"
+          $zip = Join-Path $outDir "azuredatastudio-win32-x64-$version.zip"
+          if (-not (Test-Path $src)) { throw "Build output not found: $src" }
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          & 7z a -tzip $zip $src
+          if ($LASTEXITCODE -ne 0) { throw "7z failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path $zip)) { throw "ZIP was not created: $zip" }
+          Write-Host "Created $zip"
 
       - name: Upload Windows x64 ZIP
         uses: actions/upload-artifact@v4
         with:
           name: azuredatastudio-win32-x64
-          path: azuredatastudio-win32-x64-${{ needs.compile.outputs.version }}.zip
+          path: .build/release/azuredatastudio-win32-x64-${{ needs.compile.outputs.version }}.zip
+          if-no-files-found: error
           retention-days: 30
 
   windows-arm64:
@@ -246,16 +257,27 @@ jobs:
       - name: Build Windows ARM64 Archive
         run: yarn gulp vscode-win32-arm64-min
 
+      # upload-artifact@v4 rejects paths containing '..'; keep archives under github.workspace
       - name: Create Windows ARM64 ZIP
+        shell: pwsh
         run: |
-          cd ..
-          7z a -tzip "${{ github.workspace }}/azuredatastudio-win32-arm64-${{ needs.compile.outputs.version }}.zip" azuredatastudio-win32-arm64
+          $version = "${{ needs.compile.outputs.version }}"
+          $src = Join-Path (Split-Path "${{ github.workspace }}" -Parent) "azuredatastudio-win32-arm64"
+          $outDir = Join-Path "${{ github.workspace }}" ".build/release"
+          $zip = Join-Path $outDir "azuredatastudio-win32-arm64-$version.zip"
+          if (-not (Test-Path $src)) { throw "Build output not found: $src" }
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          & 7z a -tzip $zip $src
+          if ($LASTEXITCODE -ne 0) { throw "7z failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path $zip)) { throw "ZIP was not created: $zip" }
+          Write-Host "Created $zip"
 
       - name: Upload Windows ARM64 ZIP
         uses: actions/upload-artifact@v4
         with:
           name: azuredatastudio-win32-arm64
-          path: azuredatastudio-win32-arm64-${{ needs.compile.outputs.version }}.zip
+          path: .build/release/azuredatastudio-win32-arm64-${{ needs.compile.outputs.version }}.zip
+          if-no-files-found: error
           retention-days: 30
 
   # ============================================================
@@ -333,31 +355,42 @@ jobs:
 
       - name: Create Linux x64 tarball
         run: |
-          cd ..
-          tar -czf "${{ github.workspace }}/azuredatastudio-linux-x64-${{ needs.compile.outputs.version }}.tar.gz" azuredatastudio-linux-x64
-
-      - name: Build DEB Package
-        run: |
-          yarn gulp vscode-linux-x64-prepare-deb
-          yarn gulp vscode-linux-x64-build-deb
-
-      - name: Build RPM Package
-        run: |
-          yarn gulp vscode-linux-x64-prepare-rpm
-          yarn gulp vscode-linux-x64-build-rpm
+          version="${{ needs.compile.outputs.version }}"
+          src="${{ github.workspace }}/../azuredatastudio-linux-x64"
+          out_dir="${{ github.workspace }}/.build/release"
+          tar_path="${out_dir}/azuredatastudio-linux-x64-${version}.tar.gz"
+          test -d "$src" || { echo "Build output not found: $src"; exit 1; }
+          mkdir -p "$out_dir"
+          tar -czf "$tar_path" -C "$(dirname "$src")" "$(basename "$src")"
+          test -f "$tar_path" || { echo "Tarball was not created: $tar_path"; exit 1; }
 
       - name: Upload Linux x64 tarball
         uses: actions/upload-artifact@v4
         with:
           name: azuredatastudio-linux-x64-tar
-          path: azuredatastudio-linux-x64-${{ needs.compile.outputs.version }}.tar.gz
+          path: .build/release/azuredatastudio-linux-x64-${{ needs.compile.outputs.version }}.tar.gz
+          if-no-files-found: error
           retention-days: 30
+
+      # DEB/RPM need Microsoft electron sysroots that may be unavailable; keep tarball as primary artifact
+      - name: Build DEB Package
+        continue-on-error: true
+        run: |
+          yarn gulp vscode-linux-x64-prepare-deb
+          yarn gulp vscode-linux-x64-build-deb
+
+      - name: Build RPM Package
+        continue-on-error: true
+        run: |
+          yarn gulp vscode-linux-x64-prepare-rpm
+          yarn gulp vscode-linux-x64-build-rpm
 
       - name: Upload Linux x64 DEB
         uses: actions/upload-artifact@v4
         with:
           name: azuredatastudio-linux-x64-deb
           path: .build/linux/deb/amd64/deb/*.deb
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Upload Linux x64 RPM
@@ -365,6 +398,7 @@ jobs:
         with:
           name: azuredatastudio-linux-x64-rpm
           path: .build/linux/rpm/x86_64/*.rpm
+          if-no-files-found: warn
           retention-days: 30
 
   linux-arm64:
@@ -431,31 +465,42 @@ jobs:
 
       - name: Create Linux ARM64 tarball
         run: |
-          cd ..
-          tar -czf "${{ github.workspace }}/azuredatastudio-linux-arm64-${{ needs.compile.outputs.version }}.tar.gz" azuredatastudio-linux-arm64
-
-      - name: Build DEB Package
-        run: |
-          yarn gulp vscode-linux-arm64-prepare-deb
-          yarn gulp vscode-linux-arm64-build-deb
-
-      - name: Build RPM Package
-        run: |
-          yarn gulp vscode-linux-arm64-prepare-rpm
-          yarn gulp vscode-linux-arm64-build-rpm
+          version="${{ needs.compile.outputs.version }}"
+          src="${{ github.workspace }}/../azuredatastudio-linux-arm64"
+          out_dir="${{ github.workspace }}/.build/release"
+          tar_path="${out_dir}/azuredatastudio-linux-arm64-${version}.tar.gz"
+          test -d "$src" || { echo "Build output not found: $src"; exit 1; }
+          mkdir -p "$out_dir"
+          tar -czf "$tar_path" -C "$(dirname "$src")" "$(basename "$src")"
+          test -f "$tar_path" || { echo "Tarball was not created: $tar_path"; exit 1; }
 
       - name: Upload Linux ARM64 tarball
         uses: actions/upload-artifact@v4
         with:
           name: azuredatastudio-linux-arm64-tar
-          path: azuredatastudio-linux-arm64-${{ needs.compile.outputs.version }}.tar.gz
+          path: .build/release/azuredatastudio-linux-arm64-${{ needs.compile.outputs.version }}.tar.gz
+          if-no-files-found: error
           retention-days: 30
+
+      # DEB/RPM need Microsoft electron sysroots that may be unavailable; keep tarball as primary artifact
+      - name: Build DEB Package
+        continue-on-error: true
+        run: |
+          yarn gulp vscode-linux-arm64-prepare-deb
+          yarn gulp vscode-linux-arm64-build-deb
+
+      - name: Build RPM Package
+        continue-on-error: true
+        run: |
+          yarn gulp vscode-linux-arm64-prepare-rpm
+          yarn gulp vscode-linux-arm64-build-rpm
 
       - name: Upload Linux ARM64 DEB
         uses: actions/upload-artifact@v4
         with:
           name: azuredatastudio-linux-arm64-deb
           path: .build/linux/deb/arm64/deb/*.deb
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Upload Linux ARM64 RPM
@@ -463,6 +508,7 @@ jobs:
         with:
           name: azuredatastudio-linux-arm64-rpm
           path: .build/linux/rpm/aarch64/*.rpm
+          if-no-files-found: warn
           retention-days: 30
 
   # ============================================================
@@ -532,16 +578,26 @@ jobs:
           security unlock-keychain -p pwd $RUNNER_TEMP/buildagent.keychain
           DISPLAY=:10 ./scripts/test.sh
 
+      # electron productAppName is product.nameLong → ".app" lives inside azuredatastudio-darwin-x64/
       - name: Create macOS x64 ZIP
         run: |
-          cd ..
-          zip -r -y "${{ github.workspace }}/azuredatastudio-darwin-x64-${{ needs.compile.outputs.version }}.zip" "Azure Data Studio.app"
+          version="${{ needs.compile.outputs.version }}"
+          src_dir="${{ github.workspace }}/../azuredatastudio-darwin-x64"
+          out_dir="${{ github.workspace }}/.build/release"
+          zip_path="${out_dir}/azuredatastudio-darwin-x64-${version}.zip"
+          test -d "$src_dir" || { echo "Build output not found: $src_dir"; ls -la "$(dirname "$src_dir")"; exit 1; }
+          app_name=$(find "$src_dir" -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$app_name" || { echo "No .app bundle in $src_dir"; ls -la "$src_dir"; exit 1; }
+          mkdir -p "$out_dir"
+          (cd "$src_dir" && zip -r -y "$zip_path" "$(basename "$app_name")")
+          test -f "$zip_path" || { echo "ZIP was not created: $zip_path"; exit 1; }
 
       - name: Upload macOS x64 ZIP
         uses: actions/upload-artifact@v4
         with:
           name: azuredatastudio-darwin-x64
-          path: azuredatastudio-darwin-x64-${{ needs.compile.outputs.version }}.zip
+          path: .build/release/azuredatastudio-darwin-x64-${{ needs.compile.outputs.version }}.zip
+          if-no-files-found: error
           retention-days: 30
 
   darwin-arm64:
@@ -601,16 +657,26 @@ jobs:
       - name: Build macOS ARM64 Archive
         run: yarn gulp vscode-darwin-arm64-min
 
+      # electron productAppName is product.nameLong → ".app" lives inside azuredatastudio-darwin-arm64/
       - name: Create macOS ARM64 ZIP
         run: |
-          cd ..
-          zip -r -y "${{ github.workspace }}/azuredatastudio-darwin-arm64-${{ needs.compile.outputs.version }}.zip" "Azure Data Studio.app"
+          version="${{ needs.compile.outputs.version }}"
+          src_dir="${{ github.workspace }}/../azuredatastudio-darwin-arm64"
+          out_dir="${{ github.workspace }}/.build/release"
+          zip_path="${out_dir}/azuredatastudio-darwin-arm64-${version}.zip"
+          test -d "$src_dir" || { echo "Build output not found: $src_dir"; ls -la "$(dirname "$src_dir")"; exit 1; }
+          app_name=$(find "$src_dir" -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$app_name" || { echo "No .app bundle in $src_dir"; ls -la "$src_dir"; exit 1; }
+          mkdir -p "$out_dir"
+          (cd "$src_dir" && zip -r -y "$zip_path" "$(basename "$app_name")")
+          test -f "$zip_path" || { echo "ZIP was not created: $zip_path"; exit 1; }
 
       - name: Upload macOS ARM64 ZIP
         uses: actions/upload-artifact@v4
         with:
           name: azuredatastudio-darwin-arm64
-          path: azuredatastudio-darwin-arm64-${{ needs.compile.outputs.version }}.zip
+          path: .build/release/azuredatastudio-darwin-arm64-${{ needs.compile.outputs.version }}.zip
+          if-no-files-found: error
           retention-days: 30
 
   darwin-universal:
@@ -677,14 +743,23 @@ jobs:
 
       - name: Create macOS Universal ZIP
         run: |
-          cd .build/darwin-universal
-          zip -r -y ../../azuredatastudio-darwin-universal-${{ needs.compile.outputs.version }}.zip "Azure Data Studio.app"
+          version="${{ needs.compile.outputs.version }}"
+          src_dir="${{ github.workspace }}/.build/darwin-universal"
+          out_dir="${{ github.workspace }}/.build/release"
+          zip_path="${out_dir}/azuredatastudio-darwin-universal-${version}.zip"
+          test -d "$src_dir" || { echo "Universal build output not found: $src_dir"; exit 1; }
+          app_name=$(find "$src_dir" -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$app_name" || { echo "No .app bundle in $src_dir"; ls -la "$src_dir"; exit 1; }
+          mkdir -p "$out_dir"
+          (cd "$src_dir" && zip -r -y "$zip_path" "$(basename "$app_name")")
+          test -f "$zip_path" || { echo "ZIP was not created: $zip_path"; exit 1; }
 
       - name: Upload macOS Universal ZIP
         uses: actions/upload-artifact@v4
         with:
           name: azuredatastudio-darwin-universal
-          path: azuredatastudio-darwin-universal-${{ needs.compile.outputs.version }}.zip
+          path: .build/release/azuredatastudio-darwin-universal-${{ needs.compile.outputs.version }}.zip
+          if-no-files-found: error
           retention-days: 30
 
   # ============================================================
