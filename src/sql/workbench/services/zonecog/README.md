@@ -29,24 +29,52 @@ The system implements the P-System Membrane Architecture:
 | **Somatic** | Extension & UI interaction | Command Palette, bridge extension, LLM calls |
 | **Autonomic** | Health monitoring & validation | `CognitiveMembraneService`, ECAN rent, error tracking |
 
-### Services (14 total)
+### Services (39 registered singletons)
 
-| Service | Interface | Implementation |
+All services are registered eagerly in `browser/zonecog.contribution.ts`. Issue #111
+Phases A–F surface area is included (see `docs/ZONECOG_FEATURES_STATUS.md`).
+
+| Layer | Interface | Implementation |
 |---|---|---|
-| Zone-Cog Core | `IZoneCogService` | `ZoneCogService` |
-| Hypergraph Store | `IHypergraphStore` | `HypergraphStore` |
-| Cognitive Membrane | `ICognitiveMembraneService` | `CognitiveMembraneService` |
-| LLM Provider | `ILLMProviderService` | `LLMProviderService` |
-| Embodied Cognition | `IEmbodiedCognitionService` | `EmbodiedCognitionService` |
-| Cognitive Workspace | `ICognitiveWorkspaceService` | `CognitiveWorkspaceService` |
-| ECAN Attention | `IECANAttentionService` | `ECANAttentionService` |
-| Cognitive Loop | `ICognitiveLoopService` | `CognitiveLoopService` |
+| Core cognitive | `IZoneCogService` | `ZoneCogService` |
+| Knowledge graph | `IHypergraphStore` | `HypergraphStore` |
+| Membrane (P-System) | `ICognitiveMembraneService` | `CognitiveMembraneService` |
+| LLM routing | `ILLMProviderService` | `LLMProviderService` |
+| Embodied cognition | `IEmbodiedCognitionService` | `EmbodiedCognitionService` |
+| Workspace memory | `ICognitiveWorkspaceService` | `CognitiveWorkspaceService` |
+| ECAN attention | `IECANAttentionService` | `ECANAttentionService` |
+| Cognitive loop | `ICognitiveLoopService` | `CognitiveLoopService` |
+| DTESN reservoir | `IDTESNService` | `DTESNService` |
+| Sensorimotor binding | `ISensorimotorBindingService` | `SensorimotorBindingService` |
+| AAR orchestration | `IAAROrchestrationService` | `AAROrchestrationService` |
+| Hypergraph persistence | `IHypergraphPersistenceService` | `HypergraphPersistenceService` |
+| Schema perception | `ISchemaPerceptionService` | `SchemaPerceptionService` |
+| Aphrodite engine (A) | `IAphroditeService` | `AphroditeService` |
+| SQL analyzer agent | `ISQLAnalyzerAgent` | `SQLAnalyzerAgent` |
+| Schema reasoner agent | `ISchemaReasonerAgent` | `SchemaReasonerAgent` |
+| Performance advisor | `IPerformanceAdvisorAgent` | `PerformanceAdvisorAgent` |
+| Data pattern agent | `IDataPatternAgent` | `DataPatternAgent` |
+| Natural language agent | `INaturalLanguageAgent` | `NaturalLanguageAgent` |
+| Workflow automation | `ICognitiveWorkflowAutomationService` | `CognitiveWorkflowAutomationService` |
 | AGI Studio | `IAgiStudioService` | `AgiStudioService` |
-| Interaction Learning | `IUserInteractionLearningService` | `UserInteractionLearningService` |
-| Cognitive Analytics | `ICognitiveAnalyticsService` | `CognitiveAnalyticsService` |
-| AtomSpace Transport | `IAtomSpaceTransportService` | `AtomSpaceTransportService` |
-| Collaboration Backend | `ICollaborationBackendService` | `CollaborationBackendService` |
-| RocksDB Persistence | `IRocksDbPersistenceService` | `RocksDbPersistenceService` |
+| Interaction learning | `IUserInteractionLearningService` | `UserInteractionLearningService` |
+| Provenance | `ICognitiveProvenanceService` | `CognitiveProvenanceService` |
+| Schema evolution | `ISchemaEvolutionService` | `SchemaEvolutionService` |
+| PLN reasoning | `IPLNReasoningService` | `PLNReasoningService` |
+| Cognitive analytics | `ICognitiveAnalyticsService` | `CognitiveAnalyticsService` |
+| Cognitive insights | `ICognitiveInsightsService` | `CognitiveInsightsService` |
+| Cognitive traces | `ICognitiveTraceService` | `CognitiveTraceService` |
+| Shared cognition | `ISharedCognitionService` | `SharedCognitionService` |
+| Federated query (C) | `IFederatedQueryService` | `FederatedQueryService` |
+| Semantic search (A) | `IHypergraphSemanticSearchService` | `HypergraphSemanticSearchService` |
+| Collaborative reasoning (D) | `ICollaborativeReasoningService` | `CollaborativeReasoningService` |
+| AtomSpace transport (B) | `IAtomSpaceTransportService` | `AtomSpaceTransportService` |
+| Autognosis | `IAutognosisService` | `AutognosisService` |
+| AtomSpace backend (B) | `IAtomSpaceBackendService` | `AtomSpaceBackendService` |
+| Hyperon MeTTa (B) | `IHyperonService` | `HyperonService` |
+| FlareCog mesh (C) | `IFlareCogService` | `FlareCogService` |
+| Collaboration backend (D) | `ICollaborationBackendService` | `CollaborationBackendService` |
+| RocksDB persistence (E) | `IRocksDbPersistenceService` | `RocksDbPersistenceService` |
 
 ### Cognitive Analytics & Telemetry (Phase 6.3)
 
