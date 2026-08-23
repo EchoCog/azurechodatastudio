@@ -10,8 +10,10 @@ For the moment, we require OpenSSL on Windows, where it is not usually installed
 
 1. Install (clone) vcpkg [using their instructions](https://github.com/Microsoft/vcpkg#quick-start-windows)
 1. Add the location of the `vcpkg` directory to your system or user PATH.
-1. Run`vcpkg install openssl:x64-windows-static-md` (after restarting your terminal for PATH changes to apply)
+1. Run `vcpkg install openssl:x64-windows-static-md` (after restarting your terminal for PATH changes to apply)
 1. You should be able to then `cargo build` successfully
+
+Note: local builds use the `static-md` triplet (static OpenSSL, dynamic CRT `/MD`), which matches the default MSVC CRT linkage. Release CI sets `RUSTFLAGS=-C target-feature=+crt-static` and therefore installs `openssl:x64-windows-static` instead so OpenSSL and the Rust binary both use the static CRT (`/MT`). Do not mix `static-md` OpenSSL with `+crt-static` — that produces LNK2019 errors on `__imp_*` CRT symbols.
 
 OpenSSL is needed for the key exchange we do when forwarding Basis tunnels. When all interested Basis clients support ED25519, we would be able to solely use libsodium. At the time of writing however, there is [no active development](https://chromestatus.com/feature/4913922408710144) on this in Chromium.
 
