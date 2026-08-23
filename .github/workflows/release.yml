@@ -173,9 +173,11 @@ jobs:
       - name: Build Windows x64 Archive
         run: yarn gulp vscode-win32-x64-min
 
+      # compiled-artifacts only contain out-build; unit tests must use --build
       - name: Run Unit Tests
         if: ${{ github.event.inputs.skip_tests != 'true' }}
-        run: .\scripts\test.bat
+        timeout-minutes: 45
+        run: .\scripts\test.bat --build
 
       # upload-artifact@v4 rejects paths containing '..'; keep archives under github.workspace
       - name: Create Windows x64 ZIP
@@ -344,14 +346,16 @@ jobs:
       - name: Build Linux x64 Archive
         run: yarn gulp vscode-linux-x64-min
 
+      # compiled-artifacts only contain out-build; unit tests must use --build
       - name: Run Unit Tests
         if: ${{ github.event.inputs.skip_tests != 'true' }}
+        timeout-minutes: 45
         run: |
           sudo cp build/azure-pipelines/linux/xvfb.init /etc/init.d/xvfb
           sudo chmod +x /etc/init.d/xvfb
           sudo update-rc.d xvfb defaults
           sudo service xvfb start
-          DISPLAY=:10 ./scripts/test.sh
+          DISPLAY=:10 ./scripts/test.sh --build
 
       - name: Create Linux x64 tarball
         run: |
@@ -570,13 +574,15 @@ jobs:
       - name: Build macOS x64 Archive
         run: yarn gulp vscode-darwin-x64-min
 
+      # compiled-artifacts only contain out-build; unit tests must use --build
       - name: Run Unit Tests
         if: ${{ github.event.inputs.skip_tests != 'true' }}
+        timeout-minutes: 45
         run: |
           security create-keychain -p pwd $RUNNER_TEMP/buildagent.keychain
           security default-keychain -s $RUNNER_TEMP/buildagent.keychain
           security unlock-keychain -p pwd $RUNNER_TEMP/buildagent.keychain
-          DISPLAY=:10 ./scripts/test.sh
+          DISPLAY=:10 ./scripts/test.sh --build
 
       # electron productAppName is product.nameLong → ".app" lives inside azuredatastudio-darwin-x64/
       - name: Create macOS x64 ZIP
@@ -836,7 +842,10 @@ jobs:
       # openssl-sys on MSVC defaults to the x64-windows-static-md vcpkg triplet
       # (see cli/CONTRIBUTING.md). Explicit OPENSSL_* paths match the upstream
       # azure-pipelines win32 CLI build and avoid silent discovery failures.
+      # Set env in this step AND the build step: GITHUB_ENV alone has failed
+      # to propagate OPENSSL_* to cargo on some runner images.
       - name: Install OpenSSL for Rust dependencies
+        id: openssl
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -864,19 +873,50 @@ jobs:
           if (-not (Test-Path $opensslIncludeDir)) {
             throw "OpenSSL include directory missing after vcpkg install: $opensslIncludeDir"
           }
+          # Confirm static libs cargo/openssl-sys expects are present
+          $libSsl = @(Get-ChildItem -Path $opensslLibDir -Filter "libssl*.lib" -ErrorAction SilentlyContinue)
+          $libCrypto = @(Get-ChildItem -Path $opensslLibDir -Filter "libcrypto*.lib" -ErrorAction SilentlyContinue)
+          if ($libSsl.Count -eq 0 -or $libCrypto.Count -eq 0) {
+            Write-Host "OpenSSL lib directory contents:"
+            Get-ChildItem $opensslLibDir | ForEach-Object { Write-Host "  $($_.Name)" }
+            throw "OpenSSL static libraries (libssl/libcrypto) not found in $opensslLibDir"
+          }
 
-          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "VCPKGRS_TRIPLET=$triplet" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "OPENSSL_DIR=$opensslRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "OPENSSL_LIB_DIR=$opensslLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "OPENSSL_INCLUDE_DIR=$opensslIncludeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Configured OpenSSL for Rust: OPENSSL_DIR=$opensslRoot"
+          # BOM-safe env writes for subsequent steps
+          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$vcpkgRoot"
+          Add-Content -Path $env:GITHUB_ENV -Value "VCPKGRS_TRIPLET=$triplet"
+          Add-Content -Path $env:GITHUB_ENV -Value "OPENSSL_DIR=$opensslRoot"
+          Add-Content -Path $env:GITHUB_ENV -Value "OPENSSL_LIB_DIR=$opensslLibDir"
+          Add-Content -Path $env:GITHUB_ENV -Value "OPENSSL_INCLUDE_DIR=$opensslIncludeDir"
+
+          # Also expose via step outputs so Build CLI can set env: directly
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "vcpkg_root=$vcpkgRoot"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "triplet=$triplet"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "openssl_dir=$opensslRoot"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "openssl_lib_dir=$opensslLibDir"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "openssl_include_dir=$opensslIncludeDir"
+          Write-Host "Configured OpenSSL for Rust: OPENSSL_DIR=$opensslRoot OPENSSL_LIB_DIR=$opensslLibDir"
 
       - name: Build CLI
         working-directory: cli
         shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ steps.openssl.outputs.vcpkg_root }}
+          VCPKGRS_TRIPLET: ${{ steps.openssl.outputs.triplet }}
+          OPENSSL_DIR: ${{ steps.openssl.outputs.openssl_dir }}
+          OPENSSL_LIB_DIR: ${{ steps.openssl.outputs.openssl_lib_dir }}
+          OPENSSL_INCLUDE_DIR: ${{ steps.openssl.outputs.openssl_include_dir }}
+          # Prefer static CRT linking consistent with static-md OpenSSL
+          RUSTFLAGS: "-C target-feature=+crt-static"
         run: |
           $ErrorActionPreference = 'Stop'
+          Write-Host "OPENSSL_DIR=$env:OPENSSL_DIR"
+          Write-Host "OPENSSL_LIB_DIR=$env:OPENSSL_LIB_DIR"
+          Write-Host "OPENSSL_INCLUDE_DIR=$env:OPENSSL_INCLUDE_DIR"
+          Write-Host "VCPKG_ROOT=$env:VCPKG_ROOT"
+          if ([string]::IsNullOrEmpty($env:OPENSSL_LIB_DIR) -or -not (Test-Path $env:OPENSSL_LIB_DIR)) {
+            throw "OPENSSL_LIB_DIR is not set or missing: '$env:OPENSSL_LIB_DIR'"
+          }
           cargo build --release
           if ($LASTEXITCODE -ne 0) {
             throw "cargo build --release failed with exit code $LASTEXITCODE"

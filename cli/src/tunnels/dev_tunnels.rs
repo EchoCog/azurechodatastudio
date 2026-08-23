@@ -356,14 +356,14 @@ impl DevTunnels {
 			}
 		}?;
 
-		let desired_tags = self.get_tags(&name);
-		if is_new || vec_eq_as_set(&full_tunnel.tags, &desired_tags) {
+		let desired_tags = self.get_labels(&name);
+		if is_new || vec_eq_as_set(&full_tunnel.labels, &desired_tags) {
 			return Ok((full_tunnel, persisted));
 		}
 
 		debug!(self.log, "Tunnel name changed, applying updates...");
 
-		full_tunnel.tags = desired_tags;
+		full_tunnel.labels = desired_tags;
 
 		let updated_tunnel = spanf!(
 			self.log,
@@ -478,7 +478,6 @@ impl DevTunnels {
 			let fut = self.client.delete_tunnel_endpoints(
 				&locator,
 				&endpoint.host_id,
-				None,
 				NO_REQUEST_OPTIONS,
 			);
 
@@ -519,16 +518,17 @@ impl DevTunnels {
 				.map_err(|e| wrap(e, "failed to lookup tunnel"))?
 			}
 			None => {
-				let new_tunnel = Tunnel {
-					tags: self.get_tags(name),
-					..Default::default()
-				};
-
 				loop {
 					let result = spanf!(
 						self.log,
 						self.log.span("dev-tunnel.create"),
-						self.client.create_tunnel(&new_tunnel, options)
+						self.client.create_tunnel(
+							Tunnel {
+								labels: self.get_labels(name),
+								..Default::default()
+							},
+							options,
+						)
 					);
 
 					match result {
@@ -576,22 +576,22 @@ impl DevTunnels {
 		Ok((pt, tunnel))
 	}
 
-	/// Gets the expected tunnel tags
-	fn get_tags(&self, name: &str) -> Vec<String> {
-		let mut tags = vec![
+	/// Gets the expected tunnel labels
+	fn get_labels(&self, name: &str) -> Vec<String> {
+		let mut labels = vec![
 			name.to_string(),
 			PROTOCOL_VERSION_TAG.to_string(),
 			self.tag.to_string(),
 		];
 
 		if is_wsl_installed(&self.log) {
-			tags.push("_wsl".to_string())
+			labels.push("_wsl".to_string())
 		}
 
-		tags
+		labels
 	}
 
-	/// Ensures the tunnel contains a tag for the current PROTCOL_VERSION, and no
+	/// Ensures the tunnel contains a label for the current PROTCOL_VERSION, and no
 	/// other version tags.
 	async fn sync_tunnel_tags(
 		&self,
@@ -600,20 +600,20 @@ impl DevTunnels {
 		tunnel: Tunnel,
 		options: &TunnelRequestOptions,
 	) -> Result<Tunnel, AnyError> {
-		let new_tags = self.get_tags(name);
-		if vec_eq_as_set(&tunnel.tags, &new_tags) {
+		let new_labels = self.get_labels(name);
+		if vec_eq_as_set(&tunnel.labels, &new_labels) {
 			return Ok(tunnel);
 		}
 
 		debug!(
 			self.log,
 			"Updating tunnel tags {} -> {}",
-			tunnel.tags.join(", "),
-			new_tags.join(", ")
+			tunnel.labels.join(", "),
+			new_labels.join(", ")
 		);
 
 		let tunnel_update = Tunnel {
-			tags: new_tags,
+			labels: new_labels,
 			tunnel_id: tunnel.tunnel_id.clone(),
 			cluster_id: tunnel.cluster_id.clone(),
 			..Default::default()
@@ -676,7 +676,7 @@ impl DevTunnels {
 			self.log,
 			self.log.span("dev-tunnel.listall"),
 			self.client.list_all_tunnels(&TunnelRequestOptions {
-				tags: tags.iter().map(|t| t.to_string()).collect(),
+				labels: tags.iter().map(|t| t.to_string()).collect(),
 				..Default::default()
 			})
 		)
@@ -690,8 +690,8 @@ impl DevTunnels {
 			self.log,
 			self.log.span("dev-tunnel.rename.search"),
 			self.client.list_all_tunnels(&TunnelRequestOptions {
-				tags: vec![self.tag.to_string(), name.to_string()],
-				require_all_tags: true,
+				labels: vec![self.tag.to_string(), name.to_string()],
+				require_all_labels: true,
 				limit: 1,
 				include_ports: true,
 				token_scopes: vec!["host".to_string()],
@@ -720,7 +720,7 @@ impl DevTunnels {
 				v.status
 					.as_ref()
 					.and_then(|s| s.host_connection_count.as_ref().map(|c| c.get_count()))
-					.unwrap_or(0) > 0 && v.tags.iter().any(|t| t == n)
+					.unwrap_or(0) > 0 && v.labels.iter().any(|t| t == n)
 			})
 		};
 
@@ -1162,6 +1162,7 @@ fn privacy_to_tunnel_acl(privacy: PortPrivacy) -> TunnelAccessControl {
 				is_deny: false,
 				is_inverse: false,
 				organization: None,
+				expiration: None,
 				subjects: vec![],
 				scopes: vec![TUNNEL_ACCESS_SCOPES_CONNECT.to_string()],
 			});
