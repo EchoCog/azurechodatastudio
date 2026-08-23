@@ -521,7 +521,7 @@ jobs:
   darwin-x64:
     name: macOS x64
     needs: compile
-    runs-on: macos-latest
+    runs-on: macos-13
     timeout-minutes: 90
     permissions:
       contents: read
@@ -558,14 +558,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: "**/node_modules"
-          key: ${{ runner.os }}-release-nodeModules-${{ steps.nodeModulesCacheKey.outputs.value }}
-          restore-keys: ${{ runner.os }}-release-nodeModules-
+          key: ${{ runner.os }}-x64-release-nodeModules-${{ steps.nodeModulesCacheKey.outputs.value }}
+          restore-keys: ${{ runner.os }}-x64-release-nodeModules-
 
       - name: Install dependencies
         if: steps.cacheNodeModules.outputs.cache-hit != 'true'
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          npm_config_arch: x64
+          npm_config_target_arch: x64
         run: yarn --frozen-lockfile --network-timeout 180000
 
       - name: Download Electron
