@@ -839,9 +839,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # openssl-sys on MSVC defaults to the x64-windows-static-md vcpkg triplet
-      # (see cli/CONTRIBUTING.md). Explicit OPENSSL_* paths match the upstream
-      # azure-pipelines win32 CLI build and avoid silent discovery failures.
+      # OpenSSL must use the same CRT linkage as Rust. Release builds set
+      # RUSTFLAGS=+crt-static (/MT, libcmt), so install the fully-static vcpkg
+      # triplet x64-windows-static — NOT x64-windows-static-md (/MD). Mixing
+      # static-md OpenSSL with +crt-static causes LNK2019 on __imp_* CRT
+      # symbols (fwrite, time64, etc.). Local dev without +crt-static can still
+      # use static-md per cli/CONTRIBUTING.md.
       # Set env in this step AND the build step: GITHUB_ENV alone has failed
       # to propagate OPENSSL_* to cargo on some runner images.
       - name: Install OpenSSL for Rust dependencies
@@ -858,7 +861,8 @@ jobs:
             throw "vcpkg.exe not found at $vcpkgExe (VCPKG_INSTALLATION_ROOT='$env:VCPKG_INSTALLATION_ROOT')"
           }
 
-          $triplet = "x64-windows-static-md"
+          # Fully static libs + static CRT (/MT) to match RUSTFLAGS=+crt-static
+          $triplet = "x64-windows-static"
           & $vcpkgExe install "openssl:$triplet"
           if ($LASTEXITCODE -ne 0) {
             throw "vcpkg install openssl:$triplet failed with exit code $LASTEXITCODE"
@@ -888,6 +892,7 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "OPENSSL_DIR=$opensslRoot"
           Add-Content -Path $env:GITHUB_ENV -Value "OPENSSL_LIB_DIR=$opensslLibDir"
           Add-Content -Path $env:GITHUB_ENV -Value "OPENSSL_INCLUDE_DIR=$opensslIncludeDir"
+          Add-Content -Path $env:GITHUB_ENV -Value "OPENSSL_STATIC=1"
 
           # Also expose via step outputs so Build CLI can set env: directly
           Add-Content -Path $env:GITHUB_OUTPUT -Value "vcpkg_root=$vcpkgRoot"
@@ -895,7 +900,7 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "openssl_dir=$opensslRoot"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "openssl_lib_dir=$opensslLibDir"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "openssl_include_dir=$opensslIncludeDir"
-          Write-Host "Configured OpenSSL for Rust: OPENSSL_DIR=$opensslRoot OPENSSL_LIB_DIR=$opensslLibDir"
+          Write-Host "Configured OpenSSL for Rust (static CRT): OPENSSL_DIR=$opensslRoot OPENSSL_LIB_DIR=$opensslLibDir triplet=$triplet"
 
       - name: Build CLI
         working-directory: cli
@@ -906,7 +911,9 @@ jobs:
           OPENSSL_DIR: ${{ steps.openssl.outputs.openssl_dir }}
           OPENSSL_LIB_DIR: ${{ steps.openssl.outputs.openssl_lib_dir }}
           OPENSSL_INCLUDE_DIR: ${{ steps.openssl.outputs.openssl_include_dir }}
-          # Prefer static CRT linking consistent with static-md OpenSSL
+          OPENSSL_STATIC: "1"
+          # Static CRT (/MT) — must match x64-windows-static OpenSSL above.
+          # Do not pair +crt-static with x64-windows-static-md (/MD).
           RUSTFLAGS: "-C target-feature=+crt-static"
         run: |
           $ErrorActionPreference = 'Stop'
@@ -914,6 +921,9 @@ jobs:
           Write-Host "OPENSSL_LIB_DIR=$env:OPENSSL_LIB_DIR"
           Write-Host "OPENSSL_INCLUDE_DIR=$env:OPENSSL_INCLUDE_DIR"
           Write-Host "VCPKG_ROOT=$env:VCPKG_ROOT"
+          Write-Host "VCPKGRS_TRIPLET=$env:VCPKGRS_TRIPLET"
+          Write-Host "OPENSSL_STATIC=$env:OPENSSL_STATIC"
+          Write-Host "RUSTFLAGS=$env:RUSTFLAGS"
           if ([string]::IsNullOrEmpty($env:OPENSSL_LIB_DIR) -or -not (Test-Path $env:OPENSSL_LIB_DIR)) {
             throw "OPENSSL_LIB_DIR is not set or missing: '$env:OPENSSL_LIB_DIR'"
           }
