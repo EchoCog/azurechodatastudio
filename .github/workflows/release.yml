@@ -778,6 +778,16 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install OpenSSL for Rust dependencies
+        shell: pwsh
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if ([string]::IsNullOrEmpty($vcpkgRoot)) {
+            $vcpkgRoot = "C:\vcpkg"
+          }
+          & "$vcpkgRoot\vcpkg.exe" install openssl:x64-windows
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Build CLI
         working-directory: cli
         run: |
