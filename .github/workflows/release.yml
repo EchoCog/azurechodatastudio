@@ -839,8 +839,9 @@ jobs:
           if ([string]::IsNullOrEmpty($vcpkgRoot)) {
             $vcpkgRoot = "C:\vcpkg"
           }
-          & "$vcpkgRoot\vcpkg.exe" install openssl:x64-windows
+          & "$vcpkgRoot\vcpkg.exe" install openssl:x64-windows-static-md
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build CLI
         working-directory: cli
