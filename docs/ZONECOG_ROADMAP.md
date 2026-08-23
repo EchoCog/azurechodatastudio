@@ -1,8 +1,8 @@
 # ZoneCog Development Roadmap
 
 **Ticket**: ECH-4  
-**Status**: Active  
-**Last Updated**: 2026-08-15
+**Status**: Complete (Phases 1–5 + Features Plan A–F)  
+**Last Updated**: 2026-08-23
 
 ## Phase Overview
 
@@ -16,6 +16,27 @@
 | 4 | Workbench UX | **Complete** | Visual cognitive maps, interactive exploration |
 | 4.5 | Release Infrastructure | **Complete** (ECH-61) | Multi-platform builds, CI/CD, quality gates |
 | 5 | Post-ADS Migration | **Complete** | VS Code standalone, portable cognitive workbench, Hyperon/FlareCog mesh |
+
+## Features & Functions Plan (Issue #111 / ECH-77) — Complete
+
+Umbrella plan covering post-core Phase A–F work. Individual tickets and the
+detailed completion matrix live in [`docs/ZONECOG_FEATURES_STATUS.md`](ZONECOG_FEATURES_STATUS.md).
+
+| Plan phase | Ticket | Status | Highlights |
+|---|---|---|---|
+| A Aphrodite deep integration | #77 | **Complete** | LoRA, telemetry, A/B, fallback, embeddings, streaming |
+| B Hyperon AtomSpace backend | #78 | **Complete** | Native atoms, MeTTa, Rocks store, Python bridge sync |
+| C FlareCog distributed cognition | #79 / #76 | **Complete** | Mesh transport, federation, remote AAR, cluster loop |
+| D Multi-user workspaces | #80 | **Complete** | WebSocket/OT collaboration backend + commands |
+| E Enhanced persistence | #81 | **Complete** | RocksDB, tiered storage, export, backup, cloud |
+| F Marketplace publishing | #82 | **Complete** | zonecog-bridge packaging + tag-driven publish CI |
+
+Verification: `bash scripts/test-zonecog-smoke.sh` (39 registered services, 78 actions).
+
+Operational note: live VS Code Marketplace / Open VSX publication still requires
+configuring the `zonecog-bridge-publish` environment secrets (`VSCE_PAT` /
+`OVSX_PAT`) and pushing a `zonecog-bridge-vX.Y.Z` tag — packaging and pipeline
+code are complete (see `docs/ZONECOG_BRIDGE_PUBLISHING.md`).
 
 ---
 
@@ -32,7 +53,7 @@
 
 ---
 
-## Phase 2: Cognitive Core (In Progress)
+## Phase 2: Cognitive Core (Complete)
 
 **Tickets**: ECH-3, ECH-4, ECH-5  
 **Goal**: Transform the scaffold into a fully functional cognitive processing engine.
