@@ -823,7 +823,8 @@ jobs:
     name: CLI Windows
     needs: compile
     runs-on: windows-2022
-    timeout-minutes: 30
+    # OpenSSL via vcpkg is built from source (~8+ min) before cargo build.
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -832,23 +833,60 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # openssl-sys on MSVC defaults to the x64-windows-static-md vcpkg triplet
+      # (see cli/CONTRIBUTING.md). Explicit OPENSSL_* paths match the upstream
+      # azure-pipelines win32 CLI build and avoid silent discovery failures.
       - name: Install OpenSSL for Rust dependencies
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
           if ([string]::IsNullOrEmpty($vcpkgRoot)) {
             $vcpkgRoot = "C:\vcpkg"
           }
-          & "$vcpkgRoot\vcpkg.exe" install openssl:x64-windows-static-md
+          $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
+          if (-not (Test-Path $vcpkgExe)) {
+            throw "vcpkg.exe not found at $vcpkgExe (VCPKG_INSTALLATION_ROOT='$env:VCPKG_INSTALLATION_ROOT')"
+          }
+
+          $triplet = "x64-windows-static-md"
+          & $vcpkgExe install "openssl:$triplet"
+          if ($LASTEXITCODE -ne 0) {
+            throw "vcpkg install openssl:$triplet failed with exit code $LASTEXITCODE"
+          }
+
+          $opensslRoot = Join-Path $vcpkgRoot "installed\$triplet"
+          $opensslLibDir = Join-Path $opensslRoot "lib"
+          $opensslIncludeDir = Join-Path $opensslRoot "include"
+          if (-not (Test-Path $opensslLibDir)) {
+            throw "OpenSSL lib directory missing after vcpkg install: $opensslLibDir"
+          }
+          if (-not (Test-Path $opensslIncludeDir)) {
+            throw "OpenSSL include directory missing after vcpkg install: $opensslIncludeDir"
+          }
+
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "VCPKGRS_TRIPLET=$triplet" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENSSL_DIR=$opensslRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENSSL_LIB_DIR=$opensslLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENSSL_INCLUDE_DIR=$opensslIncludeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Configured OpenSSL for Rust: OPENSSL_DIR=$opensslRoot"
 
       - name: Build CLI
         working-directory: cli
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           cargo build --release
-          mkdir -Force ../dist
-          cp target/release/code.exe ../dist/azuredatastudio-cli-win32-x64.exe
+          if ($LASTEXITCODE -ne 0) {
+            throw "cargo build --release failed with exit code $LASTEXITCODE"
+          }
+          $cliExe = "target/release/code.exe"
+          if (-not (Test-Path $cliExe)) {
+            throw "CLI binary was not produced at $cliExe"
+          }
+          New-Item -ItemType Directory -Force -Path ../dist | Out-Null
+          Copy-Item $cliExe ../dist/azuredatastudio-cli-win32-x64.exe -Force
 
       - name: Upload CLI
         uses: actions/upload-artifact@v4
