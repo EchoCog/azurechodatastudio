@@ -19,7 +19,7 @@ echo ""
 
 # Count ZoneCog services
 echo "1. Verifying ZoneCog services registration..."
-EXPECTED_SERVICES=33
+EXPECTED_SERVICES=40
 ACTUAL_SERVICES=$(grep -c "^registerSingleton" src/sql/workbench/services/zonecog/browser/zonecog.contribution.ts || echo "0")
 
 if [ "$ACTUAL_SERVICES" -ge "$EXPECTED_SERVICES" ]; then
@@ -103,14 +103,59 @@ done
 echo ""
 echo "4. Verifying Command Palette actions..."
 ACTIONS_FILE="src/sql/workbench/contrib/zonecog/browser/zonecogActions.contribution.ts"
+HOST_ACTIONS_FILE="src/sql/workbench/contrib/zonecog/browser/zonecogHostIntegration.contribution.ts"
 if [ -f "$ACTIONS_FILE" ]; then
 	ACTION_COUNT=$(grep -c "registerAction2" "$ACTIONS_FILE" || echo "0")
-	echo "   ✓ $ACTION_COUNT actions registered"
+	HOST_ACTION_COUNT=$(grep -c "registerAction2" "$HOST_ACTIONS_FILE" || echo "0")
+	TOTAL_ACTIONS=$((ACTION_COUNT + HOST_ACTION_COUNT))
+	if [ "$TOTAL_ACTIONS" -ge 80 ]; then
+		echo "   ✓ $TOTAL_ACTIONS actions registered ($ACTION_COUNT core + $HOST_ACTION_COUNT host integration)"
+	else
+		# allow-any-unicode-next-line
+		echo "   ✗ Found $TOTAL_ACTIONS actions (expected >= 80)"
+		exit 1
+	fi
 else
 	# allow-any-unicode-next-line
 	echo "   ✗ Actions contribution file missing"
 	exit 1
 fi
+
+# Verify visualization views are registered in the panel contribution
+echo ""
+echo "4b. Verifying hypergraph visualization views..."
+PANEL_FILE="src/sql/workbench/contrib/zonecog/browser/zonecogPanel.contribution.ts"
+VIZ_VIEWS=(
+	"HypergraphExplorerView"
+	"ECANAttentionHeatmapView"
+	"ThinkingTimelineView"
+	"MembraneTriadDiagramView"
+	"EpisodicTimelineView"
+	"DTESNReservoirAnimationView"
+	"AAROrchestrationGraphView"
+	"ProvenanceChainExplorerView"
+	"PLNInferenceVisualizerView"
+)
+for VIEW in "${VIZ_VIEWS[@]}"; do
+	if grep -q "SyncDescriptor($VIEW)" "$PANEL_FILE"; then
+		echo "   ✓ $VIEW registered"
+	else
+		# allow-any-unicode-next-line
+		echo "   ✗ $VIEW not registered in $PANEL_FILE"
+		exit 1
+	fi
+done
+
+# Verify the shared visualization service files exist
+for VIZ_FILE in "common/hypergraphVisualization.ts" "browser/hypergraphVisualizationService.ts" "test/browser/hypergraphVisualizationService.test.ts"; do
+	if [ -f "src/sql/workbench/services/zonecog/$VIZ_FILE" ]; then
+		echo "   ✓ $VIZ_FILE"
+	else
+		# allow-any-unicode-next-line
+		echo "   ✗ $VIZ_FILE (MISSING)"
+		exit 1
+	fi
+done
 
 # Verify product.json ZoneCog configuration
 echo ""

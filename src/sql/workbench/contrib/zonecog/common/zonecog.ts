@@ -45,3 +45,27 @@ export const ZONECOG_MEMORY_VIEW_ID = 'zonecog.memoryView';
 
 /** Schema-to-cognition map view ID. */
 export const ZONECOG_SCHEMA_MAP_VIEW_ID = 'zonecog.schemaMapView';
+
+/** ECAN attention heatmap canvas view ID. */
+export const ZONECOG_ATTENTION_HEATMAP_VIEW_ID = 'zonecog.attentionHeatmapView';
+
+/** Thinking-phase swim-lane timeline view ID. */
+export const ZONECOG_THINKING_TIMELINE_VIEW_ID = 'zonecog.thinkingTimelineView';
+
+/** Membrane triad health diagram view ID. */
+export const ZONECOG_MEMBRANE_DIAGRAM_VIEW_ID = 'zonecog.membraneDiagramView';
+
+/** Episodic memory timeline view ID. */
+export const ZONECOG_EPISODE_TIMELINE_VIEW_ID = 'zonecog.episodeTimelineView';
+
+/** DTESN reservoir animation view ID. */
+export const ZONECOG_RESERVOIR_VIEW_ID = 'zonecog.reservoirView';
+
+/** AAR orchestration graph view ID. */
+export const ZONECOG_AAR_GRAPH_VIEW_ID = 'zonecog.aarGraphView';
+
+/** Provenance chain explorer view ID. */
+export const ZONECOG_PROVENANCE_VIEW_ID = 'zonecog.provenanceView';
+
+/** PLN inference visualizer view ID. */
+export const ZONECOG_INFERENCE_VIEW_ID = 'zonecog.inferenceView';

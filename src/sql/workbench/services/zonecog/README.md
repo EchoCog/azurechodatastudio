@@ -29,7 +29,7 @@ The system implements the P-System Membrane Architecture:
 | **Somatic** | Extension & UI interaction | Command Palette, bridge extension, LLM calls |
 | **Autonomic** | Health monitoring & validation | `CognitiveMembraneService`, ECAN rent, error tracking |
 
-### Services (39 registered singletons)
+### Services (40 registered singletons)
 
 All services are registered eagerly in `browser/zonecog.contribution.ts`. Issue #111
 Phases A–F surface area is included (see `docs/ZONECOG_FEATURES_STATUS.md`).
@@ -75,6 +75,23 @@ Phases A–F surface area is included (see `docs/ZONECOG_FEATURES_STATUS.md`).
 | FlareCog mesh (C) | `IFlareCogService` | `FlareCogService` |
 | Collaboration backend (D) | `ICollaborationBackendService` | `CollaborationBackendService` |
 | RocksDB persistence (E) | `IRocksDbPersistenceService` | `RocksDbPersistenceService` |
+| Hypergraph visualization (6) | `IHypergraphVisualizationService` | `HypergraphVisualizationService` |
+
+### Hypergraph Visualization & Animation Suite (Phase 6)
+
+The `IHypergraphVisualizationService` is the shared rendering substrate for
+every Zone-Cog view: one force-directed simulation over the hypergraph store
+(layout persistence, top-salience node budgets), a node-type color registry,
+a cross-view selection bus (`focusNode`), and pulse/decay/flow/trail
+animation channels driven by a single requestAnimationFrame clock with
+per-renderer viewport culling and a low-power mode.
+
+Nine animated panel views build on it (Hypergraph Explorer, Attention
+Heatmap, Thinking Timeline, Membrane Triads, Episode Timeline, DTESN
+Reservoir, AAR Graph, Provenance Chains, PLN Inference), and host-feature
+integrations perceive connection/editor/Object-Explorer activity into the
+hypergraph with live animations. Full catalogue:
+[`docs/ZONECOG_VISUALIZATIONS.md`](../../../../../../docs/ZONECOG_VISUALIZATIONS.md).
 
 ### Cognitive Analytics & Telemetry (Phase 6.3)
 
