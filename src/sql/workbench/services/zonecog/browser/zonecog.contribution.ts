@@ -76,6 +76,8 @@ import { ICollaborationBackendService } from 'sql/workbench/services/zonecog/com
 import { CollaborationBackendService } from 'sql/workbench/services/zonecog/browser/collaborationBackendService';
 import { IRocksDbPersistenceService } from 'sql/workbench/services/zonecog/common/rocksDbPersistence';
 import { RocksDbPersistenceService } from 'sql/workbench/services/zonecog/browser/rocksDbPersistenceService';
+import { IHypergraphVisualizationService } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
+import { HypergraphVisualizationService } from 'sql/workbench/services/zonecog/browser/hypergraphVisualizationService';
 
 // Register the Hypergraph store (dependency of ZoneCogService)
 registerSingleton(IHypergraphStore, HypergraphStore, InstantiationType.Eager);
@@ -254,3 +256,9 @@ registerSingleton(ICollaborationBackendService, CollaborationBackendService, Ins
 // compaction control, and backup/restore; closes Phase E.1 "RocksDB Backend
 // Option")
 registerSingleton(IRocksDbPersistenceService, RocksDbPersistenceService, InstantiationType.Eager);
+
+// Register the Hypergraph Visualization service (shared force-directed
+// simulation core, node-type color registry, cross-view selection bus, and
+// pulse/decay/flow/trail animation channels on a single requestAnimationFrame
+// clock with viewport culling; backs every hypergraph visualization view)
+registerSingleton(IHypergraphVisualizationService, HypergraphVisualizationService, InstantiationType.Eager);

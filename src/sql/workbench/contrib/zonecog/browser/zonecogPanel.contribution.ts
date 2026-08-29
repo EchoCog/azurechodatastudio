@@ -31,6 +31,14 @@ import {
 	ZONECOG_HYPERGRAPH_VIEW_ID,
 	ZONECOG_MEMORY_VIEW_ID,
 	ZONECOG_SCHEMA_MAP_VIEW_ID,
+	ZONECOG_ATTENTION_HEATMAP_VIEW_ID,
+	ZONECOG_THINKING_TIMELINE_VIEW_ID,
+	ZONECOG_MEMBRANE_DIAGRAM_VIEW_ID,
+	ZONECOG_EPISODE_TIMELINE_VIEW_ID,
+	ZONECOG_RESERVOIR_VIEW_ID,
+	ZONECOG_AAR_GRAPH_VIEW_ID,
+	ZONECOG_PROVENANCE_VIEW_ID,
+	ZONECOG_INFERENCE_VIEW_ID,
 } from 'sql/workbench/contrib/zonecog/common/zonecog';
 import { CognitiveStateView, MembraneHealthView } from 'sql/workbench/contrib/zonecog/browser/zonecogViews';
 import { ThinkingProcessView } from 'sql/workbench/contrib/zonecog/browser/zonecogThinkingView';
@@ -40,6 +48,8 @@ import { SchemaCognitionMapView } from 'sql/workbench/contrib/zonecog/browser/zo
 import { ECANAttentionView, WorkingMemoryView } from 'sql/workbench/contrib/zonecog/browser/zonecogAttentionViews';
 import { DTESNNetworkView, AAROrchestrationView, CognitiveWorkflowsView } from 'sql/workbench/contrib/zonecog/browser/zonecogAdvancedViews';
 import { AgiStudioView } from 'sql/workbench/contrib/zonecog/browser/agiStudioView';
+import { ECANAttentionHeatmapView, MembraneTriadDiagramView, DTESNReservoirAnimationView, AAROrchestrationGraphView } from 'sql/workbench/contrib/zonecog/browser/zonecogVisualizationViews';
+import { ThinkingTimelineView, EpisodicTimelineView, ProvenanceChainExplorerView, PLNInferenceVisualizerView } from 'sql/workbench/contrib/zonecog/browser/zonecogInsightViews';
 import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
 import { IHypergraphStore } from 'sql/workbench/services/zonecog/common/zonecogService';
 
@@ -230,6 +240,70 @@ Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews
 		canMoveView: false,
 		ctorDescriptor: new SyncDescriptor(SchemaCognitionMapView),
 		order: 12,
+	},
+	{
+		id: ZONECOG_ATTENTION_HEATMAP_VIEW_ID,
+		name: localize('zonecog.attentionHeatmapView', 'Attention Heatmap'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(ECANAttentionHeatmapView),
+		order: 13,
+	},
+	{
+		id: ZONECOG_THINKING_TIMELINE_VIEW_ID,
+		name: localize('zonecog.thinkingTimelineView', 'Thinking Timeline'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(ThinkingTimelineView),
+		order: 14,
+	},
+	{
+		id: ZONECOG_MEMBRANE_DIAGRAM_VIEW_ID,
+		name: localize('zonecog.membraneDiagramView', 'Membrane Triads'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(MembraneTriadDiagramView),
+		order: 15,
+	},
+	{
+		id: ZONECOG_EPISODE_TIMELINE_VIEW_ID,
+		name: localize('zonecog.episodeTimelineView', 'Episode Timeline'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(EpisodicTimelineView),
+		order: 16,
+	},
+	{
+		id: ZONECOG_RESERVOIR_VIEW_ID,
+		name: localize('zonecog.reservoirView', 'DTESN Reservoir'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(DTESNReservoirAnimationView),
+		order: 17,
+	},
+	{
+		id: ZONECOG_AAR_GRAPH_VIEW_ID,
+		name: localize('zonecog.aarGraphView', 'AAR Graph'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(AAROrchestrationGraphView),
+		order: 18,
+	},
+	{
+		id: ZONECOG_PROVENANCE_VIEW_ID,
+		name: localize('zonecog.provenanceView', 'Provenance Chains'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(ProvenanceChainExplorerView),
+		order: 19,
+	},
+	{
+		id: ZONECOG_INFERENCE_VIEW_ID,
+		name: localize('zonecog.inferenceView', 'PLN Inference'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(PLNInferenceVisualizerView),
+		order: 20,
 	},
 ], VIEW_CONTAINER);
 

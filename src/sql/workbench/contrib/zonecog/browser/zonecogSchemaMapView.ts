@@ -21,6 +21,8 @@ import { RunOnceScheduler } from 'vs/base/common/async';
 import { ISchemaPerceptionService } from 'sql/workbench/services/zonecog/common/schemaPerception';
 import { ISchemaEvolutionService } from 'sql/workbench/services/zonecog/common/schemaEvolution';
 import { IHypergraphStore } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { IHypergraphVisualizationService } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
+import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
 
 /** Tables listed per connection. */
 const MAX_TABLES = 25;
@@ -51,7 +53,9 @@ export class SchemaCognitionMapView extends ViewPane {
 		@IThemeService themeService: IThemeService,
 		@ISchemaPerceptionService private readonly schemaPerception: ISchemaPerceptionService,
 		@ISchemaEvolutionService private readonly schemaEvolution: ISchemaEvolutionService,
-		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore
+		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
+		@IHypergraphVisualizationService private readonly visualizationService: IHypergraphVisualizationService,
+		@ICognitiveProvenanceService private readonly provenanceService: ICognitiveProvenanceService
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, telemetryService);
 	}
@@ -64,6 +68,7 @@ export class SchemaCognitionMapView extends ViewPane {
 		this._register(this.schemaPerception.onDidPerceiveSchema(() => scheduler.schedule()));
 		this._register(this.schemaEvolution.onDidDetectSchemaChanges(() => scheduler.schedule()));
 		this._register(this.hypergraphStore.onDidChangeNode(() => scheduler.schedule()));
+		this._register(this.provenanceService.onDidRecordDecision(() => scheduler.schedule()));
 
 		this._refresh();
 	}
@@ -98,18 +103,41 @@ export class SchemaCognitionMapView extends ViewPane {
 			}
 
 			const changes = this.schemaEvolution.getChangeHistory(connectionUri);
+			const decisions = this.provenanceService.getAuditTrail({ limit: 50 });
 			const list = append(section, $('.zonecog-wm-list'));
 			for (const table of tables) {
 				const cognitionCount = nodeContents.reduce((acc, content) => acc + (content.includes(table.name) ? 1 : 0), 0);
 				const changeCount = changes.reduce((acc, change) => acc + (change.elementId === table.id ? 1 : 0), 0);
+				// Cognition overlay: decisions whose summary/rationale/evidence
+				// references this table form a provenance trail.
+				const provenanceCount = decisions.reduce((acc, d) =>
+					acc + (d.summary.includes(table.name) || d.rationale?.includes(table.name) ? 1 : 0), 0);
 
 				const item = append(list, $('.zonecog-wm-item'));
 				append(item, $('.zonecog-wm-category')).textContent = localize('zonecog.tableBadge', 'Table');
 				const content = append(item, $('.zonecog-wm-content'));
 				content.textContent = table.qualifiedName;
 				content.title = table.qualifiedName;
-				append(item, $('.zonecog-wm-relevance')).textContent = localize('zonecog.schemaMapCounts', '{0} nodes · {1} changes',
-					cognitionCount, changeCount);
+				append(item, $('.zonecog-wm-relevance')).textContent = localize('zonecog.schemaMapCountsFull', '{0} nodes · {1} changes · {2} decisions',
+					cognitionCount, changeCount, provenanceCount);
+				item.tabIndex = 0;
+				const focusTable = () => {
+					// Focus the most salient hypergraph node mentioning this table
+					// so all shared views highlight the table's cognition subgraph.
+					const match = this.hypergraphStore.getAllNodes()
+						.filter(n => n.content.includes(table.name))
+						.sort((a, b) => b.salience_score - a.salience_score)[0];
+					if (match) {
+						this.visualizationService.focusNode(match.id, 'schemaMap');
+					}
+				};
+				item.addEventListener('click', focusTable);
+				item.addEventListener('keydown', (e: KeyboardEvent) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						focusTable();
+						e.preventDefault();
+					}
+				});
 			}
 		}
 	}

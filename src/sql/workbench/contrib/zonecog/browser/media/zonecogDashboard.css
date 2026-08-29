@@ -852,3 +852,216 @@
 	height: 8px;
 	border-radius: 50%;
 }
+
+/* Hypergraph explorer toolbar (search + filters) */
+.zonecog-hypergraph-toolbar {
+	display: flex;
+	gap: 6px;
+	padding: 4px 2px;
+}
+
+.zonecog-hypergraph-search {
+	flex: 1;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+	border-radius: 3px;
+	padding: 3px 6px;
+	font-size: 11px;
+}
+
+.zonecog-hypergraph-filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	padding: 2px 2px 4px 2px;
+}
+
+.zonecog-hypergraph-chip {
+	font-size: 9px;
+	padding: 1px 7px;
+	border-radius: 8px;
+	cursor: pointer;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	user-select: none;
+}
+
+.zonecog-hypergraph-chip-off {
+	opacity: 0.35;
+	text-decoration: line-through;
+}
+
+.zonecog-hypergraph-tooltip {
+	position: absolute;
+	z-index: 10;
+	max-width: 260px;
+	white-space: pre-wrap;
+	font-size: 10px;
+	padding: 5px 8px;
+	border-radius: 4px;
+	pointer-events: none;
+	background: var(--vscode-editorHoverWidget-background);
+	color: var(--vscode-editorHoverWidget-foreground);
+	border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-panel-border));
+}
+
+.zonecog-hypergraph-detail {
+	padding: 6px;
+	margin-top: 4px;
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	background: var(--vscode-editor-background);
+}
+
+.zonecog-hypergraph-detail-type {
+	font-size: 9px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-hypergraph-detail-body {
+	font-size: 11px;
+	margin: 4px 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.zonecog-hypergraph-detail-meta {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* ECAN attention heatmap */
+.zonecog-heatmap-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.zonecog-heatmap-stats {
+	font-size: 9px;
+	padding: 4px 2px;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Thinking timeline swim lanes */
+.zonecog-timeline-lanes {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 4px 2px;
+}
+
+.zonecog-timeline-lane {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	border-left: 2px solid var(--vscode-panel-border);
+	padding-left: 6px;
+}
+
+.zonecog-timeline-bar {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 2px 6px;
+	border-radius: 3px;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	font-size: 9px;
+	animation: zonecog-timeline-in 0.25s ease-out;
+}
+
+@keyframes zonecog-timeline-in {
+	from { transform: scaleX(0); opacity: 0; }
+	to { transform: scaleX(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.zonecog-timeline-bar { animation: none; }
+}
+
+.zonecog-timeline-bar-label {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.zonecog-timeline-bar-duration {
+	opacity: 0.8;
+}
+
+/* Episodic timeline scrubber */
+.zonecog-timeline-controls {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 2px;
+}
+
+.zonecog-timeline-scrub-label {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-timeline-scrubber {
+	flex: 1;
+}
+
+.zonecog-timeline-detail {
+	padding: 6px;
+	margin: 4px 0;
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 4px;
+	background: var(--vscode-editor-background);
+}
+
+.zonecog-timeline-detail-title {
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.zonecog-timeline-detail-body {
+	font-size: 10px;
+	margin-top: 3px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* Provenance chain explorer */
+.zonecog-provenance-chain {
+	padding: 4px 2px;
+}
+
+.zonecog-provenance-hop {
+	margin: 3px 0;
+	padding: 4px 6px;
+	border-left: 3px solid var(--vscode-textLink-foreground, #3794ff);
+	background: var(--vscode-editor-background);
+	border-radius: 3px;
+}
+
+.zonecog-provenance-hop-type {
+	font-size: 9px;
+	font-weight: 600;
+	text-transform: uppercase;
+	color: var(--vscode-descriptionForeground);
+}
+
+.zonecog-provenance-hop-body {
+	font-size: 10px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* Membrane triad diagram + reservoir + AAR graph canvases reuse .zonecog-hypergraph-canvas */
+.zonecog-membrane-diagram,
+.zonecog-reservoir-view,
+.zonecog-aar-graph {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
