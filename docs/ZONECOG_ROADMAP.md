@@ -16,6 +16,7 @@
 | 4 | Workbench UX | **Complete** | Visual cognitive maps, interactive exploration |
 | 4.5 | Release Infrastructure | **Complete** (ECH-61) | Multi-platform builds, CI/CD, quality gates |
 | 5 | Post-ADS Migration | **Complete** | VS Code standalone, portable cognitive workbench, Hyperon/FlareCog mesh |
+| 6 | Visual Integration | **In Progress** | Shared hypergraph visualization engine, animated view suite, host-feature perception |
 
 ## Features & Functions Plan (Issue #111 / ECH-77) — Complete
 
@@ -306,6 +307,52 @@ code are complete (see `docs/ZONECOG_BRIDGE_PUBLISHING.md`).
 - [x] RocksDB backend option (`E.1`) — dual surface: (1) `IRocksDbPersistenceService` / `RocksDbPersistenceService` exposes a RocksDB-style KV API (column families, range queries, bloom filters, batch writes, secondary indices, compaction, backup/restore); (2) `RocksDbEngine` is a production RocksDB-compatible LSM (column families for nodes/links/indices/warm/cold/snapshots/changelog, memtable + SSTables, leveled compaction, ordered range/prefix scans, bloom filters backed by `WebAssembly.Memory`) with optional IndexedDB durability, used by `HypergraphPersistenceService.setBackend('rocksdb')` and the standalone `RocksDbHypergraphPersistenceService` (`IHypergraphPersistenceService`). Backend selection: `setBackend('rocksdb'|'indexeddb'|'atomspace')`
 - [x] Incremental backup/restore (remainder of `E.3`) — `createBackup()`/`exportBackupJson()` produce a portable JSON `HypergraphBackup`, full or (given a `sinceTimestamp`) an incremental delta of just the nodes/links upserted since then, computed from an append-only changelog fed by `IHypergraphStore.onDidChangeNode`/`onDidChangeLink`; `importBackup()`/`importBackupJson()` apply one by upserting into the live hypergraph and hot tier. Deltas only cover upserts (removal outside this service isn't observable via those events, so periodic full backups remain the source of truth for deletions)
 - [x] Optional cloud storage integration (remainder of `E.3`) — `configureCloudStorage()` enables an HTTP PUT/GET backup endpoint (bearer auth optional); `uploadBackupToCloud()` / `downloadBackupFromCloud()` / `listCloudBackups()` round-trip `HypergraphBackup` JSON. Disabled until configured; Command Palette action `Zone-Cog: Upload Hypergraph Backup to Cloud`
+
+---
+
+## Phase 6: Visual Integration (In Progress)
+
+**Goal**: A comprehensive suite of hypergraph visualizations and animations
+with deep ZoneCog orchestration integration into every Data Studio feature.
+
+### 6.1 Shared visualization foundation
+- [x] `IHypergraphVisualizationService` — shared force-directed simulation
+  core (layout persistence, node budgets), node-type color registry,
+  cross-view selection bus, pulse/decay/flow/trail animation channels on a
+  single requestAnimationFrame clock with viewport culling and low-power mode
+
+### 6.2 Visualization view suite
+- [x] Hypergraph Explorer upgrades — hover tooltips, click-to-inspect detail
+  pane, node dragging (pin), zoom/pan, node-type filter chips, semantic
+  search box (`IHypergraphSemanticSearchService`), link-type edge styling,
+  keyboard navigation (arrow walk / Enter inspect / Escape clear)
+- [x] ECAN Attention Heatmap — STI heat overlay, focus-boundary glow,
+  spread/rent animation packets
+- [x] Thinking-phase swim-lane timeline (live + trace replay)
+- [x] Membrane triad health diagram with activity-driven pulsing and
+  inter-membrane flow packets
+- [x] Episodic memory time-scrubber with hypergraph re-highlighting
+- [x] DTESN reservoir live activation scatter + spectral gauges + MSE sparkline
+- [x] AAR orchestration graph with task-path message flow
+- [x] Provenance chain explorer with step-through animation
+- [x] PLN inference stream with materializing deduction edges
+- [x] Schema-Cognition Map cognition overlay + provenance trail counts +
+  click-to-focus deep links
+
+### 6.3 Host-feature integration
+- [x] Connection lifecycle → sensory percepts + pulse animations
+- [x] Editor activation → throttled interaction percepts
+- [x] Object Explorer context menu "Show in Hypergraph"
+- [x] Command Palette: `zonecog.focusNode`, `zonecog.visualize.openView`,
+  `zonecog.visualize.exportSnapshot` (JSON), `zonecog.visualize.exportImage`
+  (PNG), `zonecog.visualize.toggleLowPower`
+- [ ] Dashboard ZoneCog tab with mini hypergraph/membrane/heatmap widgets
+- [ ] Notebook cell output renderer for hypergraph snapshots
+- [ ] Execution-plan cognition overlay ("Explain with cognition")
+- [ ] Profiler live event-flow animation
+- [ ] Edit Data provenance-linked cell-edit nodes
+
+Catalogue and integration details: [`docs/ZONECOG_VISUALIZATIONS.md`](ZONECOG_VISUALIZATIONS.md).
 
 ---
 

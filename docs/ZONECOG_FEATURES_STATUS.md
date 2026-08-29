@@ -82,10 +82,20 @@ file is the source of truth for completion evidence.
 
 ## Registration & quality gates
 
-- Singletons: `src/sql/workbench/services/zonecog/browser/zonecog.contribution.ts` (39 `registerSingleton` calls)
-- Actions: `src/sql/workbench/contrib/zonecog/browser/zonecogActions.contribution.ts` (78 actions)
-- Unit tests: `src/sql/workbench/services/zonecog/test/browser/` (40+ suites)
+- Singletons: `src/sql/workbench/services/zonecog/browser/zonecog.contribution.ts` (40 `registerSingleton` calls, incl. `IHypergraphVisualizationService`)
+- Actions: `src/sql/workbench/contrib/zonecog/browser/zonecogActions.contribution.ts` (78 actions) + `zonecogHostIntegration.contribution.ts` (7 visualization/focus/export actions)
+- Views: `src/sql/workbench/contrib/zonecog/browser/zonecogPanel.contribution.ts` (20 registered views; 9 hypergraph visualization views gated by smoke test)
+- Unit tests: `src/sql/workbench/services/zonecog/test/browser/` (40+ suites, incl. `hypergraphVisualizationService.test.ts`)
 - Smoke: `scripts/test-zonecog-smoke.sh`
+
+## Phase 6 — Visual Integration (post-#111)
+
+See [`ZONECOG_VISUALIZATIONS.md`](ZONECOG_VISUALIZATIONS.md) for the full
+catalogue: shared `IHypergraphVisualizationService` engine, 8 new animated
+views (heatmap, thinking timeline, membrane triads, episode timeline, DTESN
+reservoir, AAR graph, provenance chains, PLN inference), interactive
+Hypergraph Explorer upgrades, and host-feature perception (connections,
+editors, Object Explorer "Show in Hypergraph").
 
 ## Related history
 

@@ -601,6 +601,7 @@ import 'sql/workbench/contrib/table/browser/table.contribution';
 import 'sql/workbench/services/zonecog/browser/zonecog.contribution';
 import 'sql/workbench/contrib/zonecog/browser/zonecogActions.contribution';
 import 'sql/workbench/contrib/zonecog/browser/zonecogPanel.contribution';
+import 'sql/workbench/contrib/zonecog/browser/zonecogHostIntegration.contribution';
 
 // Deprecated Extension Migrator
 import 'vs/workbench/contrib/deprecatedExtensionMigrator/browser/deprecatedExtensionMigrator.contribution';
