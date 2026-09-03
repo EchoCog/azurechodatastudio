@@ -21,13 +21,12 @@ import { URI } from 'vs/base/common/uri';
 import { VSBuffer } from 'vs/base/common/buffer';
 
 import { IConnectionManagementService } from 'sql/platform/connection/common/connectionManagement';
-import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
-import { ICognitiveWorkspaceService } from 'sql/workbench/services/zonecog/common/cognitiveWorkspace';
 import { IHypergraphVisualizationService } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
 import { IHypergraphSemanticSearchService } from 'sql/workbench/services/zonecog/common/hypergraphSemanticSearch';
 import { ZONECOG_CONTAINER_ID, ZONECOG_HYPERGRAPH_VIEW_ID } from 'sql/workbench/contrib/zonecog/common/zonecog';
-import { IViewsService } from 'vs/workbench/services/views/common/viewsService';
+import { IViewsService } from 'vs/workbench/common/views';
 
 /**
  * ZoneCog Host Integration Contribution - perceives real Data Studio host
@@ -90,7 +89,7 @@ export class ZoneCogHostIntegrationContribution extends lifecycle.Disposable imp
 			const percept = this.embodiedService.perceive(
 				'interaction',
 				localize('zonecog.perceiveEditor', 'Activated editor {0}', active.getName()),
-				JSON.stringify({ editor: active.getName(), typeId: active.getTypeId() }),
+				JSON.stringify({ editor: active.getName(), typeId: active.typeId }),
 				0.4
 			);
 			this._pulsePercept(percept.id);
@@ -216,7 +215,7 @@ class ExportHypergraphSnapshotAction extends Action2 {
 
 		const target = await fileDialog.showSaveDialog({
 			title: localize('zonecog.exportSnapshotTitle', 'Export Hypergraph Snapshot'),
-			filters: { 'JSON': ['json'] },
+			filters: [{ name: 'JSON', extensions: ['json'] }],
 			defaultUri: URI.file(`hypergraph-snapshot-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`)
 		});
 		if (!target) {
@@ -258,7 +257,7 @@ class ExportHypergraphImageAction extends Action2 {
 		}
 		const target = await fileDialog.showSaveDialog({
 			title: localize('zonecog.exportImageTitle', 'Export Hypergraph Image'),
-			filters: { 'PNG Image': ['png'] },
+			filters: [{ name: 'PNG Image', extensions: ['png'] }],
 			defaultUri: URI.file(`hypergraph-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`)
 		});
 		if (!target) {

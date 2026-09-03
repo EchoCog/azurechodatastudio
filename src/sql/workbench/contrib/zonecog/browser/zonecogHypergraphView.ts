@@ -389,6 +389,12 @@ export class HypergraphExplorerView extends ViewPane {
 		}
 	}
 
+	private foreground(): string {
+		return this._canvas?.parentElement
+			? getComputedStyle(this._canvas.parentElement).color
+			: '#cccccc';
+	}
+
 	private _draw(animations: readonly VisualizationAnimation[]): void {
 		const ctx = this._canvas?.getContext('2d');
 		if (!ctx || !this._canvas) {
