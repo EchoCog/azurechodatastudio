@@ -215,16 +215,24 @@ suite('Hypergraph Visualization Service Tests', () => {
 
 	test('cullAnimations filters by viewport', () => {
 		hypergraphStore.addNode(makeNode('inside', 'T', 0.5));
+		hypergraphStore.addNode(makeNode('outside', 'T', 0.5));
 		visualizationService.setViewportSize(400, 400);
 		visualizationService.rebuild();
 		const sim = visualizationService.getSimNode('inside')!;
-		visualizationService.moveNode('inside', 100, 100);
-		visualizationService.scheduleAnimation({ kind: 'pulse', nodeId: 'inside', durationMs: 5000 });
-		const culled = visualizationService.cullAnimations({ x: 0, y: 0, width: 400, height: 400 });
-		assert.strictEqual(culled.length, 1);
-		const culledOut = visualizationService.cullAnimations({ x: 500, y: 500, width: 50, height: 50 });
-		assert.strictEqual(culledOut.length, 0);
 		assert.ok(sim); // sim exists
+		// addNode synthesizes a node-birth pulse for each new node; use those
+		// (rather than scheduling duplicates) to assert viewport filtering.
+		// Node positions are clamped into the simulation viewport, so "outside"
+		// is expressed via a cull rect that covers only the 'inside' node.
+		visualizationService.moveNode('inside', 100, 100);
+		visualizationService.moveNode('outside', 390, 390);
+		// A rect around (100,100) excludes the node at (390,390).
+		const culled = visualizationService.cullAnimations({ x: 60, y: 60, width: 80, height: 80 });
+		assert.strictEqual(culled.length, 1);
+		assert.strictEqual(culled[0].nodeId, 'inside');
+		// A rect covering neither node culls every active animation.
+		const culledOut = visualizationService.cullAnimations({ x: 200, y: 200, width: 50, height: 50 });
+		assert.strictEqual(culledOut.length, 0);
 	});
 
 	// --- Performance guards ---------------------------------------------------------
