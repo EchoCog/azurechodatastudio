@@ -74,7 +74,11 @@ event is immediately visible across all visualizations.
 - Viewport culling of animations per renderer.
 - Frame clock suspends with no renderers attached or when low-power mode on.
 - Debounced rebuilds via `RunOnceScheduler` (500 ms) on store changes.
-- `prefers-reduced-motion` honored for CSS animations.
+- `prefers-reduced-motion` honored for CSS animations; the workbench
+  `workbench.reduceMotion` accessibility setting additionally suspends the
+  shared canvas animation clock (low-power semantics) via
+  `IAccessibilityService.isMotionReduced()`, re-arming when motion is no
+  longer reduced.
 
 ## Accessibility
 
@@ -82,6 +86,9 @@ event is immediately visible across all visualizations.
   Enter to inspect, Escape to clear.
 - Filter chips and list items keyboard-activatable (`role="button"`, tabIndex).
 - All colors via VS Code theme tokens (`--vscode-*`).
+- Reduced motion: continuous canvas animation suspends when
+  `IAccessibilityService.isMotionReduced()` is true (driven by
+  `workbench.reduceMotion`), and resumes on `onDidChangeReducedMotion`.
 
 ## Verification
 

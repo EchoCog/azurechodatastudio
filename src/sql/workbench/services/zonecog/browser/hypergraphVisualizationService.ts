@@ -8,6 +8,7 @@ import { Emitter, Event } from 'vs/base/common/event';
 import { RunOnceScheduler } from 'vs/base/common/async';
 import { generateUuid } from 'vs/base/common/uuid';
 import { ILogService } from 'vs/platform/log/common/log';
+import { IAccessibilityService } from 'vs/platform/accessibility/common/accessibility';
 import {
 	IHypergraphVisualizationService,
 	VisualizationAnimation,
@@ -82,11 +83,24 @@ export class HypergraphVisualizationService extends Disposable implements IHyper
 		@ILogService private readonly logService: ILogService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
-		@IECANAttentionService private readonly ecanService: IECANAttentionService
+		@IECANAttentionService private readonly ecanService: IECANAttentionService,
+		@IAccessibilityService private readonly accessibilityService: IAccessibilityService
 	) {
 		super();
 
 		this._rebuildScheduler = this._register(new RunOnceScheduler(() => this.rebuild(), REBUILD_DELAY_MS));
+
+		// Honor the workbench reduced-motion accessibility setting
+		// ('workbench.reduceMotion'): when motion is reduced, continuous
+		// animation is suspended (low-power semantics) while data-driven
+		// rebuilds and explicit ticks still render.
+		this._lowPowerMode = this.accessibilityService.isMotionReduced();
+		this._register(this.accessibilityService.onDidChangeReducedMotion(() => {
+			this._lowPowerMode = this.accessibilityService.isMotionReduced();
+			if (!this._lowPowerMode) {
+				this._ensureAnimating();
+			}
+		}));
 
 		// Node birth/decay pulses synthesized from real hypergraph mutations.
 		this._register(this.hypergraphStore.onDidChangeNode(node => {

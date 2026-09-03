@@ -320,6 +320,10 @@ with deep ZoneCog orchestration integration into every Data Studio feature.
   core (layout persistence, node budgets), node-type color registry,
   cross-view selection bus, pulse/decay/flow/trail animation channels on a
   single requestAnimationFrame clock with viewport culling and low-power mode
+- [x] Reduced-motion accessibility — `workbench.reduceMotion` honored by the
+  shared animation clock via `IAccessibilityService` (suspends continuous
+  animation; resumes on `onDidChangeReducedMotion`), complementing the
+  `prefers-reduced-motion` CSS rules
 
 ### 6.2 Visualization view suite
 - [x] Hypergraph Explorer upgrades — hover tooltips, click-to-inspect detail

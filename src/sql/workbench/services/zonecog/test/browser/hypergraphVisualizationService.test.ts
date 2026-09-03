@@ -6,6 +6,8 @@
 import * as assert from 'assert';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
+import { IAccessibilityService } from 'vs/platform/accessibility/common/accessibility';
+import { TestAccessibilityService } from 'vs/platform/accessibility/test/common/testAccessibilityService';
 
 import { IHypergraphStore, ICognitiveMembraneService, HypergraphNode } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
@@ -30,6 +32,7 @@ suite('Hypergraph Visualization Service Tests', () => {
 	setup(() => {
 		instantiationService = new TestInstantiationService();
 		instantiationService.stub(ILogService, new NullLogService());
+		instantiationService.stub(IAccessibilityService, new TestAccessibilityService());
 		hypergraphStore = instantiationService.createInstance(HypergraphStore);
 		instantiationService.stub(IHypergraphStore, hypergraphStore);
 		membraneService = instantiationService.createInstance(CognitiveMembraneService);
@@ -247,5 +250,25 @@ suite('Hypergraph Visualization Service Tests', () => {
 		handle.dispose();
 		// Disposing twice is safe
 		handle.dispose();
+	});
+
+	// --- Accessibility (reduced motion) ------------------------------------------
+
+	test('reduced motion at construction enables low-power mode', () => {
+		const reduced = new TestAccessibilityService();
+		reduced.isMotionReduced = () => true;
+		const inst = new TestInstantiationService();
+		inst.stub(ILogService, new NullLogService());
+		inst.stub(IAccessibilityService, reduced);
+		inst.stub(IHypergraphStore, inst.createInstance(HypergraphStore));
+		inst.stub(ICognitiveMembraneService, inst.createInstance(CognitiveMembraneService));
+		inst.stub(IECANAttentionService, inst.createInstance(ECANAttentionService));
+		const service = inst.createInstance(HypergraphVisualizationService);
+		assert.strictEqual(service.isLowPowerMode(), true);
+	});
+
+	test('full motion at construction leaves low-power mode off', () => {
+		// The shared setup stubs a TestAccessibilityService with isMotionReduced() === false.
+		assert.strictEqual(visualizationService.isLowPowerMode(), false);
 	});
 });
