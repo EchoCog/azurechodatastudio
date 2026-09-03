@@ -115,7 +115,7 @@ export class ECANAttentionHeatmapView extends ZoneCogCanvasView {
 		@IECANAttentionService private readonly ecanService: IECANAttentionService,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService
 	) {
-		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, visualizationService);
+		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, telemetryService, visualizationService);
 	}
 
 	protected override renderBody(container: HTMLElement): void {
@@ -282,7 +282,7 @@ export class MembraneTriadDiagramView extends ZoneCogCanvasView {
 		@IHypergraphVisualizationService visualizationService: IHypergraphVisualizationService,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService
 	) {
-		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, visualizationService);
+		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, telemetryService, visualizationService);
 	}
 
 	protected override renderBody(container: HTMLElement): void {
@@ -438,7 +438,7 @@ export class DTESNReservoirAnimationView extends ZoneCogCanvasView {
 		@IDTESNService private readonly dtesnService: IDTESNService,
 		@ICognitiveAnalyticsService private readonly analyticsService: ICognitiveAnalyticsService
 	) {
-		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, visualizationService);
+		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, telemetryService, visualizationService);
 	}
 
 	protected override renderBody(container: HTMLElement): void {
@@ -573,7 +573,7 @@ export class AAROrchestrationGraphView extends ZoneCogCanvasView {
 		@IHypergraphVisualizationService visualizationService: IHypergraphVisualizationService,
 		@IAAROrchestrationService private readonly aarService: IAAROrchestrationService
 	) {
-		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, visualizationService);
+		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, telemetryService, visualizationService);
 	}
 
 	protected override renderBody(container: HTMLElement): void {

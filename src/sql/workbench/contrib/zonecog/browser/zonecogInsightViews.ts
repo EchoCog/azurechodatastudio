@@ -47,7 +47,6 @@ const LIST_REFRESH_MS = 400;
  */
 export class ThinkingTimelineView extends ViewPane {
 	private _lanesEl?: HTMLElement;
-	private _currentQueryStart = 0;
 	private _currentPhases: ThinkingPhase[] = [];
 	private _liveLane?: HTMLElement;
 
@@ -96,7 +95,6 @@ export class ThinkingTimelineView extends ViewPane {
 			return;
 		}
 		if (this._currentPhases.length === 0) {
-			this._currentQueryStart = Date.now();
 			clearNode(this._lanesEl);
 			this._liveLane = append(this._lanesEl, $('.zonecog-timeline-lane'));
 		}
@@ -272,7 +270,6 @@ export class ProvenanceChainExplorerView extends ViewPane {
 	private _decisionList?: HTMLElement;
 	private _chainEl?: HTMLElement;
 	private _scheduler!: RunOnceScheduler;
-	private _selectedDecisionId?: string;
 
 	constructor(
 		options: IViewPaneOptions,
@@ -333,7 +330,6 @@ export class ProvenanceChainExplorerView extends ViewPane {
 	}
 
 	private _selectDecision(decision: CognitiveDecision): void {
-		this._selectedDecisionId = decision.id;
 		if (!this._chainEl) {
 			return;
 		}
