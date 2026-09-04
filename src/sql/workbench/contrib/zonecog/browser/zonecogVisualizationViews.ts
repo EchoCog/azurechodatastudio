@@ -513,7 +513,7 @@ export class DTESNReservoirAnimationView extends ZoneCogCanvasView {
 			ctx.fillRect(x0 + 6, gaugeY, (layerBandWidth - 12) * ratio, 6);
 			ctx.fillStyle = fg;
 			ctx.font = '9px sans-serif';
-			ctx.fillText(localize('zonecog.layerGauge', 'L{0} ρ={1}', layerIdx, spectral.toFixed(3)), x0 + 6, gaugeY + 16);
+			ctx.fillText(localize('zonecog.layerGauge', 'L{0} rho={1}', layerIdx, spectral.toFixed(3)), x0 + 6, gaugeY + 16);
 		}
 
 		// Convergence sparkline
