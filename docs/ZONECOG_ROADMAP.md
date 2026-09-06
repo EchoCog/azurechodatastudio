@@ -1,8 +1,8 @@
 # ZoneCog Development Roadmap
 
 **Ticket**: ECH-4  
-**Status**: Complete (Phases 1–5 + Features Plan A–F)  
-**Last Updated**: 2026-08-23
+**Status**: Complete (Phases 1–6 + Features Plan A–F)  
+**Last Updated**: 2026-09-06
 
 ## Phase Overview
 
@@ -16,7 +16,7 @@
 | 4 | Workbench UX | **Complete** | Visual cognitive maps, interactive exploration |
 | 4.5 | Release Infrastructure | **Complete** (ECH-61) | Multi-platform builds, CI/CD, quality gates |
 | 5 | Post-ADS Migration | **Complete** | VS Code standalone, portable cognitive workbench, Hyperon/FlareCog mesh |
-| 6 | Visual Integration | **In Progress** | Shared hypergraph visualization engine, animated view suite, host-feature perception |
+| 6 | Visual Integration | **Complete** | Shared hypergraph visualization engine, animated view suite, host-feature perception |
 
 ## Features & Functions Plan (Issue #111 / ECH-77) — Complete
 
@@ -310,7 +310,7 @@ code are complete (see `docs/ZONECOG_BRIDGE_PUBLISHING.md`).
 
 ---
 
-## Phase 6: Visual Integration (In Progress)
+## Phase 6: Visual Integration (Complete)
 
 **Goal**: A comprehensive suite of hypergraph visualizations and animations
 with deep ZoneCog orchestration integration into every Data Studio feature.
@@ -350,11 +350,11 @@ with deep ZoneCog orchestration integration into every Data Studio feature.
 - [x] Command Palette: `zonecog.focusNode`, `zonecog.visualize.openView`,
   `zonecog.visualize.exportSnapshot` (JSON), `zonecog.visualize.exportImage`
   (PNG), `zonecog.visualize.toggleLowPower`
-- [ ] Dashboard ZoneCog tab with mini hypergraph/membrane/heatmap widgets
-- [ ] Notebook cell output renderer for hypergraph snapshots
-- [ ] Execution-plan cognition overlay ("Explain with cognition")
-- [ ] Profiler live event-flow animation
-- [ ] Edit Data provenance-linked cell-edit nodes
+- [x] Dashboard ZoneCog tab with mini hypergraph/membrane/heatmap widgets
+- [x] Notebook cell output renderer for hypergraph snapshots
+- [x] Execution-plan cognition overlay ("Explain with cognition")
+- [x] Profiler live event-flow animation
+- [x] Edit Data provenance-linked cell-edit nodes
 
 Catalogue and integration details: [`docs/ZONECOG_VISUALIZATIONS.md`](ZONECOG_VISUALIZATIONS.md).
 
