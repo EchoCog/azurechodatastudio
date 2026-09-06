@@ -69,3 +69,12 @@ export const ZONECOG_PROVENANCE_VIEW_ID = 'zonecog.provenanceView';
 
 /** PLN inference visualizer view ID. */
 export const ZONECOG_INFERENCE_VIEW_ID = 'zonecog.inferenceView';
+
+/** Dashboard ZoneCog tab view ID (mini hypergraph/membrane/heatmap widgets). */
+export const ZONECOG_DASHBOARD_TAB_VIEW_ID = 'zonecog.dashboardTabView';
+
+/** Notebook cell output renderer view ID (hypergraph snapshots). */
+export const ZONECOG_NOTEBOOK_RENDERER_VIEW_ID = 'zonecog.notebookRendererView';
+
+/** Execution plan cognition overlay view ID. */
+export const ZONECOG_EXECUTION_PLAN_VIEW_ID = 'zonecog.executionPlanView';

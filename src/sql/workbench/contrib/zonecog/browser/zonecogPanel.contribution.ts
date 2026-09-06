@@ -39,6 +39,7 @@ import {
 	ZONECOG_AAR_GRAPH_VIEW_ID,
 	ZONECOG_PROVENANCE_VIEW_ID,
 	ZONECOG_INFERENCE_VIEW_ID,
+	ZONECOG_DASHBOARD_TAB_VIEW_ID,
 } from 'sql/workbench/contrib/zonecog/common/zonecog';
 import { CognitiveStateView, MembraneHealthView } from 'sql/workbench/contrib/zonecog/browser/zonecogViews';
 import { ThinkingProcessView } from 'sql/workbench/contrib/zonecog/browser/zonecogThinkingView';
@@ -50,6 +51,7 @@ import { DTESNNetworkView, AAROrchestrationView, CognitiveWorkflowsView } from '
 import { AgiStudioView } from 'sql/workbench/contrib/zonecog/browser/agiStudioView';
 import { ECANAttentionHeatmapView, MembraneTriadDiagramView, DTESNReservoirAnimationView, AAROrchestrationGraphView } from 'sql/workbench/contrib/zonecog/browser/zonecogVisualizationViews';
 import { ThinkingTimelineView, EpisodicTimelineView, ProvenanceChainExplorerView, PLNInferenceVisualizerView } from 'sql/workbench/contrib/zonecog/browser/zonecogInsightViews';
+import { ZoneCogDashboardTabView } from 'sql/workbench/contrib/zonecog/browser/zonecogDashboardTab';
 import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
 import { IHypergraphStore } from 'sql/workbench/services/zonecog/common/zonecogService';
 
@@ -304,6 +306,14 @@ Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews
 		canMoveView: false,
 		ctorDescriptor: new SyncDescriptor(PLNInferenceVisualizerView),
 		order: 20,
+	},
+	{
+		id: ZONECOG_DASHBOARD_TAB_VIEW_ID,
+		name: localize('zonecog.dashboardTabView', 'Dashboard'),
+		canToggleVisibility: true,
+		canMoveView: false,
+		ctorDescriptor: new SyncDescriptor(ZoneCogDashboardTabView),
+		order: 21,
 	},
 ], VIEW_CONTAINER);
 

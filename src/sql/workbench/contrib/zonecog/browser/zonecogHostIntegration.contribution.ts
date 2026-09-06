@@ -20,6 +20,12 @@ import { IFileService } from 'vs/platform/files/common/files';
 import { URI } from 'vs/base/common/uri';
 import { VSBuffer } from 'vs/base/common/buffer';
 
+// Side-effect imports: register Phase 6.3 host-feature integration contributions
+import 'sql/workbench/contrib/zonecog/browser/zonecogNotebookRenderer';
+import 'sql/workbench/contrib/zonecog/browser/zonecogExecutionPlanOverlay';
+import 'sql/workbench/contrib/zonecog/browser/zonecogProfilerAnimation';
+import 'sql/workbench/contrib/zonecog/browser/zonecogEditDataProvenance';
+
 import { IConnectionManagementService } from 'sql/platform/connection/common/connectionManagement';
 import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';

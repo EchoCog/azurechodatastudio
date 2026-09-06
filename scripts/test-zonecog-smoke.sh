@@ -104,15 +104,22 @@ echo ""
 echo "4. Verifying Command Palette actions..."
 ACTIONS_FILE="src/sql/workbench/contrib/zonecog/browser/zonecogActions.contribution.ts"
 HOST_ACTIONS_FILE="src/sql/workbench/contrib/zonecog/browser/zonecogHostIntegration.contribution.ts"
+EXEC_PLAN_FILE="src/sql/workbench/contrib/zonecog/browser/zonecogExecutionPlanOverlay.ts"
+PROFILER_FILE="src/sql/workbench/contrib/zonecog/browser/zonecogProfilerAnimation.ts"
+EDIT_DATA_FILE="src/sql/workbench/contrib/zonecog/browser/zonecogEditDataProvenance.ts"
 if [ -f "$ACTIONS_FILE" ]; then
 	ACTION_COUNT=$(grep -c "registerAction2" "$ACTIONS_FILE" || echo "0")
 	HOST_ACTION_COUNT=$(grep -c "registerAction2" "$HOST_ACTIONS_FILE" || echo "0")
-	TOTAL_ACTIONS=$((ACTION_COUNT + HOST_ACTION_COUNT))
-	if [ "$TOTAL_ACTIONS" -ge 80 ]; then
-		echo "   ✓ $TOTAL_ACTIONS actions registered ($ACTION_COUNT core + $HOST_ACTION_COUNT host integration)"
+	EXEC_PLAN_COUNT=$(grep -c "registerAction2" "$EXEC_PLAN_FILE" 2>/dev/null || echo "0")
+	PROFILER_COUNT=$(grep -c "registerAction2" "$PROFILER_FILE" 2>/dev/null || echo "0")
+	EDIT_DATA_COUNT=$(grep -c "registerAction2" "$EDIT_DATA_FILE" 2>/dev/null || echo "0")
+	PHASE6_COUNT=$((EXEC_PLAN_COUNT + PROFILER_COUNT + EDIT_DATA_COUNT))
+	TOTAL_ACTIONS=$((ACTION_COUNT + HOST_ACTION_COUNT + PHASE6_COUNT))
+	if [ "$TOTAL_ACTIONS" -ge 83 ]; then
+		echo "   ✓ $TOTAL_ACTIONS actions registered ($ACTION_COUNT core + $HOST_ACTION_COUNT host + $PHASE6_COUNT Phase 6.3)"
 	else
 		# allow-any-unicode-next-line
-		echo "   ✗ Found $TOTAL_ACTIONS actions (expected >= 80)"
+		echo "   ✗ Found $TOTAL_ACTIONS actions (expected >= 83)"
 		exit 1
 	fi
 else
@@ -135,6 +142,7 @@ VIZ_VIEWS=(
 	"AAROrchestrationGraphView"
 	"ProvenanceChainExplorerView"
 	"PLNInferenceVisualizerView"
+	"ZoneCogDashboardTabView"
 )
 for VIEW in "${VIZ_VIEWS[@]}"; do
 	if grep -q "SyncDescriptor($VIEW)" "$PANEL_FILE"; then
@@ -145,6 +153,35 @@ for VIEW in "${VIZ_VIEWS[@]}"; do
 		exit 1
 	fi
 done
+
+# Verify Phase 6.3 host-feature integration files
+echo ""
+echo "4c. Verifying Phase 6.3 host-feature integration files..."
+PHASE6_FILES=(
+	"zonecogDashboardTab.ts"
+	"zonecogNotebookRenderer.ts"
+	"zonecogExecutionPlanOverlay.ts"
+	"zonecogProfilerAnimation.ts"
+	"zonecogEditDataProvenance.ts"
+)
+for P6FILE in "${PHASE6_FILES[@]}"; do
+	if [ -f "src/sql/workbench/contrib/zonecog/browser/$P6FILE" ]; then
+		echo "   ✓ $P6FILE"
+	else
+		# allow-any-unicode-next-line
+		echo "   ✗ $P6FILE (MISSING)"
+		exit 1
+	fi
+done
+
+# Verify Phase 6.3 tests
+if [ -f "src/sql/workbench/services/zonecog/test/browser/hostIntegrationPhase6.test.ts" ]; then
+	echo "   ✓ Phase 6.3 test file present"
+else
+	# allow-any-unicode-next-line
+	echo "   ✗ Phase 6.3 test file missing"
+	exit 1
+fi
 
 # Verify the shared visualization service files exist
 for VIZ_FILE in "common/hypergraphVisualization.ts" "browser/hypergraphVisualizationService.ts" "test/browser/hypergraphVisualizationService.test.ts"; do
