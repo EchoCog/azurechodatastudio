@@ -197,7 +197,7 @@ export class ZoneCogExecutionPlanOverlayContribution extends Disposable implemen
 	.registerWorkbenchContribution(ZoneCogExecutionPlanOverlayContribution, LifecyclePhase.Restored);
 
 /**
- * "Explain with Cognition" Command Palette action — runs the active
+ * "Explain with Cognition" Command Palette action - runs the active
  * execution plan through the ZoneCog cognitive pipeline.
  */
 class ExplainWithCognitionAction extends Action2 {
@@ -249,8 +249,8 @@ class ExplainWithCognitionAction extends Action2 {
 			const editorName = activeEditor.getName() ?? 'unknown';
 			const planType = editorName.endsWith('.sqlplan') ? 'MSSQL'
 				: editorName.endsWith('.xml') ? 'XML'
-				: editorName.endsWith('.json') ? 'JSON'
-				: 'unknown';
+					: editorName.endsWith('.json') ? 'JSON'
+						: 'unknown';
 
 			const planContent = JSON.stringify({
 				editorName,
