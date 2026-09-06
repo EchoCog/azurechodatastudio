@@ -16,11 +16,11 @@ import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
-import { Disposable, IDisposable } from 'vs/base/common/lifecycle';
+import { IDisposable } from 'vs/base/common/lifecycle';
 import { RunOnceScheduler } from 'vs/base/common/async';
 
-import { IHypergraphVisualizationService, VisualizationSimNode, VisualizationSimEdge, VisualizationAnimation } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
-import { ICognitiveMembraneService, MembraneTriad, MembraneStatus } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { IHypergraphVisualizationService, VisualizationSimNode, VisualizationAnimation } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
+import { ICognitiveMembraneService, MembraneTriad } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
 import { IHypergraphStore } from 'sql/workbench/services/zonecog/common/zonecogService';
 
@@ -43,8 +43,6 @@ export class ZoneCogDashboardTabView extends ViewPane {
 	private _heatmapCanvas?: HTMLCanvasElement;
 	private _rendererHandle?: IDisposable;
 	private _refreshScheduler: RunOnceScheduler;
-	private _width = 600;
-	private _height = 300;
 
 	constructor(
 		options: IViewPaneOptions,
@@ -59,7 +57,7 @@ export class ZoneCogDashboardTabView extends ViewPane {
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IHypergraphVisualizationService private readonly visualizationService: IHypergraphVisualizationService,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
-		@IECANAttentionService private readonly ecanService: IECANAttentionService,
+		@IECANAttentionService _ecanService: IECANAttentionService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, telemetryService);

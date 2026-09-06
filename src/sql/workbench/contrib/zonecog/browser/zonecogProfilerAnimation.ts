@@ -14,9 +14,9 @@ import { INotificationService, Severity } from 'vs/platform/notification/common/
 import { RunOnceScheduler } from 'vs/base/common/async';
 
 import { IHypergraphVisualizationService } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
-import { IHypergraphStore, ICognitiveMembraneService, HypergraphNode } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
-import { ICognitiveProvenanceService, DecisionRecordInput } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
+import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
 import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
 
 const PROFILER_EVENT_THROTTLE_MS = 250;
@@ -49,8 +49,8 @@ export class ZoneCogProfilerAnimationContribution extends Disposable implements 
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
 		@IEmbodiedCognitionService private readonly embodiedService: IEmbodiedCognitionService,
-		@ICognitiveProvenanceService private readonly provenanceService: ICognitiveProvenanceService,
-		@IDTESNService private readonly dtesnService: IDTESNService
+		@ICognitiveProvenanceService _provenanceService: ICognitiveProvenanceService,
+		@IDTESNService _dtesnService: IDTESNService
 	) {
 		super();
 		this._throttle = new RunOnceScheduler(() => this._processPendingEvents(), PROFILER_EVENT_THROTTLE_MS);

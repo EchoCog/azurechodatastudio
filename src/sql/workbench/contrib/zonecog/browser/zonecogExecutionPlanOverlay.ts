@@ -17,8 +17,6 @@ import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService, Hypergrap
 import { IHypergraphVisualizationService } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
 import { ICognitiveProvenanceService, DecisionRecordInput } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
-import { ISQLAnalyzerAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
-import { IPerformanceAdvisorAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
 
 /**
  * Execution Plan Cognition Overlay Contribution
@@ -90,7 +88,7 @@ export class ZoneCogExecutionPlanOverlayContribution extends Disposable implemen
 			metadata: {
 				confidence: response.confidence,
 				planNodeId: planNode.id,
-				thinkingPhases: response.thinkingPhases?.length ?? 0
+				thinkingPhases: response.phases?.length ?? 0
 			},
 			salience_score: Math.min(1, response.confidence + 0.1)
 		});
