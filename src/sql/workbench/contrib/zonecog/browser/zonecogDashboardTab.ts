@@ -7,7 +7,7 @@ import 'vs/css!./media/zonecogDashboard';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { localize } from 'vs/nls';
-import { $, append } from 'vs/base/browser/dom';
+import { $, append, clearNode } from 'vs/base/browser/dom';
 import { ViewPane, IViewPaneOptions } from 'vs/workbench/browser/parts/views/viewPane';
 import { IViewDescriptorService } from 'vs/workbench/common/views';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
@@ -194,7 +194,7 @@ export class ZoneCogDashboardTabView extends ViewPane {
 		if (!this._membraneContainer) {
 			return;
 		}
-		this._membraneContainer.innerHTML = '';
+		clearNode(this._membraneContainer);
 		const triads: MembraneTriad[] = ['cerebral', 'somatic', 'autonomic'];
 		for (const triad of triads) {
 			const status = this.membraneService.getStatus(triad);
