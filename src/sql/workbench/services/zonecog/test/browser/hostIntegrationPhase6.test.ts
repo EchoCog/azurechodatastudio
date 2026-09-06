@@ -29,6 +29,8 @@ import { CognitiveWorkspaceService } from 'sql/workbench/services/zonecog/browse
 import { ZoneCogEditDataProvenanceContribution, CellEditParams } from 'sql/workbench/contrib/zonecog/browser/zonecogEditDataProvenance';
 import { ZoneCogProfilerAnimationContribution, ProfilerEventData } from 'sql/workbench/contrib/zonecog/browser/zonecogProfilerAnimation';
 import { ZoneCogNotebookRendererContribution, ZONECOG_SNAPSHOT_MIME } from 'sql/workbench/contrib/zonecog/browser/zonecogNotebookRenderer';
+import { ZoneCogExecutionPlanOverlayContribution } from 'sql/workbench/contrib/zonecog/browser/zonecogExecutionPlanOverlay';
+import { ZONECOG_DASHBOARD_TAB_VIEW_ID, ZONECOG_NOTEBOOK_RENDERER_VIEW_ID, ZONECOG_EXECUTION_PLAN_VIEW_ID } from 'sql/workbench/contrib/zonecog/common/zonecog';
 
 function makeNode(id: string, type: string, salience: number, content = `${id} content`): HypergraphNode {
 	return { id, node_type: type, content, links: [], metadata: {}, salience_score: salience };
@@ -322,17 +324,14 @@ suite('Phase 6.3 Host Integration Tests', () => {
 
 	suite('Dashboard Tab', () => {
 		test('ZONECOG_DASHBOARD_TAB_VIEW_ID is registered', () => {
-			const { ZONECOG_DASHBOARD_TAB_VIEW_ID } = require('sql/workbench/contrib/zonecog/common/zonecog');
 			assert.strictEqual(ZONECOG_DASHBOARD_TAB_VIEW_ID, 'zonecog.dashboardTabView');
 		});
 
 		test('ZONECOG_NOTEBOOK_RENDERER_VIEW_ID is defined', () => {
-			const { ZONECOG_NOTEBOOK_RENDERER_VIEW_ID } = require('sql/workbench/contrib/zonecog/common/zonecog');
 			assert.strictEqual(ZONECOG_NOTEBOOK_RENDERER_VIEW_ID, 'zonecog.notebookRendererView');
 		});
 
 		test('ZONECOG_EXECUTION_PLAN_VIEW_ID is defined', () => {
-			const { ZONECOG_EXECUTION_PLAN_VIEW_ID } = require('sql/workbench/contrib/zonecog/common/zonecog');
 			assert.strictEqual(ZONECOG_EXECUTION_PLAN_VIEW_ID, 'zonecog.executionPlanView');
 		});
 	});
@@ -343,7 +342,6 @@ suite('Phase 6.3 Host Integration Tests', () => {
 
 	suite('Execution Plan Overlay', () => {
 		test('ZoneCogExecutionPlanOverlayContribution has correct ID', () => {
-			const { ZoneCogExecutionPlanOverlayContribution } = require('sql/workbench/contrib/zonecog/browser/zonecogExecutionPlanOverlay');
 			assert.strictEqual(ZoneCogExecutionPlanOverlayContribution.ID, 'zonecog.executionPlanOverlay');
 		});
 	});
