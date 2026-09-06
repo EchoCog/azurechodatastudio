@@ -282,8 +282,6 @@ export class ZoneCogDashboardTabView extends ViewPane {
 
 	protected override layoutBody(height: number, width: number): void {
 		super.layoutBody(height, width);
-		this._width = Math.max(100, width);
-		this._height = Math.max(100, height - 4);
 	}
 
 	public override dispose(): void {
