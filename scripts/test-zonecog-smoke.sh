@@ -242,6 +242,8 @@ TEST_FILES=(
 	"federatedQueryService.test.ts"
 	"aarOrchestrationService.test.ts"
 	"cognitiveLoopService.test.ts"
+	"rocksDbEngine.test.ts"
+	"cloudBackup.test.ts"
 )
 
 for TEST in "${TEST_FILES[@]}"; do

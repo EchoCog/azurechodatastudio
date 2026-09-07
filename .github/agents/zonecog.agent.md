@@ -18,7 +18,9 @@ Continue the implementation, testing, and hardening of the Zone-Cog cognitive wo
 
 ## Architecture Overview
 
-### Service Layer (Dependency Injection via `registerSingleton`)
+### Service Layer (40 services via `registerSingleton`)
+
+**Core cognitive services:**
 
 | Service | Interface | Implementation | Purpose |
 |---|---|---|---|
@@ -28,37 +30,62 @@ Continue the implementation, testing, and hardening of the Zone-Cog cognitive wo
 | **LLM Provider** | `ILLMProviderService` | `LLMProviderService` | Pluggable LLM backends (OpenAI-compatible, Aphrodite Engine, built-in fallback) |
 | **Embodied Cognition** | `IEmbodiedCognitionService` | `EmbodiedCognitionService` | Sensorimotor grounding: perceive → think → act → proprioception loop |
 | **Cognitive Workspace** | `ICognitiveWorkspaceService` | `CognitiveWorkspaceService` | Working memory (capacity-limited), episodic memory, task contexts |
-| **ECAN Attention** | `IECANAttentionService` | `ECANAttentionService` | Economic Attention Network: attention value spreading, rent collection, importance diffusion |
-| **Cognitive Loop** | `ICognitiveLoopService` | `CognitiveLoopService` | Autonomous cognitive cycle orchestrator: perceive → attend → think → act → reflect |
-| **Interaction Learning** | `IUserInteractionLearningService` | `UserInteractionLearningService` | User-interaction behavioral analytics, hypergraph pattern mining, Q-learning strategy selection |
+| **ECAN Attention** | `IECANAttentionService` | `ECANAttentionService` | Economic Attention Network: attention value spreading, rent collection |
+| **Cognitive Loop** | `ICognitiveLoopService` | `CognitiveLoopService` | Autonomous cognitive cycle orchestrator |
+
+**Advanced services (Phases 4-6):**
+
+| Service | Interface | Purpose |
+|---|---|---|
+| **DTESN** | `IDTESNService` | Hierarchical reservoir computing (multi-layer ESN, ridge regression readout) |
+| **AAR Orchestration** | `IAAROrchestrationService` | Agent-Arena-Relation protocol with built-in + remote agents |
+| **Aphrodite Engine** | `IAphroditeService` | Deep LLM integration (LoRA, A/B testing, telemetry, fallback, speculative decoding) |
+| **Hypergraph Persistence** | `IHypergraphPersistenceService` | IndexedDB + RocksDB + AtomSpace backends, tiered storage, backup |
+| **Cognitive Mesh** | `ICognitiveMeshTransportService` | WebSocket/BroadcastChannel peer transport for distributed cognition |
+| **FlareCog** | `IFlareCogService` | Distributed cognitive processing, peer discovery |
+| **Federated Query** | `IFederatedQueryService` | Cross-instance hypergraph query federation |
+| **AtomSpace Backend** | `IAtomSpaceBackendService` | OpenCog content-addressed atom storage, truth values, pattern matching |
+| **Hyperon** | `IHyperonService` | MeTTa interpreter, S-expression evaluation, PLN deduction |
+| **Visualization** | `IHypergraphVisualizationService` | Shared force-directed simulation, animation channels, viewport culling |
+| **Cognitive Analytics** | `ICognitiveAnalyticsService` | Latency histograms, ECAN efficiency, token economics |
+| **Autognosis** | `IAutognosisService` | Meta-cognitive self-assessment, anomaly detection |
+| **Interaction Learning** | `IUserInteractionLearningService` | Q-learning strategy selection, behavioral pattern mining |
+
+Plus 17 additional services (schema perception, semantic search, provenance, collaboration, PLN reasoning, etc.).
 
 ### Key File Locations
 
 ```
 src/sql/workbench/services/zonecog/
-├── common/                          # Interfaces & type definitions
-│   ├── zonecogService.ts            # IZoneCogService, IHypergraphStore, ICognitiveMembraneService
-│   ├── llmProvider.ts               # ILLMProviderService
-│   ├── embodiedCognition.ts         # IEmbodiedCognitionService
-│   ├── cognitiveWorkspace.ts        # ICognitiveWorkspaceService
-│   ├── ecanAttention.ts             # IECANAttentionService
-│   └── cognitiveLoop.ts             # ICognitiveLoopService
-├── browser/                         # Implementation files
-│   ├── zonecogService.ts            # Core thinking protocol engine
-│   ├── hypergraphStore.ts           # Knowledge graph with ECAN salience
-│   ├── cognitiveMembraneService.ts  # P-System triad architecture
-│   ├── llmProviderService.ts        # Multi-backend LLM completion
-│   ├── embodiedCognitionService.ts  # Sensorimotor grounding layer
-│   ├── cognitiveWorkspaceService.ts # Memory systems (working, episodic, task)
-│   ├── ecanAttentionService.ts      # Attention allocation network
-│   ├── cognitiveLoopService.ts      # Autonomous cognitive cycle
-│   └── zonecog.contribution.ts      # DI registration (registerSingleton)
-├── test/browser/
-│   └── zonecogService.test.ts       # Comprehensive test suites
-└── README.md                        # Internal documentation
+├── common/                              # 13 interface files
+│   ├── zonecogService.ts                # IZoneCogService, IHypergraphStore, ICognitiveMembraneService
+│   ├── dtesn.ts                         # IDTESNService
+│   ├── aphrodite.ts                     # IAphroditeService (LoRA, telemetry, A/B, fallback)
+│   ├── aarOrchestration.ts              # IAAROrchestrationService
+│   ├── hypergraphPersistence.ts         # IHypergraphPersistenceService
+│   ├── hypergraphVisualization.ts       # IHypergraphVisualizationService
+│   ├── cognitiveAnalytics.ts            # ICognitiveAnalyticsService
+│   └── ...                              # 6 more interface files
+├── browser/                             # 40 implementation files
+│   ├── zonecog.contribution.ts          # DI registration (40 registerSingleton calls)
+│   └── ...                              # All service implementations
+├── test/browser/                        # 45 test suites
+│   ├── zonecogService.test.ts
+│   ├── hostIntegrationPhase6.test.ts
+│   └── ...
 
-src/sql/workbench/contrib/zonecog/browser/
-└── zonecogActions.contribution.ts   # Command Palette actions (10 registered)
+src/sql/workbench/contrib/zonecog/
+├── common/zonecog.ts                    # 22 view ID constants
+├── browser/
+│   ├── zonecogActions.contribution.ts   # Core Command Palette actions
+│   ├── zonecogHostIntegration.contribution.ts  # Host-feature perception wiring
+│   ├── zonecogPanel.contribution.ts     # 21 panel views
+│   ├── zonecogDashboardTab.ts           # Dashboard mini-widgets
+│   ├── zonecogNotebookRenderer.ts       # Notebook hypergraph renderer
+│   ├── zonecogExecutionPlanOverlay.ts   # Execution plan cognition overlay
+│   ├── zonecogProfilerAnimation.ts      # Profiler event animation
+│   ├── zonecogEditDataProvenance.ts     # Edit Data provenance tracking
+│   └── ...                              # 8 more visualization view files
 ```
 
 ### Cognitive Protocol: 11-Phase Thinking Sequence
@@ -116,45 +143,45 @@ Depth-adaptive: shallow (phases 1,2,11), moderate (1-5,11), deep (all 11).
 - [x] Hypergraph persistence for percepts, actions, episodes, tasks
 - [x] Proprioceptive state and environment snapshots
 
-### Phase 3: Attention & Autonomous Cognition 🔧 IN PROGRESS
+### Phase 3: Attention & Autonomous Cognition ✅ COMPLETE
 
 - [x] `IECANAttentionService` / `ECANAttentionService` — Economic Attention Network
-  - Attention value (AV) spreading across hypergraph links
-  - Rent collection: nodes pay rent proportional to AV; evict below threshold
-  - Importance diffusion: high-salience nodes boost neighbors
-  - Integration with `HypergraphStore.decayAllSalience()`
 - [x] `ICognitiveLoopService` / `CognitiveLoopService` — Autonomous cognitive cycle
-  - Configurable tick interval (default 5s)
-  - Cycle: perceive environment → ECAN attention allocation → cognitive processing → motor output → proprioceptive reflection
-  - Integration with all existing services
-  - Start/stop/pause controls
-- [x] Extended tests for ECAN and cognitive loop services — `test/browser/ecanAttentionService.test.ts`, `test/browser/cognitiveLoopService.test.ts`
-- [x] Workbench integration for loop status in status bar — `contrib/zonecog/browser/cognitiveLoopStatusBar.ts`
-- [x] Streaming response generation with real-time thinking tokens — `ILLMProviderService.completeStream()`, `IZoneCogService.onDidStreamResponseToken`
+- [x] Extended tests for ECAN and cognitive loop services
+- [x] Workbench integration for loop status in status bar
+- [x] Streaming response generation with real-time thinking tokens
 
-### Phase 4: Deep Tree Echo Integration
+### Phase 4: Deep Tree Echo Integration ✅ COMPLETE
 
-- [ ] DTESN (Deep Tree Echo State Network) reservoir computing layer
-- [ ] Recursive grammar processing via hypergraph traversal
-- [ ] Agent-Arena-Relation (AAR) orchestration protocol
-- [ ] Aphrodite Engine inference backend configuration
-- [ ] Cross-session hypergraph persistence (IndexedDB)
+- [x] `IDTESNService` / `DTESNService` — Hierarchical reservoir computing (Float64Array math, seeded PRNG, multi-layer ESN, ridge regression readout)
+- [x] `IAAROrchestrationService` / `AAROrchestrationService` — Agent-Arena-Relation protocol with built-in + remote agents
+- [x] `IAphroditeService` / `AphroditeService` — Aphrodite Engine deep integration (LoRA, telemetry, A/B, fallback, structured output, prompt cache, speculative decoding)
+- [x] `IHypergraphPersistenceService` / `HypergraphPersistenceService` — IndexedDB persistence with tiered hot/warm/cold storage
+- [x] `ISensorimotorBindingService` / `SensorimotorBindingService` — Sensorimotor grounding layer
 
-### Phase 5: Visual Cognitive Interface
+### Phase 5: Visual Cognitive Interface ✅ COMPLETE
 
-- [ ] Hypergraph visualization panel (D3.js or similar)
-- [ ] Real-time thinking phase streaming UI
-- [ ] Membrane triad health dashboard
-- [ ] Working memory / episodic memory browser
-- [ ] ECAN attention heatmap overlay
+- [x] `IHypergraphVisualizationService` — Shared force-directed simulation, animation channels, viewport culling
+- [x] 21 panel views including HypergraphExplorer, ECAN Heatmap, Thinking Timeline, Membrane Triads, DTESN Reservoir, AAR Graph, PLN Inference, Provenance Explorer
+- [x] `IAtomSpaceBackendService` / `IHyperonService` — OpenCog Hyperon AtomSpace + MeTTa evaluation
+- [x] `ISchemaPerceptionService` / `IHypergraphSemanticSearchService` — Schema perception + embedding-based search
+- [x] `IAutognosisService` — Meta-cognitive self-assessment
 
-### Phase 6: MLOps & Dynamic Model Training
+### Phase 6: MLOps & Visual Integration ✅ COMPLETE
 
-- [ ] Model performance telemetry collection
-- [ ] Dynamic LoRA adapter loading via Aphrodite Engine
-- [ ] A/B testing framework for cognitive strategies
-- [ ] Feedback loop: user corrections → fine-tuning signal
-- [x] Cognitive strategy evolution via reinforcement learning — `UserInteractionLearningService` tabular Q-learning over (query complexity → thinking depth) with confidence/latency-derived rewards; epsilon-greedy `recommendAction()`
+- [x] `ICognitiveAnalyticsService` — Latency histograms, ECAN efficiency, token economics, DTESN convergence
+- [x] `IUserInteractionLearningService` — Q-learning strategy selection, pattern mining
+- [x] Host-feature integrations: Dashboard tab, Notebook renderer, Execution plan overlay, Profiler animation, Edit Data provenance
+- [x] 40 registered services, 83+ Command Palette actions, 45 test suites
+
+### Phase 7: Hardening & Production Readiness (Next)
+
+- [ ] End-to-end integration tests across service boundaries
+- [ ] Performance benchmarks for hypergraph operations at scale (10k+ nodes)
+- [ ] Memory leak audit for long-running cognitive loop sessions
+- [ ] Accessibility audit for all 21 panel views (screen reader, keyboard nav, high contrast)
+- [ ] VS Code Marketplace publication (requires VSCE_PAT/OVSX_PAT secrets)
+- [ ] Documentation: API reference for all 40 service interfaces
 
 ---
 
@@ -273,7 +300,12 @@ All ZoneCog services are registered in:
 This file is imported by:
 - `src/vs/workbench/workbench.common.main.ts`
 
-### Command Palette Actions (10 registered)
+### Command Palette Actions (83+ registered)
+
+Core actions plus host-feature integrations across multiple contribution files.
+Run `bash scripts/test-zonecog-smoke.sh` to verify the current action count.
+
+**Core actions** (in `zonecogActions.contribution.ts`):
 
 | Command ID | Action |
 |---|---|
@@ -287,7 +319,12 @@ This file is imported by:
 | `zonecog.membraneHealth` | Show membrane triad health |
 | `zonecog.reset` | Reset entire cognitive workbench |
 | `zonecog.queryHistory` | Show query processing history |
-| `zonecog.detectInteractionPatterns` | Mine interaction history for frequency/sequence/temporal patterns |
+| `zonecog.detectInteractionPatterns` | Mine interaction history for patterns |
+
+**Host-feature actions** (in `zonecogHostIntegration.contribution.ts`, `zonecogExecutionPlanOverlay.ts`, `zonecogProfilerAnimation.ts`, `zonecogEditDataProvenance.ts`):
+- `zonecog.focusNode`, `zonecog.visualize.openView`, `zonecog.visualize.exportSnapshot`, `zonecog.visualize.exportImage`, `zonecog.visualize.toggleLowPower`
+- Execution plan cognition, profiler animation, edit data provenance actions
+- Plus 60+ actions for Aphrodite, collaboration, federation, analytics, etc.
 
 ### Event Bus
 
