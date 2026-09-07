@@ -9,7 +9,7 @@ import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 import { IAccessibilityService } from 'vs/platform/accessibility/common/accessibility';
 import { TestAccessibilityService } from 'vs/platform/accessibility/test/common/testAccessibilityService';
 
-import { IHypergraphStore, ICognitiveMembraneService, HypergraphNode, IZoneCogService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { IHypergraphStore, ICognitiveMembraneService, HypergraphNode } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
 import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
@@ -212,7 +212,7 @@ suite('Phase 6.3 Host Integration Tests', () => {
 				ownerUri: 'e://2', tableName: 'T', schemaName: 's', columnName: 'c',
 				rowId: 0, columnId: 0, oldValue: 'x', newValue: 'y'
 			});
-			const trail = provenanceService.queryAuditTrail({ actor: 'editDataProvenance' });
+			const trail = provenanceService.getAuditTrail({ actor: 'editDataProvenance' });
 			assert.ok(trail.length > 0);
 			assert.strictEqual(trail[0].decisionType, 'cell-edit');
 		});
@@ -222,7 +222,7 @@ suite('Phase 6.3 Host Integration Tests', () => {
 				ownerUri: 'e://3', tableName: 'T', schemaName: 's', columnName: 'c',
 				rowId: 0, columnId: 0, oldValue: 'a', newValue: 'b'
 			});
-			const percepts = embodiedService.getRecentPercepts(10);
+			const percepts = embodiedService.getRecentPercepts(undefined, 10);
 			assert.ok(percepts.some(p => p.modality === 'interaction'));
 		});
 

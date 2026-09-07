@@ -10,7 +10,7 @@ import { Registry } from 'vs/platform/registry/common/platform';
 import * as ext from 'vs/workbench/common/contributions';
 import { LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle';
 
-import { IHypergraphVisualizationService, VisualizationSimNode, VisualizationSimEdge } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
+import { IHypergraphVisualizationService } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
 import { IHypergraphStore, HypergraphNode, HypergraphLink } from 'sql/workbench/services/zonecog/common/zonecogService';
 
 const SNAPSHOT_MIME = 'application/vnd.zonecog.hypergraph-snapshot+json';
@@ -88,7 +88,7 @@ export class ZoneCogNotebookRendererContribution extends Disposable implements e
 		header.style.marginBottom = '6px';
 		header.style.opacity = '0.7';
 
-		const canvas = append(wrapper, $('canvas.zonecog-notebook-canvas'));
+		const canvas = append(wrapper, $<HTMLCanvasElement>('canvas.zonecog-notebook-canvas'));
 		canvas.width = CANVAS_WIDTH;
 		canvas.height = CANVAS_HEIGHT;
 		canvas.style.border = '1px solid rgba(128,128,128,0.3)';
@@ -96,7 +96,7 @@ export class ZoneCogNotebookRendererContribution extends Disposable implements e
 
 		this._renderSnapshot(canvas, snapshot);
 
-		const importBtn = append(wrapper, $('button.zonecog-notebook-import'));
+		const importBtn = append(wrapper, $<HTMLButtonElement>('button.zonecog-notebook-import'));
 		importBtn.textContent = localize('zonecog.notebookImport', 'Import into Live Hypergraph');
 		importBtn.style.marginTop = '6px';
 		importBtn.style.padding = '4px 10px';

@@ -16,12 +16,11 @@ import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
-import { Disposable, IDisposable } from 'vs/base/common/lifecycle';
+import { IDisposable } from 'vs/base/common/lifecycle';
 import { RunOnceScheduler } from 'vs/base/common/async';
 
-import { IHypergraphVisualizationService, VisualizationSimNode, VisualizationSimEdge, VisualizationAnimation } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
-import { ICognitiveMembraneService, MembraneTriad, MembraneStatus } from 'sql/workbench/services/zonecog/common/zonecogService';
-import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
+import { IHypergraphVisualizationService, VisualizationSimNode, VisualizationAnimation } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
+import { ICognitiveMembraneService, MembraneTriad } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { IHypergraphStore } from 'sql/workbench/services/zonecog/common/zonecogService';
 
 const WIDGET_PADDING = 12;
@@ -43,8 +42,6 @@ export class ZoneCogDashboardTabView extends ViewPane {
 	private _heatmapCanvas?: HTMLCanvasElement;
 	private _rendererHandle?: IDisposable;
 	private _refreshScheduler: RunOnceScheduler;
-	private _width = 600;
-	private _height = 300;
 
 	constructor(
 		options: IViewPaneOptions,
@@ -59,7 +56,6 @@ export class ZoneCogDashboardTabView extends ViewPane {
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IHypergraphVisualizationService private readonly visualizationService: IHypergraphVisualizationService,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
-		@IECANAttentionService private readonly ecanService: IECANAttentionService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, telemetryService);
@@ -284,8 +280,14 @@ export class ZoneCogDashboardTabView extends ViewPane {
 
 	protected override layoutBody(height: number, width: number): void {
 		super.layoutBody(height, width);
-		this._width = Math.max(100, width);
-		this._height = Math.max(100, height - 4);
+		if (this._miniHypergraphCanvas) {
+			this._miniHypergraphCanvas.width = MINI_CANVAS_SIZE;
+			this._miniHypergraphCanvas.height = MINI_CANVAS_SIZE;
+		}
+		if (this._heatmapCanvas) {
+			this._heatmapCanvas.width = MINI_CANVAS_SIZE;
+			this._heatmapCanvas.height = MINI_CANVAS_SIZE;
+		}
 	}
 
 	public override dispose(): void {
