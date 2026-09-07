@@ -17,8 +17,6 @@ import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService, Hypergrap
 import { IHypergraphVisualizationService } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
 import { ICognitiveProvenanceService, DecisionRecordInput } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
-import { ISQLAnalyzerAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
-import { IPerformanceAdvisorAgent } from 'sql/workbench/services/zonecog/common/cognitiveAgents';
 
 /**
  * Execution Plan Cognition Overlay Contribution
@@ -90,7 +88,7 @@ export class ZoneCogExecutionPlanOverlayContribution extends Disposable implemen
 			metadata: {
 				confidence: response.confidence,
 				planNodeId: planNode.id,
-				thinkingPhases: response.thinkingPhases?.length ?? 0
+				thinkingPhases: response.phases?.length ?? 0
 			},
 			salience_score: Math.min(1, response.confidence + 0.1)
 		});
@@ -197,7 +195,7 @@ export class ZoneCogExecutionPlanOverlayContribution extends Disposable implemen
 	.registerWorkbenchContribution(ZoneCogExecutionPlanOverlayContribution, LifecyclePhase.Restored);
 
 /**
- * "Explain with Cognition" Command Palette action — runs the active
+ * "Explain with Cognition" Command Palette action - runs the active
  * execution plan through the ZoneCog cognitive pipeline.
  */
 class ExplainWithCognitionAction extends Action2 {
@@ -249,8 +247,8 @@ class ExplainWithCognitionAction extends Action2 {
 			const editorName = activeEditor.getName() ?? 'unknown';
 			const planType = editorName.endsWith('.sqlplan') ? 'MSSQL'
 				: editorName.endsWith('.xml') ? 'XML'
-				: editorName.endsWith('.json') ? 'JSON'
-				: 'unknown';
+					: editorName.endsWith('.json') ? 'JSON'
+						: 'unknown';
 
 			const planContent = JSON.stringify({
 				editorName,

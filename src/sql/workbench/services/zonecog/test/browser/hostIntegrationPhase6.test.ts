@@ -9,7 +9,7 @@ import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 import { IAccessibilityService } from 'vs/platform/accessibility/common/accessibility';
 import { TestAccessibilityService } from 'vs/platform/accessibility/test/common/testAccessibilityService';
 
-import { IHypergraphStore, ICognitiveMembraneService, HypergraphNode, IZoneCogService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { IHypergraphStore, ICognitiveMembraneService, HypergraphNode } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
 import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
@@ -29,6 +29,8 @@ import { CognitiveWorkspaceService } from 'sql/workbench/services/zonecog/browse
 import { ZoneCogEditDataProvenanceContribution, CellEditParams } from 'sql/workbench/contrib/zonecog/browser/zonecogEditDataProvenance';
 import { ZoneCogProfilerAnimationContribution, ProfilerEventData } from 'sql/workbench/contrib/zonecog/browser/zonecogProfilerAnimation';
 import { ZoneCogNotebookRendererContribution, ZONECOG_SNAPSHOT_MIME } from 'sql/workbench/contrib/zonecog/browser/zonecogNotebookRenderer';
+import { ZoneCogExecutionPlanOverlayContribution } from 'sql/workbench/contrib/zonecog/browser/zonecogExecutionPlanOverlay';
+import { ZONECOG_DASHBOARD_TAB_VIEW_ID, ZONECOG_NOTEBOOK_RENDERER_VIEW_ID, ZONECOG_EXECUTION_PLAN_VIEW_ID } from 'sql/workbench/contrib/zonecog/common/zonecog';
 
 function makeNode(id: string, type: string, salience: number, content = `${id} content`): HypergraphNode {
 	return { id, node_type: type, content, links: [], metadata: {}, salience_score: salience };
@@ -212,7 +214,7 @@ suite('Phase 6.3 Host Integration Tests', () => {
 				ownerUri: 'e://2', tableName: 'T', schemaName: 's', columnName: 'c',
 				rowId: 0, columnId: 0, oldValue: 'x', newValue: 'y'
 			});
-			const trail = provenanceService.queryAuditTrail({ actor: 'editDataProvenance' });
+			const trail = provenanceService.getAuditTrail({ actor: 'editDataProvenance' });
 			assert.ok(trail.length > 0);
 			assert.strictEqual(trail[0].decisionType, 'cell-edit');
 		});
@@ -222,7 +224,7 @@ suite('Phase 6.3 Host Integration Tests', () => {
 				ownerUri: 'e://3', tableName: 'T', schemaName: 's', columnName: 'c',
 				rowId: 0, columnId: 0, oldValue: 'a', newValue: 'b'
 			});
-			const percepts = embodiedService.getRecentPercepts(10);
+			const percepts = embodiedService.getRecentPercepts(undefined, 10);
 			assert.ok(percepts.some(p => p.modality === 'interaction'));
 		});
 
@@ -322,17 +324,14 @@ suite('Phase 6.3 Host Integration Tests', () => {
 
 	suite('Dashboard Tab', () => {
 		test('ZONECOG_DASHBOARD_TAB_VIEW_ID is registered', () => {
-			const { ZONECOG_DASHBOARD_TAB_VIEW_ID } = require('sql/workbench/contrib/zonecog/common/zonecog');
 			assert.strictEqual(ZONECOG_DASHBOARD_TAB_VIEW_ID, 'zonecog.dashboardTabView');
 		});
 
 		test('ZONECOG_NOTEBOOK_RENDERER_VIEW_ID is defined', () => {
-			const { ZONECOG_NOTEBOOK_RENDERER_VIEW_ID } = require('sql/workbench/contrib/zonecog/common/zonecog');
 			assert.strictEqual(ZONECOG_NOTEBOOK_RENDERER_VIEW_ID, 'zonecog.notebookRendererView');
 		});
 
 		test('ZONECOG_EXECUTION_PLAN_VIEW_ID is defined', () => {
-			const { ZONECOG_EXECUTION_PLAN_VIEW_ID } = require('sql/workbench/contrib/zonecog/common/zonecog');
 			assert.strictEqual(ZONECOG_EXECUTION_PLAN_VIEW_ID, 'zonecog.executionPlanView');
 		});
 	});
@@ -343,7 +342,6 @@ suite('Phase 6.3 Host Integration Tests', () => {
 
 	suite('Execution Plan Overlay', () => {
 		test('ZoneCogExecutionPlanOverlayContribution has correct ID', () => {
-			const { ZoneCogExecutionPlanOverlayContribution } = require('sql/workbench/contrib/zonecog/browser/zonecogExecutionPlanOverlay');
 			assert.strictEqual(ZoneCogExecutionPlanOverlayContribution.ID, 'zonecog.executionPlanOverlay');
 		});
 	});

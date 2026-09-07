@@ -15,7 +15,7 @@ import { INotificationService, Severity } from 'vs/platform/notification/common/
 import { IHypergraphVisualizationService } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
 import { IHypergraphStore, ICognitiveMembraneService, HypergraphNode } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
-import { ICognitiveProvenanceService, DecisionRecordInput } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
+import { ICognitiveProvenanceService } from 'sql/workbench/services/zonecog/common/cognitiveProvenance';
 
 /**
  * Edit Data Provenance-Linked Cell-Edit Nodes Contribution
