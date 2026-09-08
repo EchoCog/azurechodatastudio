@@ -1,0 +1,197 @@
+# Seed Grammar for the ZoneCog Topology Weave
+#
+# Base productions emitted by topology-weaver (emit_grammar.py) from
+# zonecog-topology.yaml, extended with the flame-letter and namespace
+# productions that the stock grammar has no vocabulary for.
+#
+# The grammar exists to let the topology evolve under rules rather than by
+# hand: compose blocks by production, mutate tags and connections, and check
+# that a candidate architecture is still well-formed.
+
+# === TOPOLOGY STRUCTURE ===
+
+<topology>        ::= <metadata> <layer>+ <auxiliary_head>?
+
+<metadata>        ::= <name> <architecture> <dimensions>
+<name>            ::= IDENTIFIER
+<architecture>    ::= "gpt2" | "gpt2-medium" | "gpt2-large" | "gpt2-xl"
+<dimensions>      ::= <d_model> <n_layers>
+<d_model>         ::= INTEGER
+<n_layers>        ::= INTEGER
+
+# === LAYER STRUCTURE ===
+#
+# A ZoneCog layer is a phase. It carries the flame-letter that types what the
+# phase is permitted to do to the residual stream.
+
+<layer>           ::= <phase_decl> <flame_letter> <attention_block> <mlp_block>
+<phase_decl>      ::= "phase" ":" <phase_name>
+<phase_name>      ::= "Initial Engagement" | "Problem Space Mapping"
+                    | "Hypothesis Generation" | "Discovery"
+                    | "Progress Tracking" | "Testing" | "Error Recognition"
+                    | "Knowledge Synthesis" | "Pattern Recognition"
+                    | "Recursive Thinking" | "Response Preparation"
+                    | <custom_phase>
+<custom_phase>    ::= IDENTIFIER
+
+<auxiliary_head>  ::= "auxiliary" <flame_letter> <pooled_attention> <readout>
+<readout>         ::= "readout" "(" <d_model> "," INTEGER ")" <tag>
+<pooled_attention> ::= "pooled" <connections>
+
+# === FLAME ALPHABET ===
+#
+# 27 letters over three orthogonal ternary axes. Letters type the layer:
+# mode constrains creation/destruction, voice constrains scope change, aspect
+# constrains when the effect lands.
+
+<flame_letter>    ::= <mode> <voice> <aspect>
+<mode>            ::= "Γ" | "Κ" | "Ω"
+<voice>           ::= "↑" | "◊" | "↓"
+<aspect>          ::= "○" | "●" | "◐"
+
+<flame_expr>      ::= <flame_letter> | <flame_expr> "∘" <flame_expr>
+<flame_assert>    ::= <flame_expr> "=" <flame_letter>
+
+# Mode typing:  Γ : Void -> Structure
+#               Κ : Structure -> Structure
+#               Ω : Structure -> Void
+# Voice typing: ↑ : Local -> Global    (projective, widens scope)
+#               ↓ : Global -> Local    (receptive, narrows scope)
+#               ◊ : X -> X             (reflexive, preserves scope)
+# Aspect typing: ○ delays execution (thunk)
+#                ● executes now
+#                ◐ is the post-execution continuation
+
+# === ATTENTION BLOCK ===
+
+<attention_block> ::= <meshwork_anchor> <attention_head>+ <bias_term>? <meshwork_anchor>
+<attention_head>  ::= <query_projection> <key_projection> <value_projection> <output_projection>
+<query_projection> ::= <linear> <tag>
+<key_projection>  ::= <linear> <tag>
+<value_projection> ::= <linear> <tag>
+<output_projection> ::= <linear> <tag>
+
+<attention_pattern> ::= "dense" | "sparse" | "retrieval" | "pooled"
+<bias_term>       ::= "bias" ":" <bias_source>
+<bias_source>     ::= "ecan_attention_bias" | "focus_gate"
+                    | "episodic_retrieval" | "consolidation_weight" | "none"
+
+# === MLP BLOCK / TRIADIC ROUTER ===
+#
+# The membrane triad is the routing decision. A well-formed router names all
+# three experts; membrane health is the balance of their utilisation.
+
+<mlp_block>       ::= <integration_point> <router> <projection> <activation> <projection> <integration_point>
+<router>          ::= "triadic" "(" <expert> "," <expert> "," <expert> ")" | "none"
+<expert>          ::= <expert_name> ":" <flame_letter>
+<expert_name>     ::= "cerebral" | "somatic" | "autonomic"
+
+<projection>      ::= <linear> <tag>
+<linear>          ::= "Linear" "(" <input_dim> "," <output_dim> ")"
+<input_dim>       ::= INTEGER | <dimension_expr>
+<output_dim>      ::= INTEGER | <dimension_expr>
+<dimension_expr>  ::= <d_model> | <d_model> "*" INTEGER
+
+# === ACTIVATION FUNCTIONS ===
+
+<activation>      ::= <gelu> | <relu> | <silu> | <custom_activation>
+<gelu>            ::= "GELU" <tag>
+<relu>            ::= "ReLU" <tag>
+<silu>            ::= "SiLU" <tag>
+<custom_activation> ::= IDENTIFIER <tag>
+
+# === INTEGRATION POINTS ===
+
+<integration_point> ::= <point_type> <connections> <tag>?
+<point_type>      ::= "pre_attention" | "post_attention_scores" | "attention_pattern"
+                    | "pre_mlp" | "post_fc" | "post_mlp"
+                    | "cross_layer" | "outer_recurrence" | "stack_output"
+<connections>     ::= "[" <connection> ("," <connection>)* "]"
+<connection>      ::= IDENTIFIER
+
+# === MESHWORK ANCHORS ===
+
+<meshwork_anchor> ::= <anchor_type> <anchor_connections> <tag>?
+<anchor_type>     ::= "query_field" | "key_field" | "value_field" | "output_field"
+                    | "sparsity_gate" | "router" | "retrieval"
+                    | "recurrent_state" | "recurrence"
+<anchor_connections> ::= <connections>
+
+# === NAMESPACE PRODUCTIONS ===
+#
+# The egreglyphic reading. A path is a query; walking it is the query's
+# execution. Reading synthesises content from position rather than retrieving
+# stored bytes.
+
+<namespace_op>    ::= <twalk> | <tread> | <twrite> | <tstat> | <tclunk>
+<twalk>           ::= "Twalk" <path> "->" <qid>       # Γ↑○ Spark
+<tread>           ::= "Tread" <fid> "->" <synthesis>  # Κ↓● Channel
+<twrite>          ::= "Twrite" <fid> <data>           # Κ↑● Beam
+<tstat>           ::= "Tstat" <fid> "->" <stat>       # Κ◊● Mirror
+<tclunk>          ::= "Tclunk" <fid>                  # Ω↓◐ Ash
+
+<path>            ::= "/" <segment> ("/" <segment>)*
+<segment>         ::= IDENTIFIER | <binding>
+<binding>         ::= "{" IDENTIFIER "}"
+<synthesis>       ::= "synthesise" "(" <path> ")"
+<qid>             ::= IDENTIFIER
+<fid>             ::= INTEGER
+<stat>            ::= "{" <attr>* "}"
+<attr>            ::= IDENTIFIER ":" <value>
+<data>            ::= STRING
+<value>           ::= STRING | INTEGER | FLOAT
+
+# === CONTEXTUAL TAGS ===
+
+<tag>             ::= <builtin_tag> | <custom_tag>
+<builtin_tag>     ::= "activation_diffusion" | "atom_unit"
+                    | "branch_superposition" | "cerebral_expert"
+                    | "consolidation_weight" | "ecan_attention_bias"
+                    | "episodic_retrieval" | "flame_gate" | "focus_gate"
+                    | "hyperedge_coupling" | "key_wave" | "loop_recurrence"
+                    | "measurement_gate" | "metacognitive_head"
+                    | "particle_annihilation" | "particle_creation"
+                    | "path_query_attention" | "phase_transform" | "query_wave"
+                    | "reservoir_state" | "salience_stream" | "sensorimotor_bind"
+                    | "somatic_expert" | "autonomic_expert"
+                    | "superposition_peak" | "triadic_nest" | "triadic_router"
+                    | "value_particle" | "wave_entry" | "wave_exit"
+                    | "wm_context_window"
+<custom_tag>      ::= IDENTIFIER
+
+# === TERMINALS ===
+
+IDENTIFIER        ::= [a-zA-Z_][a-zA-Z0-9_]*
+INTEGER           ::= [0-9]+
+FLOAT             ::= [0-9]+ "." [0-9]+
+STRING            ::= '"' [^"]* '"'
+
+# === EVOLUTION RULES ===
+#
+# Rewrites that take a well-formed topology to a well-formed topology. Each
+# preserves the flame residue of the cycle it acts on unless stated otherwise.
+
+# Insert a phase; the inserted letter and its inverse cancel, so the residue
+# of the protocol is unchanged.
+#   DEEPEN:      <layer>^n  ->  <layer>^n <flame_letter> <flame_letter>^-1
+
+# Retype a layer. Changes the residue - only legal with an explicit new
+# assertion.
+#   RETYPE:      <layer>(L)  ->  <layer>(L')  requires <flame_assert>
+
+# Add a routing expert. Breaks triadic balance unless a compensating expert is
+# added, so the membrane residue must be re-asserted.
+#   WIDEN:       triadic(a,b,c)  ->  n-adic(a,b,c,d)  requires <flame_assert>
+
+# Sparsify attention by admitting a gate.
+#   SPARSIFY:    dense  ->  sparse <bias_source>
+
+# Add a cross-layer retrieval edge.
+#   RETRIEVE:    layer_i  ->  layer_i <integration_point>(cross_layer, layer_j)
+
+# Close a recurrence: route the stack output back to layer 0.
+#   RECUR:       <topology>  ->  <topology> <meshwork_anchor>(recurrence)
+
+# Expose a subtree as namespace. Always legal: the monad composes to the
+# identity, so exposure cannot change a cycle's residue.
+#   EXPOSE:      <component>  ->  <component> <path>
