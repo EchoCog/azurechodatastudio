@@ -127,7 +127,7 @@ suite('Autognosis Service Tests', () => {
 		// embodiment observation mirrors membrane health and must not be
 		// double-counted (see AutognosisService._computeSelfConfidence).
 		assert.strictEqual(assessment.selfConfidence, 0.8);
-		const somaticObservation = assessment.observations.find(o => o.subsystem === 'somatic');
+		const somaticObservation = assessment.observations.find(o => o.subsystem === 'membrane:somatic');
 		assert.ok(somaticObservation);
 		assert.strictEqual(somaticObservation!.healthy, false);
 	});
