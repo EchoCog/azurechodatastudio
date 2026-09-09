@@ -244,6 +244,7 @@ TEST_FILES=(
 	"cognitiveLoopService.test.ts"
 	"rocksDbEngine.test.ts"
 	"cloudBackup.test.ts"
+	"cognitiveIntegration.test.ts"
 )
 
 for TEST in "${TEST_FILES[@]}"; do
