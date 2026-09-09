@@ -24,7 +24,6 @@ import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
 import { DTESNService } from 'sql/workbench/services/zonecog/browser/dtesnService';
 import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 import { CognitiveAnalyticsService } from 'sql/workbench/services/zonecog/browser/cognitiveAnalyticsService';
-import { IAutognosisService } from 'sql/workbench/services/zonecog/common/autognosis';
 import { AutognosisService } from 'sql/workbench/services/zonecog/browser/autognosisService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
@@ -129,6 +128,7 @@ suite('Cognitive Pipeline Integration Tests', () => {
 				node_type: 'QueryInput',
 				salience_score: 0.8,
 				metadata: {},
+				links: [],
 			});
 
 			const iteration = await graph.loopService.runOnce();
@@ -147,6 +147,7 @@ suite('Cognitive Pipeline Integration Tests', () => {
 				node_type: 'Concept',
 				salience_score: 0.9,
 				metadata: {},
+				links: [],
 			});
 
 			await graph.loopService.runOnce();
@@ -164,6 +165,7 @@ suite('Cognitive Pipeline Integration Tests', () => {
 					node_type: 'Concept',
 					salience_score: 0.95,
 					metadata: {},
+					links: [],
 				});
 			}
 
@@ -214,6 +216,7 @@ suite('Cognitive Pipeline Integration Tests', () => {
 					node_type: i % 2 === 0 ? 'Concept' : 'QueryInput',
 					salience_score: 0.85 + i * 0.02,
 					metadata: {},
+					links: [],
 				});
 			}
 
@@ -367,10 +370,10 @@ suite('Cognitive Pipeline Integration Tests', () => {
 				'analytics should record thinking phase durations from query processing');
 
 			const initialEngagement = snapshot.thinkingPhases.find(
-				p => p.phaseName === 'Initial Engagement'
+				p => p.name === 'Initial Engagement'
 			);
 			assert.ok(initialEngagement, 'should track Initial Engagement phase');
-			assert.ok(initialEngagement!.invocations >= 1);
+			assert.ok(initialEngagement!.count >= 1);
 		});
 
 		test('analytics samples ECAN efficiency after processQuery', async () => {
@@ -453,11 +456,12 @@ suite('Cognitive Pipeline Integration Tests', () => {
 			// 7. Verify working memory was populated from the pipeline
 			const wm = graph.workspaceService.getWorkingMemory();
 			// Working memory may or may not have items depending on STI thresholds
-			// but the pipeline should have run without error
+			// but the pipeline should have run without error and returned an array
+			assert.ok(Array.isArray(wm), 'working memory should be readable after the loop');
 
 			// 8. Verify membrane recorded activities from both query and loop
-			const membraneState = graph.membraneService.getMembraneState();
-			assert.ok(membraneState.cerebralActivity > 0,
+			const cerebralActivity = graph.membraneService.getActivity('cerebral');
+			assert.ok(cerebralActivity > 0,
 				'membrane should show cerebral activity from query + loop');
 
 			// 9. Run a second query to verify accumulated state
@@ -521,6 +525,7 @@ suite('Cognitive Pipeline Integration Tests', () => {
 				node_type: 'Concept',
 				salience_score: 0.7,
 				metadata: {},
+				links: [],
 			});
 
 			await graph.loopService.runOnce();
@@ -542,13 +547,12 @@ suite('Cognitive Pipeline Integration Tests', () => {
 	suite('membrane health across cognitive pipeline', () => {
 
 		test('query processing records cerebral membrane activity', async () => {
-			const stateBefore = graph.membraneService.getMembraneState();
-			const cerebralBefore = stateBefore.cerebralActivity;
+			const cerebralBefore = graph.membraneService.getActivity('cerebral');
 
 			await graph.zonecogService.processQuery('Membrane activity test');
 
-			const stateAfter = graph.membraneService.getMembraneState();
-			assert.ok(stateAfter.cerebralActivity > cerebralBefore,
+			const cerebralAfter = graph.membraneService.getActivity('cerebral');
+			assert.ok(cerebralAfter > cerebralBefore,
 				'processQuery should increase cerebral membrane activity');
 		});
 
@@ -559,6 +563,7 @@ suite('Cognitive Pipeline Integration Tests', () => {
 				node_type: 'Concept',
 				salience_score: 0.9,
 				metadata: {},
+				links: [],
 			});
 
 			// Pre-fill working memory so act phase fires
@@ -568,12 +573,11 @@ suite('Cognitive Pipeline Integration Tests', () => {
 
 			await graph.loopService.runOnce();
 
-			const state = graph.membraneService.getMembraneState();
-			assert.ok(state.cerebralActivity > 0,
+			assert.ok(graph.membraneService.getActivity('cerebral') > 0,
 				'think phase should record cerebral activity');
-			assert.ok(state.somaticActivity > 0,
+			assert.ok(graph.membraneService.getActivity('somatic') > 0,
 				'act phase should record somatic activity');
-			assert.ok(state.autonomicActivity > 0,
+			assert.ok(graph.membraneService.getActivity('autonomic') > 0,
 				'reflect phase should record autonomic activity');
 		});
 
