@@ -51,7 +51,7 @@ class StubPersistenceService {
 
 	async importBackup(backup: HypergraphBackup): Promise<BackupImportResult> {
 		this.lastImportedBackup = backup;
-		return { nodesImported: backup.nodes.length, linksImported: backup.links.length };
+		return { nodesUpserted: backup.nodes.length, linksUpserted: backup.links.length };
 	}
 }
 
@@ -207,8 +207,8 @@ suite('cloudBackup', () => {
 			fetchResponse = { ok: true, status: 200, json: backup };
 			const svc = new StubPersistenceService();
 			const result = await downloadBackupFromCloud(svc, makeConfig(), 'my-backups/backup.json');
-			assert.strictEqual(result.nodesImported, 0);
-			assert.strictEqual(result.linksImported, 0);
+			assert.strictEqual(result.nodesUpserted, 0);
+			assert.strictEqual(result.linksUpserted, 0);
 			assert.ok(svc.lastImportedBackup);
 
 			assert.strictEqual(captured.length, 1);
