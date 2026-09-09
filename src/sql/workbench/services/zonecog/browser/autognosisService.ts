@@ -149,7 +149,7 @@ export class AutognosisService extends Disposable implements IAutognosisService 
 
 	private _collectObservations(): SubsystemObservation[] {
 		const observations: SubsystemObservation[] = this.membraneService.getAllStatuses().map(status => ({
-			subsystem: status.triad,
+			subsystem: `membrane:${status.triad}`,
 			healthy: status.healthy,
 			detail: `${status.errorCount} error(s), ${status.activeProcesses} activit${status.activeProcesses === 1 ? 'y' : 'ies'} recorded`
 		}));

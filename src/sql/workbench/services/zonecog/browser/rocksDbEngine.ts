@@ -471,16 +471,18 @@ export class RocksDbEngine {
 			const family = this._family(cf);
 			family.memtable.clear();
 			family.sstables = [];
+			await this._persist();
 		} else {
 			for (const family of this._families.values()) {
 				family.memtable.clear();
 				family.sstables = [];
 			}
 			if (this._sink) {
+				// Wipe the sink without re-saving the now-empty state: a full
+				// clear means "start from nothing", so no snapshot must remain.
 				await this._sink.clear();
 			}
 		}
-		await this._persist();
 	}
 
 	/** Force-flush every memtable and compact every column family. */
