@@ -39,3 +39,25 @@ We prefer all communications to be in English.
 Microsoft follows the principle of [Coordinated Vulnerability Disclosure](https://www.microsoft.com/en-us/msrc/cvd).
 
 <!-- END MICROSOFT SECURITY.MD BLOCK -->
+
+## Known Non-Applicable Dependency Advisories
+
+The Angular framework packages in this repository are pinned to `@angular/*@4.1.3`
+(matched to `rxjs@5.4.0`). Dependabot periodically flags this version against newer
+Angular CVEs. The following advisory families have been assessed as **not applicable**
+because the vulnerable features do not exist in Angular 4.1.3 and are not used by this
+codebase:
+
+- **Angular i18n XSS (`$localize`)** — the runtime i18n `$localize` mechanism was
+  introduced in Angular 9. It is absent from `src/` and `extensions/`.
+- **Angular Client Hydration (DOM clobbering / response-cache poisoning)** — client
+  hydration (`provideClientHydration`) was introduced in Angular 16 and is not used.
+- **Angular unsanitized SVG script attributes** — untrusted HTML output is sanitized via
+  the independent `sanitize-html` library (not Angular's template sanitizer); see
+  `src/sql/workbench/services/notebook/browser/outputs/sanitizer.ts`.
+
+Each listed advisory's affected range begins at `>= 19.0.0-next.0` (or 20.x/21.x), which
+is above the pinned 4.1.3. Do not "fix" these by bumping `@angular/core` alone: Angular
+≥6 requires `rxjs@6+` (`rxjs/operators`), which is incompatible with the pinned
+`rxjs@5.4.0` and breaks the unit-test bootstrap. A major Angular upgrade would require
+migrating the entire `@angular/*` family and `rxjs` together.
