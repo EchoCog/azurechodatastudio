@@ -521,7 +521,7 @@ jobs:
   darwin-x64:
     name: macOS x64
     needs: compile
-    runs-on: macos-13
+    runs-on: macos-latest
     timeout-minutes: 90
     permissions:
       contents: read
