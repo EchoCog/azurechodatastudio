@@ -25,13 +25,23 @@ define(['require', 'exports'], function (require) {
 	// the expected method and so nothing needs to be done - but if it's AMD then the VS Code loader will throw an error
 	// (Can only have one anonymous define call per script file) since it only expects to be loading its own files.
 
-	// In order to make packages like zone.js load correctly we need to temporarily set AMD to false so that the modules
-	// load using commonjs before continuing.
-	const amd = define.amd;
-	define.amd = false;
-	require.__$__nodeRequire('zone.js/dist/zone');
-	require.__$__nodeRequire('zone.js/dist/zone-error');
-	define.amd = amd;
+	// In order to make packages like zone.js load correctly we must completely hide the AMD `define` global so the
+	// modules take their commonjs/global code path. Only flipping `define.amd` to false is not reliable: the loader
+	// still has an in-flight anonymous define for this very module (`sql/setup`), so if zone.js still sees the global
+	// `define` function it will enqueue a second anonymous define call and the loader throws. Deleting the global
+	// binding entirely (and restoring it in a `finally`) guarantees zone.js never reaches the AMD branch.
+	(function loadWithoutAMD(modules) {
+		const globalScope = typeof globalThis !== 'undefined' ? globalThis : window;
+		const amdDefine = globalScope.define;
+		globalScope.define = undefined;
+		try {
+			for (const mod of modules) {
+				require.__$__nodeRequire(mod);
+			}
+		} finally {
+			globalScope.define = amdDefine;
+		}
+	})(['zone.js/dist/zone', 'zone.js/dist/zone-error']);
 
 	window['Zone']['__zone_symbol__ignoreConsoleErrorUncaughtError'] = true;
 	window['Zone']['__zone_symbol__unhandledPromiseRejectionHandler'] = e => setImmediate(() => {
