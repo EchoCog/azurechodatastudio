@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
-import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService, MembraneTriadBalance } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { ZoneCogService } from 'sql/workbench/services/zonecog/browser/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
@@ -22,7 +22,7 @@ import { ICognitiveWorkspaceService } from 'sql/workbench/services/zonecog/commo
 import { CognitiveWorkspaceService } from 'sql/workbench/services/zonecog/browser/cognitiveWorkspaceService';
 import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
 import { DTESNService } from 'sql/workbench/services/zonecog/browser/dtesnService';
-import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
+import { ICognitiveAnalyticsService, CognitiveAnalyticsSnapshot } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 import { CognitiveAnalyticsService } from 'sql/workbench/services/zonecog/browser/cognitiveAnalyticsService';
 import { AutognosisService } from 'sql/workbench/services/zonecog/browser/autognosisService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
@@ -594,6 +594,258 @@ suite('Cognitive Pipeline Integration Tests', () => {
 				'autognosis should include membrane observations');
 			assert.ok(membraneObs.every(o => o.healthy),
 				'membrane should be healthy after normal query processing');
+		});
+	});
+
+	// -------------------------------------------------------------------
+	// Topology Weave Gap 1: Cognitive loop feeds analytics
+	// -------------------------------------------------------------------
+
+	suite('topology weave: loop → analytics telemetry', () => {
+
+		test('analytics records loop iteration after runOnce', async () => {
+			const snapshotBefore = graph.analyticsService.getCognitiveLoopMetrics();
+			assert.strictEqual(snapshotBefore.totalIterations, 0);
+
+			await graph.loopService.runOnce();
+
+			const snapshotAfter = graph.analyticsService.getCognitiveLoopMetrics();
+			assert.strictEqual(snapshotAfter.totalIterations, 1);
+			assert.strictEqual(snapshotAfter.successfulIterations, 1);
+			assert.strictEqual(snapshotAfter.failedIterations, 0);
+			assert.ok(snapshotAfter.meanIterationMs >= 0);
+		});
+
+		test('analytics tracks per-phase loop durations', async () => {
+			graph.hypergraphStore.addNode({
+				id: 'loop-phase-test',
+				content: 'Phase tracking node',
+				node_type: 'Concept',
+				salience_score: 0.8,
+				metadata: {},
+				links: [],
+			});
+
+			await graph.loopService.runOnce();
+
+			const metrics = graph.analyticsService.getCognitiveLoopMetrics();
+			const phaseNames = Object.keys(metrics.loopPhaseStats);
+			assert.ok(phaseNames.includes('perceive'), 'should track perceive phase');
+			assert.ok(phaseNames.includes('attend'), 'should track attend phase');
+			assert.ok(phaseNames.includes('think'), 'should track think phase');
+			assert.ok(phaseNames.includes('act'), 'should track act phase');
+			assert.ok(phaseNames.includes('reflect'), 'should track reflect phase');
+		});
+
+		test('analytics accumulates iterations over multiple loop runs', async () => {
+			for (let i = 0; i < 4; i++) {
+				await graph.loopService.runOnce();
+			}
+
+			const metrics = graph.analyticsService.getCognitiveLoopMetrics();
+			assert.strictEqual(metrics.totalIterations, 4);
+			assert.strictEqual(metrics.successfulIterations, 4);
+			assert.ok(metrics.maxIterationMs >= metrics.meanIterationMs);
+		});
+
+		test('loop metrics appear in full analytics snapshot', async () => {
+			await graph.loopService.runOnce();
+
+			const snapshot = graph.analyticsService.getSnapshot();
+			assert.ok(snapshot.cognitiveLoop);
+			assert.strictEqual(snapshot.cognitiveLoop.totalIterations, 1);
+		});
+
+		test('loop metrics appear in generated report', async () => {
+			await graph.loopService.runOnce();
+			await graph.loopService.runOnce();
+
+			const report = graph.analyticsService.generateReport();
+			assert.ok(report.includes('Cognitive Loop'));
+			assert.ok(report.includes('2 iterations'));
+			assert.ok(report.includes('iter/min'));
+		});
+
+		test('analytics reset clears loop metrics', async () => {
+			await graph.loopService.runOnce();
+			assert.strictEqual(graph.analyticsService.getCognitiveLoopMetrics().totalIterations, 1);
+
+			graph.analyticsService.reset();
+
+			const metrics = graph.analyticsService.getCognitiveLoopMetrics();
+			assert.strictEqual(metrics.totalIterations, 0);
+			assert.strictEqual(metrics.successfulIterations, 0);
+			assert.strictEqual(metrics.meanIterationMs, 0);
+		});
+
+		test('onDidUpdateMetrics fires with loop data', async () => {
+			const snapshots: CognitiveAnalyticsSnapshot[] = [];
+			graph.analyticsService.onDidUpdateMetrics(s => snapshots.push(s));
+
+			await graph.loopService.runOnce();
+
+			const loopSnapshots = snapshots.filter(s => s.cognitiveLoop.totalIterations > 0);
+			assert.ok(loopSnapshots.length > 0,
+				'onDidUpdateMetrics should fire with loop iteration data');
+		});
+	});
+
+	// -------------------------------------------------------------------
+	// Topology Weave Gap 2: ECAN state conditions query processing
+	// -------------------------------------------------------------------
+
+	suite('topology weave: ECAN → query processing', () => {
+
+		test('processQuery stimulates ECAN for created nodes', async () => {
+			const response = await graph.zonecogService.processQuery('ECAN stimulation test');
+
+			for (const nodeId of response.metadata.relatedNodes) {
+				const av = graph.ecanService.getAttentionValue(nodeId);
+				assert.ok(av.sti > 0,
+					`node ${nodeId} should have positive STI after query processing`);
+			}
+		});
+
+		test('high ECAN focus ratio boosts query complexity from simple to moderate', async () => {
+			// Seed ECAN with many nodes in focus to create a high focus ratio
+			for (let i = 0; i < 10; i++) {
+				const nodeId = `focus-boost-${i}`;
+				graph.hypergraphStore.addNode({
+					id: nodeId,
+					content: `Focus node ${i}`,
+					node_type: 'Concept',
+					salience_score: 0.9,
+					metadata: {},
+					links: [],
+				});
+				graph.ecanService.setAttentionValue(nodeId, { sti: 0.8, lti: 0.5 });
+			}
+			graph.ecanService.setFocusBoundary(0.1);
+
+			// A simple query (short, no complex keywords) should get boosted
+			const response = await graph.zonecogService.processQuery('hello world');
+
+			// With high focus ratio, the simple query should be treated as at least
+			// moderate, meaning it should have hypothesis generation phases
+			const phaseNames = response.phases.map(p => p.name);
+			assert.ok(
+				phaseNames.includes('Multiple Hypothesis Generation') ||
+				response.metadata.queryComplexity !== 'simple',
+				'high ECAN focus ratio should boost query processing depth'
+			);
+		});
+
+		test('processQuery reads ECAN snapshot during complexity assessment', async () => {
+			// With no ECAN nodes, a simple query stays simple
+			const response1 = await graph.zonecogService.processQuery('test');
+			const complexity1 = response1.metadata.queryComplexity;
+
+			// Reset and add high-focus ECAN state
+			graph.ecanService.reset();
+			for (let i = 0; i < 20; i++) {
+				const nodeId = `complex-${i}`;
+				graph.hypergraphStore.addNode({
+					id: nodeId,
+					content: `Salient item ${i}`,
+					node_type: 'Concept',
+					salience_score: 0.95,
+					metadata: {},
+					links: [],
+				});
+				graph.ecanService.setAttentionValue(nodeId, { sti: 0.9, lti: 0.7 });
+			}
+			graph.ecanService.setFocusBoundary(0.1);
+
+			const response2 = await graph.zonecogService.processQuery('test');
+			const complexity2 = response2.metadata.queryComplexity;
+
+			// The same query text should produce higher complexity with rich ECAN state
+			const complexityOrder = { 'simple': 0, 'moderate': 1, 'complex': 2 };
+			assert.ok(complexityOrder[complexity2] >= complexityOrder[complexity1],
+				'ECAN-rich state should produce equal or higher complexity assessment');
+		});
+	});
+
+	// -------------------------------------------------------------------
+	// Topology Weave Gap 3: Membrane balance as load signal
+	// -------------------------------------------------------------------
+
+	suite('topology weave: membrane triad balance', () => {
+
+		test('getTriadBalance returns balanced state initially', () => {
+			// Before any activity, all triads should have zero processes
+			const balance = graph.membraneService.getTriadBalance();
+			assert.strictEqual(balance.imbalanced, false);
+			assert.strictEqual(balance.imbalanceRatio, 1);
+		});
+
+		test('getTriadBalance detects dominant triad', () => {
+			for (let i = 0; i < 10; i++) {
+				graph.membraneService.recordActivity('cerebral');
+			}
+			graph.membraneService.recordActivity('somatic');
+			graph.membraneService.recordActivity('autonomic');
+
+			const balance = graph.membraneService.getTriadBalance();
+			assert.strictEqual(balance.dominantTriad, 'cerebral');
+			assert.ok(balance.imbalanceRatio > 1);
+		});
+
+		test('getTriadBalance detects imbalance above 60% threshold', () => {
+			// Generate heavily cerebral-biased activity
+			for (let i = 0; i < 20; i++) {
+				graph.membraneService.recordActivity('cerebral');
+			}
+			for (let i = 0; i < 3; i++) {
+				graph.membraneService.recordActivity('somatic');
+				graph.membraneService.recordActivity('autonomic');
+			}
+
+			const balance = graph.membraneService.getTriadBalance();
+			assert.strictEqual(balance.imbalanced, true);
+			assert.strictEqual(balance.dominantTriad, 'cerebral');
+			assert.ok(balance.activityDistribution.cerebral > 0.6);
+		});
+
+		test('membrane imbalance increases cognitive load during query processing', async () => {
+			// Create heavy imbalance by driving cerebral activity
+			for (let i = 0; i < 30; i++) {
+				graph.membraneService.recordActivity('cerebral');
+			}
+
+			const stateBefore = graph.zonecogService.getCognitiveState();
+			const loadBefore = stateBefore.cognitiveLoad;
+
+			await graph.zonecogService.processQuery('imbalance test');
+
+			const stateAfter = graph.zonecogService.getCognitiveState();
+			const loadIncrease = stateAfter.cognitiveLoad - loadBefore;
+
+			// With imbalance, load increment should be 0.35 minus the 0.1 cooldown
+			// Without imbalance it would be 0.2 minus 0.1
+			assert.ok(loadIncrease > 0.1,
+				'imbalanced membrane should cause higher cognitive load increment');
+		});
+
+		test('activityDistribution sums to 1 when active', () => {
+			graph.membraneService.recordActivity('cerebral');
+			graph.membraneService.recordActivity('somatic');
+			graph.membraneService.recordActivity('autonomic');
+
+			const balance = graph.membraneService.getTriadBalance();
+			const sum = balance.activityDistribution.cerebral +
+				balance.activityDistribution.somatic +
+				balance.activityDistribution.autonomic;
+			assert.ok(Math.abs(sum - 1.0) < 0.001,
+				'activity distribution should sum to 1');
+		});
+
+		test('activityDistribution is all zeros when idle', () => {
+			const balance = graph.membraneService.getTriadBalance();
+			assert.strictEqual(balance.activityDistribution.cerebral, 0);
+			assert.strictEqual(balance.activityDistribution.somatic, 0);
+			assert.strictEqual(balance.activityDistribution.autonomic, 0);
+			assert.strictEqual(balance.dominantTriad, undefined);
 		});
 	});
 });

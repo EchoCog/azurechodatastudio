@@ -16,6 +16,7 @@ import {
 	ThinkingDepth
 } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { ILLMProviderService, LLMCompletionRequest } from 'sql/workbench/services/zonecog/common/llmProvider';
+import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
 import { ILogService } from 'vs/platform/log/common/log';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
@@ -90,7 +91,8 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		@ILogService private readonly logService: ILogService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
-		@ILLMProviderService private readonly llmProviderService: ILLMProviderService
+		@ILLMProviderService private readonly llmProviderService: ILLMProviderService,
+		@IECANAttentionService private readonly ecanService: IECANAttentionService
 	) {
 		super();
 		this.logService.info('ZoneCogService: Initializing Zone-Cog cognitive protocol');
@@ -119,7 +121,16 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		}
 
 		this.membraneService.recordActivity('cerebral');
-		this._cognitiveLoad = Math.min(1, this._cognitiveLoad + 0.2);
+
+		// Membrane balance check: when the triads are heavily imbalanced,
+		// apply a higher cognitive-load increment to reflect the strain.
+		const balance = this.membraneService.getTriadBalance();
+		const loadIncrement = balance.imbalanced ? 0.35 : 0.2;
+		this._cognitiveLoad = Math.min(1, this._cognitiveLoad + loadIncrement);
+		if (balance.imbalanced) {
+			this.logService.warn(`ZoneCogService: membrane imbalance detected - dominant triad: ${balance.dominantTriad}, ratio: ${balance.imbalanceRatio.toFixed(1)}`);
+		}
+
 		this._currentContext = query;
 		this._fireStateChange();
 
@@ -194,6 +205,12 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		};
 		this.hypergraphStore.addNode(responseNode);
 		relatedNodes.push(responseNodeId);
+
+		// Stimulate ECAN attention for nodes created during this query,
+		// feeding query processing salience back into the attention network.
+		for (const nodeId of relatedNodes) {
+			this.ecanService.stimulate(nodeId, 0.3);
+		}
 
 		const processingTime = Date.now() - startTime;
 		const confidence = this._calculateConfidence(query, thinking, response, phases);
@@ -575,12 +592,30 @@ export class ZoneCogService extends Disposable implements IZoneCogService {
 		const hasComplexKeywords = /\b(analyze|compare|synthesize|integrate|optimize|evaluate)\b/i.test(query);
 		const hasCodePatterns = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|FROM|WHERE|JOIN)\b/i.test(query);
 
+		let baseComplexity: QueryComplexity;
 		if (wordCount > 50 || hasComplexKeywords || (hasCodePatterns && wordCount > 30)) {
-			return 'complex';
+			baseComplexity = 'complex';
 		} else if (wordCount > 20 || query.includes('?') || hasCodePatterns) {
-			return 'moderate';
+			baseComplexity = 'moderate';
+		} else {
+			baseComplexity = 'simple';
 		}
-		return 'simple';
+
+		// ECAN-conditioned complexity boost: when the attentional focus is
+		// saturated (many nodes competing for attention), the cognitive
+		// system is dealing with rich context and should engage deeper
+		// thinking to handle the load effectively.
+		const ecanSnapshot = this.ecanService.getSnapshot();
+		if (ecanSnapshot.totalTrackedNodes > 0) {
+			const focusRatio = ecanSnapshot.nodesInFocus / ecanSnapshot.totalTrackedNodes;
+			if (focusRatio > 0.5 && baseComplexity === 'simple') {
+				baseComplexity = 'moderate';
+			} else if (focusRatio > 0.7 && baseComplexity === 'moderate') {
+				baseComplexity = 'complex';
+			}
+		}
+
+		return baseComplexity;
 	}
 
 	private _determineThinkingDepth(complexity: QueryComplexity): ThinkingDepth {

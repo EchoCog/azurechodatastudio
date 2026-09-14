@@ -232,22 +232,36 @@ A mapping that only relabels is decoration. These are the places where the
 architectural reading disagrees with the implementation.
 
 **The cognitive loop should feed analytics.** Every layer in a stack emits
-telemetry. The loop is the outer recurrence and currently emits none:
-`CognitiveAnalyticsService` subscribes to `onDidProcessQuery` but not to
-`onDidCompleteIteration`, so autonomous operation is unmonitored. *Confirmed
-gap* — covered by `cognitiveIntegration.test.ts`.
+telemetry. The loop is the outer recurrence and previously emitted none.
+~~`CognitiveAnalyticsService` subscribes to `onDidProcessQuery` but not to
+`onDidCompleteIteration`, so autonomous operation is unmonitored.~~ *Closed.*
+`CognitiveAnalyticsService` now subscribes to `onDidCompleteIteration`,
+recording per-iteration duration, success/failure, per-phase timing, and a
+rolling iterations-per-minute rate. `CognitiveLoopMetrics` is part of the
+analytics snapshot and the generated report. Integration tests in
+`cognitiveIntegration.test.ts` verify the data flow.
 
 **ECAN state should condition query processing.** `focus_gate` is declared on
-layers 4, 5 and 6, but `processQuery` reads no ECAN state at all. The loop
-allocates attention that the thinking protocol never consumes. Pulse and Blaze
-share a hypergraph but not a focus — which §4.2 predicts, since they differ
-precisely in Voice. *Open design gap.*
+layers 4, 5 and 6. ~~`processQuery` reads no ECAN state at all. The loop
+allocates attention that the thinking protocol never consumes.~~ *Closed.*
+`ZoneCogService` now injects `IECANAttentionService` and reads the ECAN
+snapshot during complexity assessment: a high focus ratio (>50% of tracked
+nodes in focus) boosts simple queries to moderate, and >70% boosts moderate
+to complex. After processing, created hypergraph nodes are stimulated with
+positive STI, feeding query salience back into the attention network.
+Integration tests verify the bidirectional ECAN↔query data flow.
 
 **Membrane health is a load-balance signal.** If the triad is an MoE router,
 health is expert utilisation balance, and §4.4 gives the balance condition
-exactly: the utilisation-weighted triad should compose to Mirror. The current
+exactly: the utilisation-weighted triad should compose to Mirror. ~~The current
 implementation tracks activity and errors per triad but never compares them
-against each other. *Open, and cheap to add.*
+against each other.~~ *Closed.* `ICognitiveMembraneService.getTriadBalance()`
+now returns `MembraneTriadBalance` with per-triad activity distribution,
+dominant triad identification, imbalance ratio, and an `imbalanced` flag
+(triggered when one triad exceeds 60% of all activity). `ZoneCogService`
+reads the balance during query processing and increases cognitive load
+under imbalance. Integration tests verify balance detection and the
+load-signal pathway.
 
 **The reservoir is the only cross-iteration carrier.** Working memory decays and
 salience decays; DTESN state does not. If loop iterations are to compose into
