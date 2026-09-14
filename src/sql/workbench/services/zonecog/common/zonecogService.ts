@@ -170,6 +170,20 @@ export interface MembraneStatus {
 }
 
 /**
+ * Balance analysis across the three membrane triads.
+ */
+export interface MembraneTriadBalance {
+	/** Per-triad share of total activity [0, 1]. Sums to 1 (or all 0 when idle). */
+	activityDistribution: Record<MembraneTriad, number>;
+	/** The triad carrying the most activity, or undefined when idle. */
+	dominantTriad: MembraneTriad | undefined;
+	/** Ratio of dominant triad's activity to the least-active triad (>= 1, Infinity when least is 0). */
+	imbalanceRatio: number;
+	/** True when one triad carries more than 60% of all activity. */
+	imbalanced: boolean;
+}
+
+/**
  * Cognitive Membrane service implementing the Cerebral / Somatic / Autonomic
  * triad architecture mapped from the P-System Membrane model.
  */
@@ -205,6 +219,13 @@ export interface ICognitiveMembraneService {
 	 * after the recovery attempt.
 	 */
 	attemptRecovery(triad: MembraneTriad): boolean;
+
+	/**
+	 * Analyze activity distribution across the three triads.
+	 * Detects imbalance that may indicate a bottleneck or under-utilized
+	 * membrane, serving as a load-balance signal for the cognitive system.
+	 */
+	getTriadBalance(): MembraneTriadBalance;
 }
 
 // ---------------------------------------------------------------------------
