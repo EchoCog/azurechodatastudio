@@ -11,13 +11,15 @@ import {
 	ECANEfficiencyMetrics,
 	WorkingMemoryUtilization,
 	LLMTokenEconomics,
-	DTESNConvergenceMetrics
+	DTESNConvergenceMetrics,
+	CognitiveLoopMetrics
 } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
 import { ICognitiveWorkspaceService } from 'sql/workbench/services/zonecog/common/cognitiveWorkspace';
 import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
+import { ICognitiveLoopService, CognitiveLoopIteration } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ILogService } from 'vs/platform/log/common/log';
@@ -32,6 +34,11 @@ const LATENCY_BUCKET_BOUNDS_MS = [50, 100, 250, 500, 1000, 2500, 5000, 10000];
  * Maximum retained DTESN MSE history entries.
  */
 const MAX_MSE_HISTORY = 50;
+
+/**
+ * Rolling window size for iterations-per-minute calculation (5 minutes).
+ */
+const LOOP_RATE_WINDOW_MS = 5 * 60 * 1000;
 
 /**
  * Counter for deterministic analytics node IDs.
@@ -96,6 +103,15 @@ export class CognitiveAnalyticsService extends Disposable implements ICognitiveA
 	private _dtesnFirstMse = 0;
 	private readonly _dtesnMseHistory: number[] = [];
 
+	// -- Cognitive loop iteration telemetry ------------------------------------
+	private _loopTotalIterations = 0;
+	private _loopSuccessfulIterations = 0;
+	private _loopFailedIterations = 0;
+	private _loopTotalDurationMs = 0;
+	private _loopMaxDurationMs = 0;
+	private readonly _loopPhaseStats = new Map<string, { count: number; totalMs: number }>();
+	private readonly _loopIterationTimestamps: number[] = [];
+
 	private readonly _onDidUpdateMetrics = this._register(new Emitter<CognitiveAnalyticsSnapshot>());
 	readonly onDidUpdateMetrics: Event<CognitiveAnalyticsSnapshot> = this._onDidUpdateMetrics.event;
 
@@ -107,7 +123,8 @@ export class CognitiveAnalyticsService extends Disposable implements ICognitiveA
 		@ILLMProviderService private readonly llmProviderService: ILLMProviderService,
 		@IECANAttentionService private readonly ecanService: IECANAttentionService,
 		@ICognitiveWorkspaceService private readonly workspaceService: ICognitiveWorkspaceService,
-		@IDTESNService private readonly dtesnService: IDTESNService
+		@IDTESNService private readonly dtesnService: IDTESNService,
+		@ICognitiveLoopService private readonly loopService: ICognitiveLoopService
 	) {
 		super();
 
@@ -120,6 +137,12 @@ export class CognitiveAnalyticsService extends Disposable implements ICognitiveA
 			}
 			this._sampleECAN();
 			this._sampleWorkingMemory();
+			this._fireUpdate();
+		}));
+
+		// Cognitive loop iteration telemetry (topology weave gap closure)
+		this._register(this.loopService.onDidCompleteIteration(iteration => {
+			this._recordLoopIteration(iteration);
 			this._fireUpdate();
 		}));
 
@@ -248,6 +271,32 @@ export class CognitiveAnalyticsService extends Disposable implements ICognitiveA
 		};
 	}
 
+	getCognitiveLoopMetrics(): CognitiveLoopMetrics {
+		const loopPhaseStats: Record<string, { count: number; totalMs: number; meanMs: number }> = {};
+		for (const [name, stat] of this._loopPhaseStats) {
+			loopPhaseStats[name] = {
+				count: stat.count,
+				totalMs: stat.totalMs,
+				meanMs: stat.count > 0 ? stat.totalMs / stat.count : 0,
+			};
+		}
+
+		const now = Date.now();
+		const windowStart = now - LOOP_RATE_WINDOW_MS;
+		const recentCount = this._loopIterationTimestamps.filter(ts => ts >= windowStart).length;
+		const iterationsPerMinute = recentCount > 0 ? (recentCount / LOOP_RATE_WINDOW_MS) * 60_000 : 0;
+
+		return {
+			totalIterations: this._loopTotalIterations,
+			successfulIterations: this._loopSuccessfulIterations,
+			failedIterations: this._loopFailedIterations,
+			meanIterationMs: this._loopTotalIterations > 0 ? this._loopTotalDurationMs / this._loopTotalIterations : 0,
+			maxIterationMs: this._loopMaxDurationMs,
+			loopPhaseStats,
+			iterationsPerMinute,
+		};
+	}
+
 	getSnapshot(): CognitiveAnalyticsSnapshot {
 		return {
 			queryLatency: this.getQueryLatencyHistogram(),
@@ -256,6 +305,7 @@ export class CognitiveAnalyticsService extends Disposable implements ICognitiveA
 			workingMemory: this.getWorkingMemoryUtilization(),
 			tokenEconomics: this.getTokenEconomics(),
 			dtesnConvergence: this.getDTESNConvergence(),
+			cognitiveLoop: this.getCognitiveLoopMetrics(),
 			timestamp: Date.now(),
 		};
 	}
@@ -319,6 +369,16 @@ export class CognitiveAnalyticsService extends Disposable implements ICognitiveA
 		const dtesn = snapshot.dtesnConvergence;
 		lines.push('DTESN Training Convergence:');
 		lines.push(`  runs=${dtesn.trainingRuns} latestMSE=${dtesn.latestMse.toFixed(6)} bestMSE=${dtesn.bestMse.toFixed(6)} converging=${dtesn.converging}`);
+		lines.push('');
+
+		// Cognitive loop
+		const loop = snapshot.cognitiveLoop;
+		lines.push(`Cognitive Loop (${loop.totalIterations} iterations):`);
+		lines.push(`  successful=${loop.successfulIterations} failed=${loop.failedIterations} meanDuration=${loop.meanIterationMs.toFixed(1)}ms max=${loop.maxIterationMs}ms`);
+		lines.push(`  rate=${loop.iterationsPerMinute.toFixed(2)} iter/min`);
+		for (const [phaseName, phaseStat] of Object.entries(loop.loopPhaseStats)) {
+			lines.push(`  phase ${phaseName}: count=${phaseStat.count} mean=${phaseStat.meanMs.toFixed(1)}ms`);
+		}
 
 		const report = lines.join('\n');
 
@@ -370,6 +430,13 @@ export class CognitiveAnalyticsService extends Disposable implements ICognitiveA
 		this._dtesnBestMse = 0;
 		this._dtesnFirstMse = 0;
 		this._dtesnMseHistory.length = 0;
+		this._loopTotalIterations = 0;
+		this._loopSuccessfulIterations = 0;
+		this._loopFailedIterations = 0;
+		this._loopTotalDurationMs = 0;
+		this._loopMaxDurationMs = 0;
+		this._loopPhaseStats.clear();
+		this._loopIterationTimestamps.length = 0;
 		this.membraneService.recordActivity('autonomic');
 		this._fireUpdate();
 		this.logService.info('CognitiveAnalyticsService: metrics reset');
@@ -429,6 +496,34 @@ export class CognitiveAnalyticsService extends Disposable implements ICognitiveA
 		this._wmLatestUtilization = utilization;
 		this._wmPeakUtilization = Math.max(this._wmPeakUtilization, utilization);
 		this._wmEpisodeCount = summary.episodeCount;
+	}
+
+	private _recordLoopIteration(iteration: CognitiveLoopIteration): void {
+		this._loopTotalIterations++;
+		if (iteration.success) {
+			this._loopSuccessfulIterations++;
+		} else {
+			this._loopFailedIterations++;
+		}
+		this._loopTotalDurationMs += iteration.durationMs;
+		this._loopMaxDurationMs = Math.max(this._loopMaxDurationMs, iteration.durationMs);
+
+		for (const phase of iteration.phases) {
+			let stat = this._loopPhaseStats.get(phase.name);
+			if (!stat) {
+				stat = { count: 0, totalMs: 0 };
+				this._loopPhaseStats.set(phase.name, stat);
+			}
+			stat.count++;
+			stat.totalMs += phase.durationMs;
+		}
+
+		const now = Date.now();
+		this._loopIterationTimestamps.push(now);
+		const windowStart = now - LOOP_RATE_WINDOW_MS;
+		while (this._loopIterationTimestamps.length > 0 && this._loopIterationTimestamps[0] < windowStart) {
+			this._loopIterationTimestamps.shift();
+		}
 	}
 
 	private _fireUpdate(): void {

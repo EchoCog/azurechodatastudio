@@ -6,7 +6,8 @@
 import {
 	ICognitiveMembraneService,
 	MembraneTriad,
-	MembraneStatus
+	MembraneStatus,
+	MembraneTriadBalance
 } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Emitter, Event } from 'vs/base/common/event';
@@ -119,6 +120,44 @@ export class CognitiveMembraneService extends Disposable implements ICognitiveMe
 
 	isSystemHealthy(): boolean {
 		return this.getAllStatuses().every(s => s.healthy);
+	}
+
+	getTriadBalance(): MembraneTriadBalance {
+		const triads: MembraneTriad[] = ['cerebral', 'somatic', 'autonomic'];
+		const activities: Record<MembraneTriad, number> = {
+			cerebral: this._getState('cerebral').activeProcesses,
+			somatic: this._getState('somatic').activeProcesses,
+			autonomic: this._getState('autonomic').activeProcesses,
+		};
+		const total = activities.cerebral + activities.somatic + activities.autonomic;
+
+		const activityDistribution: Record<MembraneTriad, number> = {
+			cerebral: total > 0 ? activities.cerebral / total : 0,
+			somatic: total > 0 ? activities.somatic / total : 0,
+			autonomic: total > 0 ? activities.autonomic / total : 0,
+		};
+
+		let dominantTriad: MembraneTriad | undefined;
+		let maxActivity = 0;
+		let minActivity = Infinity;
+		for (const t of triads) {
+			if (activities[t] > maxActivity) {
+				maxActivity = activities[t];
+				dominantTriad = t;
+			}
+			if (activities[t] < minActivity) {
+				minActivity = activities[t];
+			}
+		}
+
+		if (total === 0) {
+			dominantTriad = undefined;
+		}
+
+		const imbalanceRatio = minActivity > 0 ? maxActivity / minActivity : (maxActivity > 0 ? Infinity : 1);
+		const imbalanced = dominantTriad !== undefined && activityDistribution[dominantTriad] > 0.6;
+
+		return { activityDistribution, dominantTriad, imbalanceRatio, imbalanced };
 	}
 
 	resetErrors(triad: MembraneTriad): void {
