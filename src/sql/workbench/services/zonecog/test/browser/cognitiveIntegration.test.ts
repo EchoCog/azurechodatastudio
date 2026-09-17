@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as assert from 'assert';
-import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService, MembraneTriadBalance } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { IZoneCogService, IHypergraphStore, ICognitiveMembraneService } from 'sql/workbench/services/zonecog/common/zonecogService';
 import { ZoneCogService } from 'sql/workbench/services/zonecog/browser/zonecogService';
 import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergraphStore';
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
