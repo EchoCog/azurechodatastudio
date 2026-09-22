@@ -77,11 +77,11 @@ async function buildServiceGraph(): Promise<CognitiveServiceGraph> {
 	instantiationService.stub(IZoneCogService, zonecogService);
 	await zonecogService.initialize();
 
-	const analyticsService = instantiationService.createInstance(CognitiveAnalyticsService);
-	instantiationService.stub(ICognitiveAnalyticsService, analyticsService);
-
 	const loopService = instantiationService.createInstance(CognitiveLoopService) as CognitiveLoopService;
 	instantiationService.stub(ICognitiveLoopService, loopService);
+
+	const analyticsService = instantiationService.createInstance(CognitiveAnalyticsService);
+	instantiationService.stub(ICognitiveAnalyticsService, analyticsService);
 
 	const autognosisService = instantiationService.createInstance(AutognosisService) as AutognosisService;
 
