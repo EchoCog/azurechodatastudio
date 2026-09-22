@@ -7,7 +7,7 @@ import 'vs/css!./media/zonecogDashboard';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { localize } from 'vs/nls';
-import { $, append } from 'vs/base/browser/dom';
+import { $, append, clearNode } from 'vs/base/browser/dom';
 import { ViewPane, IViewPaneOptions } from 'vs/workbench/browser/parts/views/viewPane';
 import { IViewDescriptorService } from 'vs/workbench/common/views';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
@@ -21,6 +21,7 @@ import { RunOnceScheduler } from 'vs/base/common/async';
 
 import { IHypergraphVisualizationService, VisualizationSimNode, VisualizationAnimation } from 'sql/workbench/services/zonecog/common/hypergraphVisualization';
 import { ICognitiveMembraneService, MembraneTriad } from 'sql/workbench/services/zonecog/common/zonecogService';
+import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
 import { IHypergraphStore } from 'sql/workbench/services/zonecog/common/zonecogService';
 
 const WIDGET_PADDING = 12;
@@ -56,6 +57,7 @@ export class ZoneCogDashboardTabView extends ViewPane {
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IHypergraphVisualizationService private readonly visualizationService: IHypergraphVisualizationService,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
+		@IECANAttentionService _ecanService: IECANAttentionService,
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, telemetryService);
@@ -192,7 +194,7 @@ export class ZoneCogDashboardTabView extends ViewPane {
 		if (!this._membraneContainer) {
 			return;
 		}
-		this._membraneContainer.innerHTML = '';
+		clearNode(this._membraneContainer);
 		const triads: MembraneTriad[] = ['cerebral', 'somatic', 'autonomic'];
 		for (const triad of triads) {
 			const status = this.membraneService.getStatus(triad);
@@ -280,14 +282,6 @@ export class ZoneCogDashboardTabView extends ViewPane {
 
 	protected override layoutBody(height: number, width: number): void {
 		super.layoutBody(height, width);
-		if (this._miniHypergraphCanvas) {
-			this._miniHypergraphCanvas.width = MINI_CANVAS_SIZE;
-			this._miniHypergraphCanvas.height = MINI_CANVAS_SIZE;
-		}
-		if (this._heatmapCanvas) {
-			this._heatmapCanvas.width = MINI_CANVAS_SIZE;
-			this._heatmapCanvas.height = MINI_CANVAS_SIZE;
-		}
 	}
 
 	public override dispose(): void {

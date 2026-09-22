@@ -49,8 +49,8 @@ export class ZoneCogProfilerAnimationContribution extends Disposable implements 
 		@IHypergraphStore private readonly hypergraphStore: IHypergraphStore,
 		@ICognitiveMembraneService private readonly membraneService: ICognitiveMembraneService,
 		@IEmbodiedCognitionService private readonly embodiedService: IEmbodiedCognitionService,
-		@ICognitiveProvenanceService private readonly _provenanceService: ICognitiveProvenanceService,
-		@IDTESNService private readonly _dtesnService: IDTESNService
+		@ICognitiveProvenanceService _provenanceService: ICognitiveProvenanceService,
+		@IDTESNService _dtesnService: IDTESNService
 	) {
 		super();
 		this._throttle = new RunOnceScheduler(() => this._processPendingEvents(), PROFILER_EVENT_THROTTLE_MS);

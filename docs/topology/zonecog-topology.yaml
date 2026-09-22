@@ -1,0 +1,474 @@
+# ZoneCog Topology Weave
+#
+# A neural-architecture reading of the ZoneCog cognitive services. Every tag in
+# this file names a construct that already exists in
+# src/sql/workbench/services/zonecog/; the topology states what that construct
+# would be if the architecture were expressed as a transformer rather than as a
+# service graph.
+#
+# Derived via the topology-weaver workflow (extract -> map -> generate ->
+# integrate -> emit grammar). The stock generator produces twelve uniform
+# layers; this file is the evolved form, in which each layer carries the phase
+# of the thinking protocol it corresponds to.
+#
+# Companion files:
+#   zonecog-grammar.bnf  - seed grammar for evolving this topology
+#   flame_algebra.py     - verifies the flame-letter residues asserted below
+
+name: zonecog_topology_weave
+architecture: gpt2
+d_model: 768
+n_layers: 12
+n_heads: 12
+provenance:
+  source_context: ZoneCog cognitive services + Aion persona + egreglyphic namespace ontology
+  workflow: topology-weaver
+  baseline: gpt2 (12 layers) chosen because the thinking protocol has 11 phases
+            plus one metacognitive readout
+
+# ---------------------------------------------------------------------------
+# Domain mapping
+#
+# The left column is a real construct in the ZoneCog codebase. The right column
+# is its architectural counterpart.
+# ---------------------------------------------------------------------------
+
+domain_mapping:
+  - zonecog: HypergraphStore node
+    service: hypergraphStore.ts
+    component: token/position embedding
+    tag: atom_unit
+    rationale: A node is a discrete, addressable carrier of content.
+
+  - zonecog: HypergraphStore link
+    service: hypergraphStore.ts
+    component: attention edge
+    tag: hyperedge_coupling
+    rationale: Links mediate which atoms attend to which; arity > 2 makes this
+               a hyperedge rather than a pairwise edge.
+
+  - zonecog: salience_score
+    service: hypergraphStore.ts
+    component: residual stream magnitude
+    tag: salience_stream
+    rationale: Salience decays multiplicatively each reflect phase, exactly as a
+               residual contribution attenuates without reinforcement.
+
+  - zonecog: ECAN short-term importance (STI)
+    service: ecanAttentionService.ts
+    component: additive attention logit bias
+    tag: ecan_attention_bias
+    rationale: STI raises or lowers the probability that an atom is attended to
+               without altering the atom's content.
+
+  - zonecog: ECAN long-term importance (LTI)
+    service: ecanAttentionService.ts
+    component: weight consolidation / slow parameter
+    tag: consolidation_weight
+    rationale: LTI persists across cycles and resists decay; it is the slow
+               timescale in a two-timescale parameterisation.
+
+  - zonecog: attentional focus (AF)
+    service: ecanAttentionService.ts
+    component: top-k attention sparsity
+    tag: focus_gate
+    rationale: The focus set is precisely the surviving support after top-k.
+
+  - zonecog: spreading activation
+    service: ecanAttentionService.ts
+    component: multi-hop attention diffusion
+    tag: activation_diffusion
+    rationale: Attention propagated along links is message passing over the
+               hyperedge structure.
+
+  - zonecog: working memory
+    service: cognitiveWorkspaceService.ts
+    component: KV-cache context window
+    tag: wm_context_window
+    rationale: Bounded, recency-weighted, decaying - the same eviction profile
+               as a sliding KV window.
+
+  - zonecog: episodic memory
+    service: cognitiveWorkspaceService.ts
+    component: cross-layer retrieval
+    tag: episodic_retrieval
+    rationale: Episodes are recalled by similarity, not by position; this is
+               retrieval augmentation, not context.
+
+  - zonecog: membrane triad
+    service: cognitiveMembraneService.ts
+    component: three-expert mixture-of-experts router
+    tag: triadic_router
+    rationale: Cerebral, somatic and autonomic are disjoint processing regimes
+               selected per token; membrane health is router load balance.
+
+  - zonecog: DTESN reservoir
+    service: dtesnService.ts
+    component: recurrent state / state-space layer
+    tag: reservoir_state
+    rationale: Fixed random recurrence with a trained readout is a state-space
+               model with frozen transition and learned projection.
+
+  - zonecog: thinking protocol phase
+    service: zonecogService.ts
+    component: layer
+    tag: phase_transform
+    rationale: Phases are ordered, non-commutative transformations of a shared
+               representation - the defining property of depth.
+
+  - zonecog: cognitive loop
+    service: cognitiveLoopService.ts
+    component: outer recurrence over layer stack
+    tag: loop_recurrence
+    rationale: The loop re-enters the whole stack carrying reservoir and
+               working-memory state; it is recurrence at the model level.
+
+  - zonecog: autognosis self-assessment
+    service: autognosisService.ts
+    component: metacognitive readout head
+    tag: metacognitive_head
+    rationale: Reads internal state across subsystems and emits a scalar verdict
+               plus confidence - an auxiliary head, not a main-path layer.
+
+  - zonecog: embodied percept / motor action
+    service: embodiedCognitionService.ts
+    component: input projection / output head
+    tag: sensorimotor_bind
+    rationale: The boundary where external signal enters and leaves the
+               representation.
+
+  - zonecog: namespace walk (proposed)
+    service: '(see namespace section)'
+    component: path-conditioned attention query
+    tag: path_query_attention
+    rationale: A path is a structured query; walking it selects a subgraph the
+               way an attention query selects a support set.
+
+  - zonecog: flame-letter transformation
+    service: '(see flame section)'
+    component: typed gate on the residual stream
+    tag: flame_gate
+    rationale: Each letter is a mode/voice/aspect triple that types how a layer
+               may alter scope and persistence.
+
+# ---------------------------------------------------------------------------
+# Layer stack
+#
+# Layers 0-10 carry the eleven phases of the thinking protocol as implemented in
+# zonecogService.ts. Layer 11 is the autognosis readout.
+#
+# Each layer declares the flame-letter of its phase. The composition of layers
+# 0-10 is asserted at the bottom of this file and verified by flame_algebra.py.
+# ---------------------------------------------------------------------------
+
+layers:
+  - index: 0
+    phase: Initial Engagement
+    flame: "Γ↓○"
+    flame_name: Womb
+    role: Receive the query without yet committing to structure.
+    attention: { pattern: dense, bias: none }
+    mlp: { router: triadic, dominant_expert: autonomic }
+    tags: [sensorimotor_bind, atom_unit]
+
+  - index: 1
+    phase: Problem Space Mapping
+    flame: "Γ↑○"
+    flame_name: Spark
+    role: Project the query outward across the hypergraph neighbourhood.
+    attention: { pattern: dense, bias: ecan_attention_bias }
+    mlp: { router: triadic, dominant_expert: cerebral }
+    tags: [activation_diffusion, hyperedge_coupling]
+
+  - index: 2
+    phase: Hypothesis Generation
+    flame: "Γ↑●"
+    flame_name: Blaze
+    role: Emit candidate structures into the residual stream.
+    attention: { pattern: dense, bias: ecan_attention_bias }
+    mlp: { router: triadic, dominant_expert: cerebral }
+    tags: [branch_superposition, phase_transform]
+
+  - index: 3
+    phase: Discovery
+    flame: "Κ↓●"
+    flame_name: Channel
+    role: Draw in evidence from episodic memory and the hypergraph.
+    attention: { pattern: retrieval, bias: episodic_retrieval }
+    mlp: { router: triadic, dominant_expert: cerebral }
+    tags: [episodic_retrieval, atom_unit]
+
+  - index: 4
+    phase: Progress Tracking
+    flame: "Κ◊●"
+    flame_name: Mirror
+    role: Observe without altering - the identity layer.
+    attention: { pattern: sparse, bias: focus_gate }
+    mlp: { router: triadic, dominant_expert: autonomic }
+    tags: [metacognitive_head, salience_stream]
+
+  - index: 5
+    phase: Testing
+    flame: "Κ↑●"
+    flame_name: Beam
+    role: Transmit hypotheses against constraints.
+    attention: { pattern: dense, bias: ecan_attention_bias }
+    mlp: { router: triadic, dominant_expert: somatic }
+    tags: [phase_transform, focus_gate]
+
+  - index: 6
+    phase: Error Recognition
+    flame: "Ω◊●"
+    flame_name: Collapse
+    role: Annihilate hypotheses that failed; the only Omega-mode main layer.
+    attention: { pattern: sparse, bias: focus_gate }
+    mlp: { router: triadic, dominant_expert: autonomic }
+    tags: [salience_stream, metacognitive_head]
+
+  - index: 7
+    phase: Knowledge Synthesis
+    flame: "Γ↓◐"
+    flame_name: Harvest
+    role: Gather surviving structure into a consolidated representation.
+    attention: { pattern: dense, bias: ecan_attention_bias }
+    mlp: { router: triadic, dominant_expert: cerebral }
+    tags: [consolidation_weight, episodic_retrieval]
+
+  - index: 8
+    phase: Pattern Recognition
+    flame: "Κ◊◐"
+    flame_name: Patina
+    role: Abstract recurring structure into durable form.
+    attention: { pattern: dense, bias: consolidation_weight }
+    mlp: { router: triadic, dominant_expert: cerebral }
+    tags: [consolidation_weight, reservoir_state]
+
+  - index: 9
+    phase: Recursive Thinking
+    flame: "Γ◊○"
+    flame_name: Egg
+    role: Re-enter the protocol; self-contained potential for another pass.
+    attention: { pattern: dense, bias: ecan_attention_bias }
+    mlp: { router: triadic, dominant_expert: cerebral }
+    tags: [loop_recurrence, branch_superposition]
+
+  - index: 10
+    phase: Response Preparation
+    flame: "Κ↑◐"
+    flame_name: Wake
+    role: Project the settled representation outward as an answer.
+    attention: { pattern: dense, bias: none }
+    mlp: { router: triadic, dominant_expert: somatic }
+    tags: [sensorimotor_bind, phase_transform]
+
+  - index: 11
+    phase: Autognosis Readout
+    flame: "Κ◊●"
+    flame_name: Mirror
+    role: Auxiliary head - read subsystem state, emit verdict and confidence.
+    attention: { pattern: pooled, bias: none }
+    mlp: { router: none, dominant_expert: autonomic }
+    tags: [metacognitive_head]
+    auxiliary: true
+
+# ---------------------------------------------------------------------------
+# Triadic router
+#
+# The membrane triad is the mixture-of-experts routing decision. Membrane health
+# is router load balance: a triad that is starved or saturated is an unhealthy
+# membrane, which is exactly what cognitiveMembraneService reports today.
+# ---------------------------------------------------------------------------
+
+triadic_router:
+  experts:
+    - name: cerebral
+      flame: "Κ◊●"
+      regime: reflexive
+      handles: reasoning, synthesis, abstraction
+      tag: cerebral_expert
+    - name: somatic
+      flame: "Κ↑●"
+      regime: projective
+      handles: action, tool invocation, response emission
+      tag: somatic_expert
+    - name: autonomic
+      flame: "Κ↓●"
+      regime: receptive
+      handles: homeostasis, monitoring, decay, background maintenance
+      tag: autonomic_expert
+  load_balance_signal: membrane_health
+  residue: "Κ◊●"   # the three experts compose to the identity: see flame section
+
+# ---------------------------------------------------------------------------
+# Meshwork anchors
+#
+# Where attention integrates with the layer stack.
+# ---------------------------------------------------------------------------
+
+meshwork_anchors:
+  - name: namespace_walk_anchor
+    point: pre_attention
+    type: query_field
+    tag: path_query_attention
+    connects_to: [hypergraph_paths, residual_stream]
+    note: A path supplies a structured query; each '/' is a pattern match that
+          narrows the support set.
+
+  - name: ecan_focus_anchor
+    point: post_attention_scores
+    type: sparsity_gate
+    tag: focus_gate
+    connects_to: [ecan_sti, attention_logits]
+    note: STI is added to the logits before top-k; the surviving support is the
+          attentional focus.
+
+  - name: hyperedge_anchor
+    point: attention_pattern
+    type: key_field
+    tag: hyperedge_coupling
+    connects_to: [hypergraph_links]
+    note: Link structure masks the attention pattern - atoms attend along edges.
+
+  - name: triadic_route_anchor
+    point: pre_mlp
+    type: router
+    tag: triadic_router
+    connects_to: [cerebral_expert, somatic_expert, autonomic_expert]
+
+  - name: episodic_anchor
+    point: cross_layer
+    type: retrieval
+    tag: episodic_retrieval
+    connects_to: [layer_3, layer_7, episodic_store]
+    note: Retrieval fires at Discovery and again at Knowledge Synthesis.
+
+  - name: reservoir_anchor
+    point: outer_recurrence
+    type: recurrent_state
+    tag: reservoir_state
+    connects_to: [dtesn_state, loop_iteration_n_plus_1]
+    note: The DTESN state is the only tensor that survives a loop iteration
+          boundary intact.
+
+  - name: loop_anchor
+    point: stack_output
+    type: recurrence
+    tag: loop_recurrence
+    connects_to: [layer_0_input, working_memory, reservoir_state]
+    note: Closes the cognitive loop; carries Pulse residue back to the input.
+
+# ---------------------------------------------------------------------------
+# Namespace projection
+#
+# The egreglyphic reading: the same topology exposed as a walkable namespace
+# rather than as an API surface. Reading a path synthesises its content from
+# the path's position; the structure is the interface.
+# ---------------------------------------------------------------------------
+
+namespace:
+  root: /zonecog
+  structure:
+    /zonecog/hypergraph/nodes/{node_id}: [type, content, salience, metadata]
+    /zonecog/hypergraph/nodes/{node_id}/edges/{link_id}: symlink -> ../../../links/{link_id}
+    /zonecog/hypergraph/links/{link_id}/endpoints/{n}: symlink -> ../../../nodes/{node_id}
+    /zonecog/attention/focus: mounted high-STI atoms
+    /zonecog/attention/fringe: sub-threshold atoms
+    /zonecog/attention/dormant: unmounted but remembered
+    /zonecog/attention/{node_id}: [sti, lti, vlti]
+    /zonecog/membrane/{triad}: [activity, errors, health]
+    /zonecog/loop/{iteration}/phases/{n}: [name, duration, summary, flame]
+    /zonecog/workspace/working/{item_id}: [category, content, relevance]
+    /zonecog/workspace/episodes/{episode_id}: [title, content, related]
+    /zonecog/autognosis/latest: [verdict, confidence, narrative]
+    /zonecog/flame/{mode}{voice}{aspect}/apply: write to apply the transformation
+    /zonecog/inference/from/{premise}/to/{conclusion}/proof: generative - walking triggers inference
+  operations:
+    Twalk: { flame: "Γ↑○", name: Spark, semantics: attention selects a subgraph }
+    Tread: { flame: "Κ↓●", name: Channel, semantics: synthesise content from position }
+    Twrite: { flame: "Κ↑●", name: Beam, semantics: integrate and propagate upward }
+    Tstat: { flame: "Κ◊●", name: Mirror, semantics: reflect structure without touching it }
+    Tclunk: { flame: "Ω↓◐", name: Ash, semantics: release the fid, attention withdraws }
+  residue: "Κ◊●"   # the monad composes to the identity
+
+# ---------------------------------------------------------------------------
+# Flame residues
+#
+# Each cycle in the architecture is a trajectory through Z_3^3. The composition
+# of a cycle characterises the cycle as a whole. These are verified by
+# flame_algebra.py; they are assertions about the architecture, not decoration.
+# ---------------------------------------------------------------------------
+
+flame_residues:
+  cognitive_loop:
+    trajectory: ["Κ↓●", "Γ↑○", "Γ◊●", "Κ↑●", "Ω↓◐"]
+    residue: "Γ◊●"
+    name: Pulse
+    reading: >
+      Generative, reflexive, actual. The autonomous loop is net-creative and
+      self-regarding: it grows the system through its own cycling without
+      projecting outward. This is the correct signature for a heartbeat.
+
+  thinking_protocol:
+    trajectory: ["Γ↓○", "Γ↑○", "Γ↑●", "Κ↓●", "Κ◊●", "Κ↑●", "Ω◊●", "Γ↓◐", "Κ◊◐", "Γ◊○", "Κ↑◐"]
+    residue: "Γ↑●"
+    name: Blaze
+    reading: >
+      Generative, projective, actual. Query processing is net-creative and
+      outward-directed: it emanates an answer. It differs from the loop in
+      exactly one coordinate - Voice - which is the formal statement of the
+      difference between the two orchestration paths in the codebase.
+
+  nine_p_monad:
+    trajectory: ["Γ↑○", "Κ↓●", "Κ↑●", "Κ◊●", "Ω↓◐"]
+    residue: "Κ◊●"
+    name: Mirror
+    reading: >
+      The identity. A complete walk-read-write-stat-clunk cycle leaves the
+      namespace invariant in flame space. The protocol is conservative: it can
+      express any transformation but is not itself one.
+
+  membrane_triad:
+    trajectory: ["Κ◊●", "Κ↑●", "Κ↓●"]
+    residue: "Κ◊●"
+    name: Mirror
+    reading: >
+      The identity. Reflexive, projective and receptive cancel exactly.
+      Homeostasis is the identity element - a triad that does not compose to
+      Mirror is an unbalanced membrane, which is measurable.
+
+# ---------------------------------------------------------------------------
+# Open questions this weave surfaces
+#
+# The mapping is only useful if it predicts something. These are the places
+# where the architectural reading disagrees with the current implementation.
+# ---------------------------------------------------------------------------
+
+predictions:
+  - claim: The cognitive loop should feed analytics.
+    basis: >
+      Every layer in a stack emits telemetry; the loop is the outer recurrence
+      and currently emits none. CognitiveAnalyticsService subscribes to
+      onDidProcessQuery but not to onDidCompleteIteration, so autonomous
+      operation is unmonitored.
+    status: confirmed gap (see cognitiveIntegration.test.ts)
+
+  - claim: ECAN state should condition query processing.
+    basis: >
+      focus_gate is declared on layers 4, 5 and 6, but processQuery reads no
+      ECAN state. The loop allocates attention that the thinking protocol never
+      consumes; the two paths share a hypergraph but not a focus.
+    status: open design gap
+
+  - claim: Membrane health is a load-balance signal.
+    basis: >
+      If the triad is an MoE router, health is expert utilisation balance. The
+      current implementation tracks activity and errors per triad but never
+      compares them against each other.
+    status: open, cheap to add
+
+  - claim: The reservoir is the only cross-iteration carrier.
+    basis: >
+      Working memory decays and salience decays; DTESN state does not. If loop
+      iterations are to compose into anything longer than one cycle, the
+      reservoir is where that history has to live.
+    status: open

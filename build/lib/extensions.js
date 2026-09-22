@@ -548,6 +548,7 @@ async function esbuildExtensions(taskName, isWatch, scripts) {
         for (const match of matches || []) {
             fancyLog.error(match);
         }
+        return matches ? matches.length : 0;
     }
     const tasks = scripts.map(({ script, outputRoot }) => {
         return new Promise((resolve, reject) => {
@@ -562,9 +563,13 @@ async function esbuildExtensions(taskName, isWatch, scripts) {
                 if (error) {
                     return reject(error);
                 }
-                reporter(stderr, script);
-                if (stderr) {
-                    return reject();
+                const errorCount = reporter(stderr, script);
+                // Only fail the build on actual esbuild errors. Warnings (which
+                // esbuild also writes to stderr) must not reject, otherwise a
+                // successful (exit code 0) build would surface as an opaque
+                // "Promise rejected without Error" failure.
+                if (errorCount > 0) {
+                    return reject(new Error(`${taskName} ${script} failed with ${errorCount} errors`));
                 }
                 return resolve();
             });

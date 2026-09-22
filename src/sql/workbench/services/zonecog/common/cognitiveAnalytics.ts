@@ -127,6 +127,26 @@ export interface DTESNConvergenceMetrics {
 }
 
 /**
+ * Cognitive loop iteration telemetry aggregated across all completed iterations.
+ */
+export interface CognitiveLoopMetrics {
+	/** Total completed iterations observed. */
+	totalIterations: number;
+	/** Iterations that completed successfully. */
+	successfulIterations: number;
+	/** Iterations that failed. */
+	failedIterations: number;
+	/** Mean iteration duration in ms (0 when no iterations). */
+	meanIterationMs: number;
+	/** Maximum iteration duration in ms (0 when no iterations). */
+	maxIterationMs: number;
+	/** Per-phase aggregated durations within loop iterations. */
+	loopPhaseStats: Record<string, { count: number; totalMs: number; meanMs: number }>;
+	/** Iterations per minute (rolling 5-minute window, 0 when no iterations). */
+	iterationsPerMinute: number;
+}
+
+/**
  * A complete point-in-time snapshot of all cognitive analytics metrics.
  */
 export interface CognitiveAnalyticsSnapshot {
@@ -142,6 +162,8 @@ export interface CognitiveAnalyticsSnapshot {
 	tokenEconomics: LLMTokenEconomics;
 	/** DTESN training convergence metrics. */
 	dtesnConvergence: DTESNConvergenceMetrics;
+	/** Cognitive loop iteration telemetry. */
+	cognitiveLoop: CognitiveLoopMetrics;
 	/** Timestamp of the snapshot. */
 	timestamp: number;
 }
@@ -206,6 +228,11 @@ export interface ICognitiveAnalyticsService {
 	 * Get DTESN training convergence metrics.
 	 */
 	getDTESNConvergence(): DTESNConvergenceMetrics;
+
+	/**
+	 * Get cognitive loop iteration telemetry.
+	 */
+	getCognitiveLoopMetrics(): CognitiveLoopMetrics;
 
 	/**
 	 * Generate a human-readable analytics report. The report is also

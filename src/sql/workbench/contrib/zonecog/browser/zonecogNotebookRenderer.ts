@@ -88,7 +88,7 @@ export class ZoneCogNotebookRendererContribution extends Disposable implements e
 		header.style.marginBottom = '6px';
 		header.style.opacity = '0.7';
 
-		const canvas = append(wrapper, $<HTMLCanvasElement>('canvas.zonecog-notebook-canvas'));
+		const canvas = append(wrapper, $('canvas.zonecog-notebook-canvas')) as HTMLCanvasElement;
 		canvas.width = CANVAS_WIDTH;
 		canvas.height = CANVAS_HEIGHT;
 		canvas.style.border = '1px solid rgba(128,128,128,0.3)';
@@ -96,7 +96,7 @@ export class ZoneCogNotebookRendererContribution extends Disposable implements e
 
 		this._renderSnapshot(canvas, snapshot);
 
-		const importBtn = append(wrapper, $<HTMLButtonElement>('button.zonecog-notebook-import'));
+		const importBtn = append(wrapper, $('button.zonecog-notebook-import')) as HTMLButtonElement;
 		importBtn.textContent = localize('zonecog.notebookImport', 'Import into Live Hypergraph');
 		importBtn.style.marginTop = '6px';
 		importBtn.style.padding = '4px 10px';
