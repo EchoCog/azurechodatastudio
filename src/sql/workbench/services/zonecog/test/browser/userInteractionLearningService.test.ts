@@ -12,6 +12,8 @@ import { HypergraphStore } from 'sql/workbench/services/zonecog/browser/hypergra
 import { CognitiveMembraneService } from 'sql/workbench/services/zonecog/browser/cognitiveMembraneService';
 import { ILLMProviderService } from 'sql/workbench/services/zonecog/common/llmProvider';
 import { LLMProviderService } from 'sql/workbench/services/zonecog/browser/llmProviderService';
+import { IECANAttentionService } from 'sql/workbench/services/zonecog/common/ecanAttention';
+import { ECANAttentionService } from 'sql/workbench/services/zonecog/browser/ecanAttentionService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 
@@ -34,6 +36,9 @@ suite('User Interaction Learning Service Tests', () => {
 
 		const llmProviderService = instantiationService.createInstance(LLMProviderService);
 		instantiationService.stub(ILLMProviderService, llmProviderService);
+
+		const ecanService = instantiationService.createInstance(ECANAttentionService);
+		instantiationService.stub(IECANAttentionService, ecanService);
 
 		zonecogService = instantiationService.createInstance(ZoneCogService);
 		instantiationService.stub(IZoneCogService, zonecogService);

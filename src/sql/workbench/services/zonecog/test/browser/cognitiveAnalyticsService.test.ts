@@ -18,6 +18,10 @@ import { ICognitiveWorkspaceService } from 'sql/workbench/services/zonecog/commo
 import { CognitiveWorkspaceService } from 'sql/workbench/services/zonecog/browser/cognitiveWorkspaceService';
 import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
 import { DTESNService } from 'sql/workbench/services/zonecog/browser/dtesnService';
+import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
+import { CognitiveLoopService } from 'sql/workbench/services/zonecog/browser/cognitiveLoopService';
+import { IEmbodiedCognitionService } from 'sql/workbench/services/zonecog/common/embodiedCognition';
+import { EmbodiedCognitionService } from 'sql/workbench/services/zonecog/browser/embodiedCognitionService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 
@@ -49,12 +53,18 @@ suite('Cognitive Analytics Service Tests', () => {
 		const workspaceService = instantiationService.createInstance(CognitiveWorkspaceService);
 		instantiationService.stub(ICognitiveWorkspaceService, workspaceService);
 
+		const embodiedService = instantiationService.createInstance(EmbodiedCognitionService);
+		instantiationService.stub(IEmbodiedCognitionService, embodiedService);
+
 		dtesnService = instantiationService.createInstance(DTESNService);
 		instantiationService.stub(IDTESNService, dtesnService);
 
 		zonecogService = instantiationService.createInstance(ZoneCogService);
 		instantiationService.stub(IZoneCogService, zonecogService);
 		await zonecogService.initialize();
+
+		const loopService = instantiationService.createInstance(CognitiveLoopService);
+		instantiationService.stub(ICognitiveLoopService, loopService);
 
 		analyticsService = instantiationService.createInstance(CognitiveAnalyticsService);
 	});

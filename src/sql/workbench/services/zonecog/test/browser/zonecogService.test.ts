@@ -27,6 +27,7 @@ suite('ZoneCog Service Tests', () => {
 
 	let instantiationService: TestInstantiationService;
 	let zoneCogService: IZoneCogService;
+	let ecanService: ECANAttentionService;
 
 	setup(() => {
 		instantiationService = new TestInstantiationService();
@@ -44,6 +45,9 @@ suite('ZoneCog Service Tests', () => {
 
 		const llmProviderService = instantiationService.createInstance(LLMProviderService);
 		instantiationService.stub(ILLMProviderService, llmProviderService);
+
+		ecanService = instantiationService.createInstance(ECANAttentionService);
+		instantiationService.stub(IECANAttentionService, ecanService);
 
 		zoneCogService = instantiationService.createInstance(ZoneCogService);
 	});
@@ -129,11 +133,13 @@ suite('ZoneCog Service Tests', () => {
 		const simpleResponse = await zoneCogService.processQuery('Hi');
 		assert.strictEqual(simpleResponse.metadata.queryComplexity, 'simple');
 
-		// Moderate query
+		// Moderate query — reset ECAN to avoid focus-ratio boosting from prior query nodes
+		ecanService.reset();
 		const moderateResponse = await zoneCogService.processQuery('How can I connect to my database?');
 		assert.strictEqual(moderateResponse.metadata.queryComplexity, 'moderate');
 
 		// Complex query
+		ecanService.reset();
 		const complexResponse = await zoneCogService.processQuery('Please analyze the performance metrics and synthesize optimization strategies for our multi-tenant database architecture across different cloud providers.');
 		assert.strictEqual(complexResponse.metadata.queryComplexity, 'complex');
 	});
@@ -326,6 +332,7 @@ suite('ZoneCog Service Tests', () => {
 		assert.ok(simplePhaseNames.includes('Response Preparation'));
 
 		// Moderate: adds Hypothesis Generation, Natural Discovery, Progress Tracking
+		ecanService.reset();
 		const moderateResponse = await zoneCogService.processQuery(
 			'How do I connect to a remote PostgreSQL database and speed up my queries?'
 		);

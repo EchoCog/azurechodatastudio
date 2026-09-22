@@ -22,6 +22,8 @@ import { IDTESNService } from 'sql/workbench/services/zonecog/common/dtesn';
 import { DTESNService } from 'sql/workbench/services/zonecog/browser/dtesnService';
 import { ICognitiveAnalyticsService } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 import { CognitiveAnalyticsService } from 'sql/workbench/services/zonecog/browser/cognitiveAnalyticsService';
+import { ICognitiveLoopService } from 'sql/workbench/services/zonecog/common/cognitiveLoop';
+import { CognitiveLoopService } from 'sql/workbench/services/zonecog/browser/cognitiveLoopService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 
@@ -62,6 +64,9 @@ suite('Autognosis Service Tests', () => {
 		zonecogService = instantiationService.createInstance(ZoneCogService);
 		instantiationService.stub(IZoneCogService, zonecogService);
 		await zonecogService.initialize();
+
+		const loopService = instantiationService.createInstance(CognitiveLoopService);
+		instantiationService.stub(ICognitiveLoopService, loopService);
 
 		const analyticsService = instantiationService.createInstance(CognitiveAnalyticsService);
 		instantiationService.stub(ICognitiveAnalyticsService, analyticsService);
