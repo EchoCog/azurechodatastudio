@@ -45,6 +45,9 @@ suite('ZoneCog Service Tests', () => {
 		const llmProviderService = instantiationService.createInstance(LLMProviderService);
 		instantiationService.stub(ILLMProviderService, llmProviderService);
 
+		const ecanService = instantiationService.createInstance(ECANAttentionService);
+		instantiationService.stub(IECANAttentionService, ecanService);
+
 		zoneCogService = instantiationService.createInstance(ZoneCogService);
 	});
 
