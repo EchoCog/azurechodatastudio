@@ -154,7 +154,7 @@ suite('Collaboration Backend Service Tests', () => {
 		const host = makeService('Host');
 		const session = await host.createSession('Query Review');
 		assert.ok(session);
-		assert.match(session!.id, /^ZC-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+		assert.ok(/^ZC-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/.test(session!.id));
 		assert.strictEqual(session!.title, 'Query Review');
 		assert.strictEqual(session!.hostUserId, host.getLocalIdentity().userId);
 
