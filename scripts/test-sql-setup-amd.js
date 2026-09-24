@@ -13,16 +13,34 @@ const vm = require('vm');
 const rootDir = path.resolve(__dirname, '..');
 const setupPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(rootDir, 'src', 'sql', 'setup.js');
 const setupSource = fs.readFileSync(setupPath, 'utf8');
+const zoneSource = fs.readFileSync(require.resolve('zone.js/dist/zone'), 'utf8');
 const loadedModules = [];
 const commonJsGlobal = {};
+const loaderGlobal = {};
 const browserGlobal = {
+	addEventListener: function addEventListener() { },
 	console,
+	clearInterval,
+	clearTimeout,
+	dispatchEvent: function dispatchEvent() { },
+	Promise,
 	PromiseRejectionEvent: function PromiseRejectionEvent() { },
+	removeEventListener: function removeEventListener() { },
+	setInterval,
 	setImmediate,
+	setTimeout,
 	window: undefined,
 	global: commonJsGlobal
 };
 browserGlobal.window = browserGlobal;
+loaderGlobal.window = browserGlobal;
+loaderGlobal.self = browserGlobal;
+loaderGlobal.global = commonJsGlobal;
+Object.defineProperty(loaderGlobal, 'Zone', {
+	configurable: true,
+	get: () => browserGlobal.Zone,
+	set: value => browserGlobal.Zone = value
+});
 
 let anonymousDefinePending = false;
 function amdDefine(_dependencies, factory) {
@@ -34,25 +52,28 @@ function amdDefine(_dependencies, factory) {
 	try {
 		const nodeRequire = moduleId => {
 			loadedModules.push(moduleId);
-			assert.strictEqual(browserGlobal.define, undefined, `browser define leaked while loading ${moduleId}`);
-			assert.strictEqual(commonJsGlobal.define, undefined, `CommonJS define leaked while loading ${moduleId}`);
-			if (moduleId === 'zone.js/dist/zone') {
-				browserGlobal.Zone = {};
+			if (moduleId === 'jquery') {
+				return function jquery() { };
 			}
-			return moduleId === 'jquery' ? function jquery() { } : {};
+			if (moduleId === 'zone.js/dist/zone') {
+				return vm.runInNewContext(zoneSource, loaderGlobal, { filename: require.resolve(moduleId) });
+			}
+			return {};
 		};
 		nodeRequire.__$__nodeRequire = nodeRequire;
-		factory.call(browserGlobal, nodeRequire, {});
+		factory.call(loaderGlobal, nodeRequire, {});
 	} finally {
 		anonymousDefinePending = false;
 	}
 }
 amdDefine.amd = {};
+loaderGlobal.define = amdDefine;
 browserGlobal.define = amdDefine;
 commonJsGlobal.define = amdDefine;
 
 vm.runInNewContext(setupSource, browserGlobal, { filename: 'src/sql/setup.js' });
 
+assert.strictEqual(loaderGlobal.define, amdDefine, 'loader define was not restored');
 assert.strictEqual(browserGlobal.define, amdDefine, 'browser define was not restored');
 assert.strictEqual(commonJsGlobal.define, amdDefine, 'CommonJS define was not restored');
 assert.ok(loadedModules.includes('zone.js/dist/zone'), 'zone.js was not loaded');

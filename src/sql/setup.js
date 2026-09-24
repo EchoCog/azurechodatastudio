@@ -9,14 +9,18 @@ define(['require', 'exports'], function (require) {
 	// the expected method and so nothing needs to be done - but if it's AMD then the VS Code loader will throw an error
 	// (Can only have one anonymous define call per script file) since it only expects to be loading its own files.
 
-	// In Electron's renderer, the AMD loader is attached to `window` while CommonJS modules loaded by `nodeRequire`
-	// resolve free globals through Node's separate `global` object. Masking only `globalThis`/`window` therefore leaves
-	// `global.define` visible to AMD-first UMD modules such as zone.js, which then enqueue a second anonymous define.
-	// Hide the loader in every relevant realm for the duration of each synchronous CommonJS load, then restore it.
-	const globalScopes = [window];
-	if (typeof global !== 'undefined' && global !== window) {
-		globalScopes.push(global);
+	// The loader invokes this factory with its own global object as `this`. In Electron that object can be distinct
+	// from the browser (`window`/`globalThis`) and CommonJS (`global`) realms. AMD-first UMD modules such as zone.js
+	// must not see `define` in any of them while they are synchronously loaded through `nodeRequire`.
+	const globalScopes = [this];
+	function addGlobalScope(scope) {
+		if (scope && globalScopes.indexOf(scope) === -1) {
+			globalScopes.push(scope);
+		}
 	}
+	addGlobalScope(typeof globalThis !== 'undefined' ? globalThis : undefined);
+	addGlobalScope(typeof window !== 'undefined' ? window : undefined);
+	addGlobalScope(typeof global !== 'undefined' ? global : undefined);
 	function loadWithoutAMD(moduleId) {
 		const amdDefines = globalScopes.map(scope => scope.define);
 		globalScopes.forEach(scope => scope.define = undefined);
