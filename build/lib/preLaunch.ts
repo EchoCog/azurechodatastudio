@@ -14,7 +14,9 @@ const rootDir = path.resolve(__dirname, '..', '..');
 
 function runProcess(command: string, args: ReadonlyArray<string> = []) {
 	return new Promise<void>((resolve, reject) => {
-		const child = spawn(command, args, { cwd: rootDir, stdio: 'inherit', env: process.env });
+		// Windows command shims such as yarn.cmd must be launched through a shell after the
+		// Node.js CVE-2024-27980 security hardening; spawning them directly fails with EINVAL.
+		const child = spawn(command, args, { cwd: rootDir, stdio: 'inherit', env: process.env, shell: process.platform === 'win32' });
 		child.on('exit', err => !err ? resolve() : process.exit(err ?? 1));
 		child.on('error', reject);
 	});

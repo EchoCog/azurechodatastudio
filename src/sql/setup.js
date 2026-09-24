@@ -9,21 +9,21 @@ define(['require', 'exports'], function (require) {
 	// the expected method and so nothing needs to be done - but if it's AMD then the VS Code loader will throw an error
 	// (Can only have one anonymous define call per script file) since it only expects to be loading its own files.
 
-	// In order to make packages that probe AMD first (like zone.js) load correctly we must completely hide the AMD
-	// `define` global so the modules take their commonjs/global code path. Only flipping `define.amd` to false is not
-	// reliable: the loader still has an in-flight anonymous define for this very module (`sql/setup`), so if a UMD
-	// module still sees the global `define` function it will enqueue a second anonymous define call and the loader
-	// throws. Deleting the global binding entirely (and restoring it in a `finally`) guarantees these modules never
-	// reach the AMD branch. We mask `define` around EVERY `nodeRequire` UMD load below (not just zone.js) because any
-	// AMD-first UMD module can otherwise collide with the pending anonymous define.
-	const globalScope = typeof globalThis !== 'undefined' ? globalThis : window;
+	// In Electron's renderer, the AMD loader is attached to `window` while CommonJS modules loaded by `nodeRequire`
+	// resolve free globals through Node's separate `global` object. Masking only `globalThis`/`window` therefore leaves
+	// `global.define` visible to AMD-first UMD modules such as zone.js, which then enqueue a second anonymous define.
+	// Hide the loader in every relevant realm for the duration of each synchronous CommonJS load, then restore it.
+	const globalScopes = [window];
+	if (typeof global !== 'undefined' && global !== window) {
+		globalScopes.push(global);
+	}
 	function loadWithoutAMD(moduleId) {
-		const amdDefine = globalScope.define;
-		globalScope.define = undefined;
+		const amdDefines = globalScopes.map(scope => scope.define);
+		globalScopes.forEach(scope => scope.define = undefined);
 		try {
 			return require.__$__nodeRequire(moduleId);
 		} finally {
-			globalScope.define = amdDefine;
+			globalScopes.forEach((scope, index) => scope.define = amdDefines[index]);
 		}
 	}
 

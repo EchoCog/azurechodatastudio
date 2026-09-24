@@ -71,7 +71,11 @@ jobs:
       - name: Run Core Unit Tests # {{SQL CARBON EDIT}} Rename to core for clarity
         run: .\scripts\test.bat
 
+      - name: Validate SQL Setup AMD Isolation
+        run: node .\scripts\test-sql-setup-amd.js
+
       - name: Run Extension Unit Tests # {{SQL CARBON EDIT}} Rename to extension for clarity
+        timeout-minutes: 60
         run: .\scripts\test-extensions-unit.bat
 
       - name: Run ZoneCog Smoke Tests # {{SQL CARBON EDIT}} Verify ZoneCog services for release readiness
@@ -158,6 +162,7 @@ jobs:
 
       - name: Run Extension Unit Tests # {{SQL CARBON EDIT}} Rename to extension for clarity
         id: electron-extension-unit-tests
+        timeout-minutes: 60
         run: DISPLAY=:10 ./scripts/test-extensions-unit.sh
 
       - name: Run ZoneCog Smoke Tests # {{SQL CARBON EDIT}} Verify ZoneCog services for release readiness
