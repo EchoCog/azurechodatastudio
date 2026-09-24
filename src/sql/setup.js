@@ -9,25 +9,25 @@ define(['require', 'exports'], function (require) {
 	// the expected method and so nothing needs to be done - but if it's AMD then the VS Code loader will throw an error
 	// (Can only have one anonymous define call per script file) since it only expects to be loading its own files.
 
-	// The loader invokes this factory with its own global object as `this`. In Electron that object can be distinct
-	// from the browser (`window`/`globalThis`) and CommonJS (`global`) realms. AMD-first UMD modules such as zone.js
-	// must not see `define` in any of them while they are synchronously loaded through `nodeRequire`.
-	const globalScopes = [this];
-	function addGlobalScope(scope) {
-		if (scope && globalScopes.indexOf(scope) === -1) {
-			globalScopes.push(scope);
-		}
+	// The Electron loader's `define` can be a lexical global that cannot be hidden by changing properties on window,
+	// globalThis, or Node's global object. Temporarily intercept CommonJS compilation and declare a module-local
+	// `define` instead. AMD-first UMD modules then deterministically select their non-AMD branch. The patch is scoped
+	// to each synchronous require and restored even when module compilation fails.
+	const nodeRequire = require.__$__nodeRequire;
+	const NodeModule = nodeRequire('module');
+	const originalCompile = NodeModule.prototype._compile;
+	function shadowAMDDefine(content) {
+		return `(function (exports, require, module, __filename, __dirname, define) {\n${content}\n}` +
+			`).call(this, exports, require, module, __filename, __dirname);`;
 	}
-	addGlobalScope(typeof globalThis !== 'undefined' ? globalThis : undefined);
-	addGlobalScope(typeof window !== 'undefined' ? window : undefined);
-	addGlobalScope(typeof global !== 'undefined' ? global : undefined);
 	function loadWithoutAMD(moduleId) {
-		const amdDefines = globalScopes.map(scope => scope.define);
-		globalScopes.forEach(scope => scope.define = undefined);
+		NodeModule.prototype._compile = function (content, filename) {
+			return originalCompile.call(this, shadowAMDDefine(content), filename);
+		};
 		try {
-			return require.__$__nodeRequire(moduleId);
+			return nodeRequire(moduleId);
 		} finally {
-			globalScopes.forEach((scope, index) => scope.define = amdDefines[index]);
+			NodeModule.prototype._compile = originalCompile;
 		}
 	}
 
