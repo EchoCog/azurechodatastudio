@@ -19,7 +19,6 @@
 	// we know for a fact that workbench.desktop.main will depend on
 	// the related CSS and NLS counterparts.
 	bootstrapWindow.load([
-		'sql/setup', // {{SQL CARBON EDIT}}
 		'vs/workbench/workbench.desktop.main',
 		'vs/nls!vs/workbench/workbench.desktop.main',
 		'vs/css!vs/workbench/workbench.desktop.main'
@@ -50,8 +49,11 @@
 			beforeLoaderConfig: function (loaderConfig) {
 				loaderConfig.recordStats = true;
 			},
-			beforeRequire: function () {
+			beforeRequire: async function () {
 				performance.mark('code/willLoadWorkbenchMain');
+				// {{SQL CARBON EDIT}} SQL setup installs renderer globals required while the workbench graph evaluates.
+				// AMD dependencies load concurrently, so setup must complete in a separate require before Angular modules start.
+				await new Promise((resolve, reject) => require(['sql/setup'], () => resolve(), reject));
 
 				// It looks like browsers only lazily enable
 				// the <canvas> element when needed. Since we
@@ -89,7 +91,7 @@
 	 * 		 },
 	 * 	     canModifyDOM?: (config: INativeWindowConfiguration & NativeParsedArgs) => void,
 	 * 	     beforeLoaderConfig?: (loaderConfig: object) => void,
-	 *       beforeRequire?: () => void
+	 *       beforeRequire?: () => void | Promise<void>
 	 *     }
 	 *   ) => Promise<unknown>
 	 * }}

@@ -16,6 +16,26 @@ const setupSource = fs.readFileSync(setupPath, 'utf8');
 const zoneSource = fs.readFileSync(require.resolve('zone.js/dist/zone'), 'utf8');
 const reflectMetadataSource = fs.readFileSync(require.resolve('reflect-metadata'), 'utf8');
 
+function verifyWorkbenchSetupOrdering(outputRoot) {
+	const bootstrapPath = path.join(outputRoot, 'bootstrap-window.js');
+	const workbenchPath = path.join(outputRoot, 'vs', 'code', 'electron-sandbox', 'workbench', 'workbench.js');
+	const bootstrapSource = fs.readFileSync(bootstrapPath, 'utf8');
+	const workbenchSource = fs.readFileSync(workbenchPath, 'utf8');
+	const mainLoadMatch = /bootstrapWindow\.load\(\[([\s\S]*?)\],/.exec(workbenchSource);
+	assert.ok(mainLoadMatch, `workbench main load was not found in ${workbenchPath}`);
+	assert.ok(!mainLoadMatch[1].includes('sql/setup'), 'sql/setup must not load concurrently with workbench main');
+	assert.match(bootstrapSource, /await options\.beforeRequire\(\);/, 'bootstrap does not await beforeRequire');
+	assert.match(
+		workbenchSource,
+		/beforeRequire:\s*async function \(\)[\s\S]*?await new Promise\(\(resolve, reject\) => require\(\['sql\/setup'\]/,
+		'workbench does not await sql/setup before loading main'
+	);
+}
+
+const setupRoot = path.dirname(path.dirname(setupPath));
+const bootstrapRoot = fs.existsSync(path.join(setupRoot, 'bootstrap-window.js')) ? setupRoot : path.join(rootDir, 'src');
+verifyWorkbenchSetupOrdering(bootstrapRoot);
+
 function verifyLoaderNativeRequireIsolation() {
 	const loaderPath = path.join(rootDir, 'src', 'vs', 'loader.js');
 	const loaderSource = fs.readFileSync(loaderPath, 'utf8');
