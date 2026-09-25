@@ -31,6 +31,11 @@ define(['require', 'exports'], function (require) {
 	loadWithoutAMD('gridstack/dist/h5/gridstack-dd-native');
 	loadWithoutAMD('html-to-image/dist/html-to-image.js');
 	loadWithoutAMD('reflect-metadata');
+	// reflect-metadata selects Node's `global` object when loaded through CommonJS, while Angular runs in the renderer
+	// realm and reads `window.Reflect`. Publish the patched Reflect object into that realm before Angular initializes.
+	if (typeof global !== 'undefined' && global['Reflect']) {
+		window['Reflect'] = global['Reflect'];
+	}
 	loadWithoutAMD('chart.js');
 	loadWithoutAMD('zone.js/dist/zone');
 	loadWithoutAMD('zone.js/dist/zone-error');

@@ -14,6 +14,7 @@ const rootDir = path.resolve(__dirname, '..');
 const setupPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(rootDir, 'src', 'sql', 'setup.js');
 const setupSource = fs.readFileSync(setupPath, 'utf8');
 const zoneSource = fs.readFileSync(require.resolve('zone.js/dist/zone'), 'utf8');
+const reflectMetadataSource = fs.readFileSync(require.resolve('reflect-metadata'), 'utf8');
 
 function verifyLoaderNativeRequireIsolation() {
 	const loaderPath = path.join(rootDir, 'src', 'vs', 'loader.js');
@@ -109,6 +110,9 @@ function amdDefine(_dependencies, factory) {
 			if (moduleId === 'zone.js/dist/zone') {
 				return vm.runInContext(zoneSource, loaderContext, { filename: require.resolve(moduleId) });
 			}
+			if (moduleId === 'reflect-metadata') {
+				return vm.runInContext(reflectMetadataSource, loaderContext, { filename: require.resolve(moduleId) });
+			}
 			return {};
 		};
 		nodeRequire.__$__nodeRequire = nodeRequire;
@@ -149,4 +153,6 @@ assert.strictEqual(browserGlobal.define, amdDefine, 'browser define was not rest
 assert.strictEqual(commonJsGlobal.define, amdDefine, 'CommonJS define was not restored');
 assert.ok(loadedModules.includes('zone.js/dist/zone'), 'zone.js was not loaded');
 assert.ok(loadedModules.includes('zone.js/dist/zone-error'), 'zone-error.js was not loaded');
-console.log('SQL setup loaded real zone.js without exposing the AMD loader.');
+assert.strictEqual(typeof browserGlobal.Reflect.getOwnMetadata, 'function', 'reflect-metadata was not exposed to the renderer');
+assert.strictEqual(browserGlobal.Reflect, commonJsGlobal.Reflect, 'renderer and CommonJS Reflect objects differ');
+console.log('SQL setup loaded real zone.js and reflect-metadata in the renderer realm.');
