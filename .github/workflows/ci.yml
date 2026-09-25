@@ -72,7 +72,7 @@ jobs:
         run: .\scripts\test.bat
 
       - name: Validate SQL Setup AMD Isolation
-run: |
+        run: |
           node .\scripts\test-sql-setup-amd.js
           node .\scripts\test-sql-setup-amd.js .\out-build\sql\setup.js
 
