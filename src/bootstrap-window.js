@@ -39,7 +39,7 @@
 	 * 	},
 	 * 	canModifyDOM?: (config: ISandboxConfiguration) => void,
 	 * 	beforeLoaderConfig?: (loaderConfig: object) => void,
-	 *  beforeRequire?: () => void
+	 *  beforeRequire?: () => void | Promise<void>
 	 * }} [options]
 	 */
 	async function load(modulePaths, resultCallback, options) {
@@ -163,7 +163,7 @@
 
 		// Signal before require()
 		if (typeof options?.beforeRequire === 'function') {
-			options.beforeRequire();
+			await options.beforeRequire();
 		}
 
 		// Actually require the main module as specified

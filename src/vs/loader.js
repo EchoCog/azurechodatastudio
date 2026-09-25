@@ -1617,6 +1617,8 @@ var AMDLoader;
 				this.configure(params, shouldOverwrite);
 			};
 			result.__$__nodeRequire = AMDLoader.global.nodeRequire;
+			result.__$__commonJSGlobal = this._requireFunc.__$__commonJSGlobal;
+			result.__$__nodeRequireWithoutAMD = this._requireFunc.__$__nodeRequireWithoutAMD;
 			return result;
 		}
 		_loadModule(moduleId) {
@@ -1891,6 +1893,25 @@ var AMDLoader;
 				AMDLoader.global.nodeRequire = nodeRequire;
 				RequireFunc.nodeRequire = nodeRequire;
 				RequireFunc.__$__nodeRequire = nodeRequire;
+				RequireFunc.__$__commonJSGlobal = _commonjsGlobal;
+				// {{SQL CARBON EDIT}} Some AMD-first UMD modules probe the loader's lexical `define` binding.
+				// Temporarily hide every loader-visible binding while performing a synchronous native require.
+				RequireFunc.__$__nodeRequireWithoutAMD = function (what) {
+					const previousDefine = define;
+					const previousLoaderDefine = AMDLoader.global.define;
+					const previousCommonJSDefine = _commonjsGlobal.define;
+					define = undefined;
+					AMDLoader.global.define = undefined;
+					_commonjsGlobal.define = undefined;
+					try {
+						return nodeRequire(what);
+					}
+					finally {
+						define = previousDefine;
+						AMDLoader.global.define = previousLoaderDefine;
+						_commonjsGlobal.define = previousCommonJSDefine;
+					}
+				};
 			}
 		}
 		if (env.isNode && !env.isElectronRenderer && !env.isElectronNodeIntegrationWebWorker) {

@@ -41,6 +41,7 @@ if "%INTEGRATION_TEST_ELECTRON_PATH%"=="" (
 					compile-extension:resource-deployment^
 					compile-extension:sql-bindings^
 					compile-extension:sql-database-projects
+	if errorlevel 1 goto failed
 
 	:: Configuration for more verbose output
 	set VSCODE_CLI=1
@@ -56,41 +57,49 @@ echo ***************************************************
 echo *** starting admin tool extension windows tests ***
 echo ***************************************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\admin-tool-ext-win --extensionTestsPath=%~dp0\..\extensions\admin-tool-ext-win\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo ****************************
 echo *** starting agent tests ***
 echo ****************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\agent --extensionTestsPath=%~dp0\..\extensions\agent\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo **************************
 echo *** starting arc tests ***
 echo **************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\arc --extensionTestsPath=%~dp0\..\extensions\arc\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo *****************************
 echo *** starting azcli tests ***
 echo *****************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\azcli --extensionTestsPath=%~dp0\..\extensions\azcli\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo ********************************
 echo *** starting azurecore tests ***
 echo ********************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\azurecore --extensionTestsPath=%~dp0\..\extensions\azurecore\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo **************************
 echo *** starting cms tests ***
 echo **************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\cms --extensionTestsPath=%~dp0\..\extensions\cms\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo *****************************
 echo *** starting dacpac tests ***
 echo *****************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\dacpac --extensionTestsPath=%~dp0\..\extensions\dacpac\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo *****************************************
 echo *** starting datavirtualization tests ***
 echo *****************************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\datavirtualization --extensionTestsPath=%~dp0\..\extensions\datavirtualization\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 REM {{SQL CARBON TODO}} - follow-up on why this extension test suite is failing
 REM echo ********************************************
@@ -102,54 +111,68 @@ echo *****************************
 echo *** starting import tests ***
 echo *****************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\import --extensionTestsPath=%~dp0\..\extensions\import\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo *******************************
 echo *** starting machine-learning tests ***
 echo *******************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\machine-learning --extensionTestsPath=%~dp0\..\extensions\machine-learning\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo ******************************************
 echo *** starting mssql tests ***
 echo ******************************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\mssql --extensionTestsPath=%~dp0\..\extensions\mssql\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo *******************************
 echo *** starting notebook tests ***
 echo *******************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\notebook --extensionTestsPath=%~dp0\..\extensions\notebook\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo *******************************
 echo *** starting query-history tests ***
 echo *******************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\query-history --extensionTestsPath=%~dp0\..\extensions\query-history\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo ******************************************
 echo *** starting resource deployment tests ***
 echo ******************************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\resource-deployment --extensionTestsPath=%~dp0\..\extensions\resource-deployment\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo *************************************
 echo *** starting schema compare tests ***
 echo *************************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\schema-compare --extensionTestsPath=%~dp0\..\extensions\schema-compare\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo ********************************************
 echo *** starting sql-bindings tests ***
 echo ********************************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\sql-bindings --extensionTestsPath=%~dp0\..\extensions\sql-bindings\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
 echo ********************************************
 echo *** starting sql-database-projects tests ***
 echo ********************************************
 call "%INTEGRATION_TEST_ELECTRON_PATH%" --extensionDevelopmentPath=%~dp0\..\extensions\sql-database-projects --extensionTestsPath=%~dp0\..\extensions\sql-database-projects\out\test %ALL_PLATFORMS_API_TESTS_EXTRA_ARGS%
+if errorlevel 1 goto failed
 
-if %errorlevel% neq 0 exit /b %errorlevel%
+set TEST_EXIT_CODE=0
+goto cleanup
 
+:failed
+set TEST_EXIT_CODE=1
+
+:cleanup
 if "%NO_CLEANUP%"=="" (
-	rmdir /s /q %VSCODEUSERDATADIR%
-	rmdir /s /q %VSCODEEXTENSIONSDIR%
+	rmdir /s /q "%VSCODEUSERDATADIR%"
+	rmdir /s /q "%VSCODEEXTENSIONSDIR%"
 )
 
 popd
 
-endlocal
+endlocal & exit /b %TEST_EXIT_CODE%

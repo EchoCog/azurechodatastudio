@@ -9,22 +9,11 @@ define(['require', 'exports'], function (require) {
 	// the expected method and so nothing needs to be done - but if it's AMD then the VS Code loader will throw an error
 	// (Can only have one anonymous define call per script file) since it only expects to be loading its own files.
 
-	// In order to make packages that probe AMD first (like zone.js) load correctly we must completely hide the AMD
-	// `define` global so the modules take their commonjs/global code path. Only flipping `define.amd` to false is not
-	// reliable: the loader still has an in-flight anonymous define for this very module (`sql/setup`), so if a UMD
-	// module still sees the global `define` function it will enqueue a second anonymous define call and the loader
-	// throws. Deleting the global binding entirely (and restoring it in a `finally`) guarantees these modules never
-	// reach the AMD branch. We mask `define` around EVERY `nodeRequire` UMD load below (not just zone.js) because any
-	// AMD-first UMD module can otherwise collide with the pending anonymous define.
-	const globalScope = typeof globalThis !== 'undefined' ? globalThis : window;
+	// The Electron loader's `define` can be a lexical global that cannot be hidden by changing properties on window,
+	// globalThis, or Node's global object. Ask the loader to hide and restore its own binding around each synchronous
+	// native require so AMD-first UMD modules deterministically select their non-AMD branch.
 	function loadWithoutAMD(moduleId) {
-		const amdDefine = globalScope.define;
-		globalScope.define = undefined;
-		try {
-			return require.__$__nodeRequire(moduleId);
-		} finally {
-			globalScope.define = amdDefine;
-		}
+		return require.__$__nodeRequireWithoutAMD(moduleId);
 	}
 
 	const jquerylib = loadWithoutAMD('jquery');
@@ -42,6 +31,12 @@ define(['require', 'exports'], function (require) {
 	loadWithoutAMD('gridstack/dist/h5/gridstack-dd-native');
 	loadWithoutAMD('html-to-image/dist/html-to-image.js');
 	loadWithoutAMD('reflect-metadata');
+	// reflect-metadata selects Node's `global` object when loaded through CommonJS, while Angular runs in the renderer
+	// realm and reads `window.Reflect`. Publish the patched Reflect object into that realm before Angular initializes.
+	const commonJSGlobal = require.__$__commonJSGlobal;
+	if (commonJSGlobal && commonJSGlobal['Reflect']) {
+		window['Reflect'] = commonJSGlobal['Reflect'];
+	}
 	loadWithoutAMD('chart.js');
 	loadWithoutAMD('zone.js/dist/zone');
 	loadWithoutAMD('zone.js/dist/zone-error');
