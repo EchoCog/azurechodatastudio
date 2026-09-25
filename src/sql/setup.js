@@ -10,25 +10,10 @@ define(['require', 'exports'], function (require) {
 	// (Can only have one anonymous define call per script file) since it only expects to be loading its own files.
 
 	// The Electron loader's `define` can be a lexical global that cannot be hidden by changing properties on window,
-	// globalThis, or Node's global object. Temporarily intercept CommonJS compilation and declare a module-local
-	// `define` instead. AMD-first UMD modules then deterministically select their non-AMD branch. The patch is scoped
-	// to each synchronous require and restored even when module compilation fails.
-	const nodeRequire = require.__$__nodeRequire;
-	const NodeModule = nodeRequire('module');
-	const originalCompile = NodeModule.prototype._compile;
-	function shadowAMDDefine(content) {
-		return `(function (exports, require, module, __filename, __dirname, define) {\n${content}\n}` +
-			`).call(this, exports, require, module, __filename, __dirname);`;
-	}
+	// globalThis, or Node's global object. Ask the loader to hide and restore its own binding around each synchronous
+	// native require so AMD-first UMD modules deterministically select their non-AMD branch.
 	function loadWithoutAMD(moduleId) {
-		NodeModule.prototype._compile = function (content, filename) {
-			return originalCompile.call(this, shadowAMDDefine(content), filename);
-		};
-		try {
-			return nodeRequire(moduleId);
-		} finally {
-			NodeModule.prototype._compile = originalCompile;
-		}
+		return require.__$__nodeRequireWithoutAMD(moduleId);
 	}
 
 	const jquerylib = loadWithoutAMD('jquery');

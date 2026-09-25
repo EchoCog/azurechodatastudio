@@ -14,11 +14,60 @@ const rootDir = path.resolve(__dirname, '..');
 const setupPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(rootDir, 'src', 'sql', 'setup.js');
 const setupSource = fs.readFileSync(setupPath, 'utf8');
 const zoneSource = fs.readFileSync(require.resolve('zone.js/dist/zone'), 'utf8');
+
+function verifyLoaderNativeRequireIsolation() {
+	const loaderPath = path.join(rootDir, 'src', 'vs', 'loader.js');
+	const loaderSource = fs.readFileSync(loaderPath, 'utf8');
+	const commonJsGlobal = { define: 'commonjs-define' };
+	const loaderModule = { exports: {} };
+	let loaderContext;
+	const nativeRequire = moduleId => {
+		assert.strictEqual(vm.runInContext('typeof define', loaderContext), 'undefined');
+		assert.strictEqual(loaderContext.define, undefined);
+		assert.strictEqual(commonJsGlobal.define, undefined);
+		if (moduleId === 'zone.js/dist/zone') {
+			return vm.runInContext(zoneSource, loaderContext, { filename: require.resolve(moduleId) });
+		}
+		return moduleId;
+	};
+	nativeRequire.resolve = moduleId => moduleId;
+	loaderContext = vm.createContext({
+		addEventListener: function addEventListener() { },
+		Buffer,
+		clearInterval,
+		clearTimeout,
+		console,
+		dispatchEvent: function dispatchEvent() { },
+		exports: loaderModule.exports,
+		global: commonJsGlobal,
+		module: loaderModule,
+		performance,
+		Promise,
+		process,
+		removeEventListener: function removeEventListener() { },
+		require: nativeRequire,
+		setImmediate,
+		setInterval,
+		setTimeout
+	});
+	loaderContext.window = loaderContext;
+	loaderContext.self = loaderContext;
+	vm.runInContext(loaderSource, loaderContext, { filename: loaderPath });
+	const amdDefine = loaderContext.define;
+	assert.strictEqual(typeof amdDefine, 'function');
+	assert.strictEqual(typeof loaderModule.exports.__$__nodeRequireWithoutAMD, 'function');
+	loaderModule.exports.__$__nodeRequireWithoutAMD('zone.js/dist/zone');
+	assert.strictEqual(typeof loaderContext.Zone, 'function', 'zone.js did not take its non-AMD branch');
+	assert.strictEqual(loaderContext.define, amdDefine, 'loader define was not restored by the native require helper');
+	assert.strictEqual(commonJsGlobal.define, 'commonjs-define', 'CommonJS define was not restored by the native require helper');
+}
+
+verifyLoaderNativeRequireIsolation();
+
 const loadedModules = [];
 const commonJsGlobal = {};
 const loaderGlobal = {};
 let loaderContext;
-function NodeModule() { }
 const browserGlobal = {
 	addEventListener: function addEventListener() { },
 	console,
@@ -38,19 +87,11 @@ browserGlobal.window = browserGlobal;
 loaderGlobal.window = browserGlobal;
 loaderGlobal.self = browserGlobal;
 loaderGlobal.global = commonJsGlobal;
-loaderGlobal.exports = {};
-loaderGlobal.require = function require() { };
-loaderGlobal.module = { exports: loaderGlobal.exports };
-loaderGlobal.__filename = require.resolve('zone.js/dist/zone');
-loaderGlobal.__dirname = path.dirname(loaderGlobal.__filename);
 Object.defineProperty(loaderGlobal, 'Zone', {
 	configurable: true,
 	get: () => browserGlobal.Zone,
 	set: value => browserGlobal.Zone = value
 });
-NodeModule.prototype._compile = function (content, filename) {
-	return vm.runInContext(`(function () {\n${content}\n}).call(this);`, loaderContext, { filename });
-};
 
 let anonymousDefinePending = false;
 function amdDefine(_dependencies, factory) {
@@ -62,18 +103,32 @@ function amdDefine(_dependencies, factory) {
 	try {
 		const nodeRequire = moduleId => {
 			loadedModules.push(moduleId);
-			if (moduleId === 'module') {
-				return NodeModule;
-			}
 			if (moduleId === 'jquery') {
 				return function jquery() { };
 			}
 			if (moduleId === 'zone.js/dist/zone') {
-				return NodeModule.prototype._compile(zoneSource, require.resolve(moduleId));
+				return vm.runInContext(zoneSource, loaderContext, { filename: require.resolve(moduleId) });
 			}
 			return {};
 		};
 		nodeRequire.__$__nodeRequire = nodeRequire;
+		nodeRequire.__$__nodeRequireWithoutAMD = moduleId => {
+			const loaderDefine = loaderGlobal.define;
+			const browserDefine = browserGlobal.define;
+			const commonJsDefine = commonJsGlobal.define;
+			vm.runInContext('define = undefined;', loaderContext);
+			loaderGlobal.define = undefined;
+			browserGlobal.define = undefined;
+			commonJsGlobal.define = undefined;
+			try {
+				return nodeRequire(moduleId);
+			} finally {
+				loaderGlobal.define = loaderDefine;
+				browserGlobal.define = browserDefine;
+				commonJsGlobal.define = commonJsDefine;
+				vm.runInContext('define = __amdDefine;', loaderContext);
+			}
+		};
 		factory.call(loaderGlobal, nodeRequire, {});
 	} finally {
 		anonymousDefinePending = false;
