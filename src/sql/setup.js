@@ -33,8 +33,9 @@ define(['require', 'exports'], function (require) {
 	loadWithoutAMD('reflect-metadata');
 	// reflect-metadata selects Node's `global` object when loaded through CommonJS, while Angular runs in the renderer
 	// realm and reads `window.Reflect`. Publish the patched Reflect object into that realm before Angular initializes.
-	if (typeof global !== 'undefined' && global['Reflect']) {
-		window['Reflect'] = global['Reflect'];
+	const commonJSGlobal = require.__$__commonJSGlobal;
+	if (commonJSGlobal && commonJSGlobal['Reflect']) {
+		window['Reflect'] = commonJSGlobal['Reflect'];
 	}
 	loadWithoutAMD('chart.js');
 	loadWithoutAMD('zone.js/dist/zone');

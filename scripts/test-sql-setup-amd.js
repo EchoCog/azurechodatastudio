@@ -57,6 +57,7 @@ function verifyLoaderNativeRequireIsolation() {
 	const amdDefine = loaderContext.define;
 	assert.strictEqual(typeof amdDefine, 'function');
 	assert.strictEqual(typeof loaderModule.exports.__$__nodeRequireWithoutAMD, 'function');
+	assert.strictEqual(loaderModule.exports.__$__commonJSGlobal, commonJsGlobal);
 	loaderModule.exports.__$__nodeRequireWithoutAMD('zone.js/dist/zone');
 	assert.strictEqual(typeof loaderContext.Zone, 'function', 'zone.js did not take its non-AMD branch');
 	assert.strictEqual(loaderContext.define, amdDefine, 'loader define was not restored by the native require helper');
@@ -67,6 +68,7 @@ verifyLoaderNativeRequireIsolation();
 
 const loadedModules = [];
 const commonJsGlobal = {};
+const rendererVisibleGlobal = {};
 const loaderGlobal = {};
 let loaderContext;
 const browserGlobal = {
@@ -82,7 +84,7 @@ const browserGlobal = {
 	setImmediate,
 	setTimeout,
 	window: undefined,
-	global: commonJsGlobal
+	global: rendererVisibleGlobal
 };
 browserGlobal.window = browserGlobal;
 loaderGlobal.window = browserGlobal;
@@ -116,6 +118,7 @@ function amdDefine(_dependencies, factory) {
 			return {};
 		};
 		nodeRequire.__$__nodeRequire = nodeRequire;
+		nodeRequire.__$__commonJSGlobal = commonJsGlobal;
 		nodeRequire.__$__nodeRequireWithoutAMD = moduleId => {
 			const loaderDefine = loaderGlobal.define;
 			const browserDefine = browserGlobal.define;

@@ -1891,6 +1891,7 @@ var AMDLoader;
 				AMDLoader.global.nodeRequire = nodeRequire;
 				RequireFunc.nodeRequire = nodeRequire;
 				RequireFunc.__$__nodeRequire = nodeRequire;
+				RequireFunc.__$__commonJSGlobal = _commonjsGlobal;
 				// {{SQL CARBON EDIT}} Some AMD-first UMD modules probe the loader's lexical `define` binding.
 				// Temporarily hide every loader-visible binding while performing a synchronous native require.
 				RequireFunc.__$__nodeRequireWithoutAMD = function (what) {
