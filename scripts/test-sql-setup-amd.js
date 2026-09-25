@@ -88,7 +88,7 @@ function verifyLoaderNativeRequireIsolation() {
 	);
 	assert.strictEqual(localRequire.__$__commonJSGlobal, commonJsGlobal, 'module-local require is missing the CommonJS global');
 	loaderModule.exports.__$__nodeRequireWithoutAMD('zone.js/dist/zone');
-	assert.strictEqual(typeof loaderContext.Zone, 'function', 'zone.js did not take its non-AMD branch');
+	assert.strictEqual(typeof loaderModule.exports.Zone, 'function', 'zone.js did not take its non-AMD branch');
 	assert.strictEqual(loaderContext.define, amdDefine, 'loader define was not restored by the native require helper');
 	assert.strictEqual(commonJsGlobal.define, 'commonjs-define', 'CommonJS define was not restored by the native require helper');
 }
