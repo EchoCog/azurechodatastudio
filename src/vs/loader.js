@@ -1617,6 +1617,8 @@ var AMDLoader;
 				this.configure(params, shouldOverwrite);
 			};
 			result.__$__nodeRequire = AMDLoader.global.nodeRequire;
+			result.__$__commonJSGlobal = this._requireFunc.__$__commonJSGlobal;
+			result.__$__nodeRequireWithoutAMD = this._requireFunc.__$__nodeRequireWithoutAMD;
 			return result;
 		}
 		_loadModule(moduleId) {

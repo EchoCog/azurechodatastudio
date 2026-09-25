@@ -12,6 +12,7 @@ const vm = require('vm');
 
 const rootDir = path.resolve(__dirname, '..');
 const setupPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(rootDir, 'src', 'sql', 'setup.js');
+const loaderPath = process.argv[3] ? path.resolve(process.argv[3]) : path.join(rootDir, 'src', 'vs', 'loader.js');
 const setupSource = fs.readFileSync(setupPath, 'utf8');
 const zoneSource = fs.readFileSync(require.resolve('zone.js/dist/zone'), 'utf8');
 const reflectMetadataSource = fs.readFileSync(require.resolve('reflect-metadata'), 'utf8');
@@ -37,7 +38,6 @@ const bootstrapRoot = fs.existsSync(path.join(setupRoot, 'bootstrap-window.js'))
 verifyWorkbenchSetupOrdering(bootstrapRoot);
 
 function verifyLoaderNativeRequireIsolation() {
-	const loaderPath = path.join(rootDir, 'src', 'vs', 'loader.js');
 	const loaderSource = fs.readFileSync(loaderPath, 'utf8');
 	const commonJsGlobal = { define: 'commonjs-define' };
 	const loaderModule = { exports: {} };
@@ -78,6 +78,15 @@ function verifyLoaderNativeRequireIsolation() {
 	assert.strictEqual(typeof amdDefine, 'function');
 	assert.strictEqual(typeof loaderModule.exports.__$__nodeRequireWithoutAMD, 'function');
 	assert.strictEqual(loaderModule.exports.__$__commonJSGlobal, commonJsGlobal);
+	let localRequire;
+	loaderModule.exports.define('local-require-test', ['require'], require => localRequire = require);
+	loaderModule.exports('local-require-test');
+	assert.strictEqual(
+		localRequire.__$__nodeRequireWithoutAMD,
+		loaderModule.exports.__$__nodeRequireWithoutAMD,
+		'module-local require is missing the native AMD isolation helper'
+	);
+	assert.strictEqual(localRequire.__$__commonJSGlobal, commonJsGlobal, 'module-local require is missing the CommonJS global');
 	loaderModule.exports.__$__nodeRequireWithoutAMD('zone.js/dist/zone');
 	assert.strictEqual(typeof loaderContext.Zone, 'function', 'zone.js did not take its non-AMD branch');
 	assert.strictEqual(loaderContext.define, amdDefine, 'loader define was not restored by the native require helper');
@@ -156,7 +165,11 @@ function amdDefine(_dependencies, factory) {
 				vm.runInContext('define = __amdDefine;', loaderContext);
 			}
 		};
-		factory.call(loaderGlobal, nodeRequire, {});
+		const localRequire = function localRequire() { };
+		localRequire.__$__nodeRequire = nodeRequire;
+		localRequire.__$__commonJSGlobal = nodeRequire.__$__commonJSGlobal;
+		localRequire.__$__nodeRequireWithoutAMD = nodeRequire.__$__nodeRequireWithoutAMD;
+		factory.call(loaderGlobal, localRequire, {});
 	} finally {
 		anonymousDefinePending = false;
 	}
