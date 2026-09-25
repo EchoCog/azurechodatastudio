@@ -180,7 +180,7 @@ browserGlobal.define = amdDefine;
 commonJsGlobal.define = amdDefine;
 loaderGlobal.__amdDefine = amdDefine;
 loaderContext = vm.createContext(loaderGlobal);
-vm.runInContext('let define = __amdDefine;', loaderContext);
+vm.runInContext('define = __amdDefine;', loaderContext);
 
 vm.runInNewContext(setupSource, browserGlobal, { filename: 'src/sql/setup.js' });
 
