@@ -72,9 +72,10 @@ jobs:
         run: .\scripts\test.bat
 
       - name: Validate SQL Setup AMD Isolation
-        run: |
-          node .\scripts\test-sql-setup-amd.js
-          node .\scripts\test-sql-setup-amd.js .\out-build\sql\setup.js
+        run: node .\scripts\test-sql-setup-amd.js
+
+      - name: Validate Compiled SQL Setup AMD Isolation
+        run: node .\scripts\test-sql-setup-amd.js .\out\sql\setup.js .\out\vs\loader.js
 
       - name: Run Extension Unit Tests # {{SQL CARBON EDIT}} Rename to extension for clarity
         timeout-minutes: 60
@@ -316,4 +317,3 @@ jobs:
 
       - name: Run Trusted Types Checks
         run: yarn tsec-compile-check
-
