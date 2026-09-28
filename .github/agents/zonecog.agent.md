@@ -174,12 +174,15 @@ Depth-adaptive: shallow (phases 1,2,11), moderate (1-5,11), deep (all 11).
 - [x] Host-feature integrations: Dashboard tab, Notebook renderer, Execution plan overlay, Profiler animation, Edit Data provenance
 - [x] 40 registered services, 83+ Command Palette actions, 45 test suites
 
-### Phase 7: Hardening & Production Readiness (Next)
+### Phase 7: Hardening & Production Readiness (In Progress)
 
-- [ ] End-to-end integration tests across service boundaries
-- [ ] Performance benchmarks for hypergraph operations at scale (10k+ nodes)
-- [ ] Memory leak audit for long-running cognitive loop sessions
-- [ ] Accessibility audit for all 21 panel views (screen reader, keyboard nav, high contrast)
+- [x] Performance benchmarks for hypergraph operations at scale (10k+ nodes)
+- [x] HypergraphStore adjacency index for O(1) link lookups (was O(N*L))
+- [x] Memory leak fix: AAR consensus deadline timers tracked and cleaned up on dispose
+- [x] Accessibility: ARIA roles, labels, keyboard focus on stat cards, membrane cards, load gauge
+- [x] High-contrast theme support for loop indicators, membrane cards, stat cards
+- [ ] End-to-end integration tests: PLN→HypergraphStore→ECAN, Schema→Loop, Workflow→Analytics
+- [ ] Accessibility audit for remaining panel views beyond CognitiveStateView/MembraneHealthView
 - [ ] VS Code Marketplace publication (requires VSCE_PAT/OVSX_PAT secrets)
 - [ ] Documentation: API reference for all 40 service interfaces
 

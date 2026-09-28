@@ -121,6 +121,7 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 	private _messagesReceived = 0;
 	private _migrationCount = 0;
 	private _consensusProposalsResolved = 0;
+	private readonly _consensusDeadlineTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly _meshPeerId = generateUuid();
 	private readonly _meshHub: InProcessMeshHub = getDefaultMeshHub();
 	private readonly _mesh: CognitiveMeshNode;
@@ -979,10 +980,12 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 
 		this.logService.info(`AAROrchestrationService: created consensus proposal ${consensusProposal.id} with ${voters.length} voters`);
 
-		// Start deadline timer
-		setTimeout(() => {
+		// Start deadline timer (tracked for disposal)
+		const timer = setTimeout(() => {
+			this._consensusDeadlineTimers.delete(consensusProposal.id);
 			this._checkConsensusDeadline(consensusProposal.id);
 		}, deadlineMs);
+		this._consensusDeadlineTimers.set(consensusProposal.id, timer);
 
 		return consensusProposal;
 	}
@@ -1077,5 +1080,13 @@ export class AAROrchestrationService extends Disposable implements IAAROrchestra
 			migrationCount: this._migrationCount,
 			consensusProposalsResolved: this._consensusProposalsResolved,
 		};
+	}
+
+	override dispose(): void {
+		for (const timer of this._consensusDeadlineTimers.values()) {
+			clearTimeout(timer);
+		}
+		this._consensusDeadlineTimers.clear();
+		super.dispose();
 	}
 }

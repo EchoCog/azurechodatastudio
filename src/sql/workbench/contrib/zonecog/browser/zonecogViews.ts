@@ -89,6 +89,8 @@ export class CognitiveStateView extends ViewPane {
 
 		const state = this.zonecogService.getCognitiveState();
 		const grid = append(this._cognitiveStateSection, $('.zonecog-cognitive-state'));
+		grid.setAttribute('role', 'status');
+		grid.setAttribute('aria-label', localize('zonecog.cognitiveStateGrid', 'Cognitive state summary'));
 
 		// Initialized
 		this._createStatCard(grid, localize('zonecog.initialized', 'Status'),
@@ -127,26 +129,27 @@ export class CognitiveStateView extends ViewPane {
 
 		const loopState = this.loopService.getState();
 		const statusContainer = append(this._loopStatusSection, $('.zonecog-loop-status'));
+		statusContainer.setAttribute('role', 'status');
+		statusContainer.setAttribute('aria-live', 'polite');
 
 		// Status indicator
 		const indicator = append(statusContainer, $('.zonecog-loop-indicator'));
+		let statusText: string;
 		if (loopState.running && !loopState.paused) {
 			indicator.classList.add('running');
+			statusText = localize('zonecog.loopRunning', 'Running');
 		} else if (loopState.paused) {
 			indicator.classList.add('paused');
+			statusText = localize('zonecog.loopPaused', 'Paused');
 		} else {
 			indicator.classList.add('stopped');
+			statusText = localize('zonecog.loopStopped', 'Stopped');
 		}
+		indicator.setAttribute('aria-hidden', 'true');
 
 		// Status label
 		const label = append(statusContainer, $('.zonecog-loop-label'));
-		if (loopState.running && !loopState.paused) {
-			label.textContent = localize('zonecog.loopRunning', 'Running');
-		} else if (loopState.paused) {
-			label.textContent = localize('zonecog.loopPaused', 'Paused');
-		} else {
-			label.textContent = localize('zonecog.loopStopped', 'Stopped');
-		}
+		label.textContent = statusText;
 
 		// Stats
 		const stats = append(statusContainer, $('.zonecog-loop-stats'));
@@ -167,16 +170,24 @@ export class CognitiveStateView extends ViewPane {
 		}
 
 		const gauge = append(this._loadGaugeSection, $('.zonecog-load-gauge'));
+		gauge.setAttribute('role', 'progressbar');
+		gauge.setAttribute('aria-valuemin', '0');
+		gauge.setAttribute('aria-valuemax', '100');
+		const loadPercent = Math.round(state.cognitiveLoad * 100);
+		gauge.setAttribute('aria-valuenow', String(loadPercent));
+		gauge.setAttribute('aria-label', localize('zonecog.loadGaugeLabel', 'Cognitive load'));
+
 		const fill = append(gauge, $('.zonecog-load-fill'));
 		const text = append(gauge, $('.zonecog-load-text'));
 
-		const loadPercent = Math.round(state.cognitiveLoad * 100);
 		fill.style.width = `${loadPercent}%`;
 		text.textContent = `${loadPercent}%`;
 	}
 
 	private _createStatCard(container: HTMLElement, label: string, value: string, className?: string): void {
 		const card = append(container, $('.zonecog-stat-card'));
+		card.tabIndex = 0;
+		card.setAttribute('aria-label', `${label}: ${value}`);
 		append(card, $('.zonecog-stat-label')).textContent = label;
 		const valueEl = append(card, $('.zonecog-stat-value'));
 		valueEl.textContent = value;
@@ -256,12 +267,18 @@ export class MembraneHealthView extends ViewPane {
 	private _createMembraneCard(container: HTMLElement, triad: MembraneTriad, icon: string, status: MembraneStatus): void {
 		const card = append(container, $('.zonecog-membrane-card'));
 		card.classList.add(status.healthy ? 'healthy' : 'unhealthy');
+		card.tabIndex = 0;
+		const healthText = status.healthy ? localize('zonecog.healthy', 'Healthy') : localize('zonecog.unhealthy', 'Unhealthy');
+		card.setAttribute('aria-label', localize('zonecog.membraneCardLabel', '{0} membrane: {1}, {2} processes, {3} errors',
+			triad, healthText, status.activeProcesses, status.errorCount));
 
-		append(card, $('.zonecog-membrane-icon')).textContent = icon;
+		const iconEl = append(card, $('.zonecog-membrane-icon'));
+		iconEl.textContent = icon;
+		iconEl.setAttribute('aria-hidden', 'true');
 		append(card, $('.zonecog-membrane-name')).textContent = triad;
 
 		const statusEl = append(card, $('.zonecog-membrane-status'));
-		statusEl.textContent = status.healthy ? localize('zonecog.healthy', 'Healthy') : localize('zonecog.unhealthy', 'Unhealthy');
+		statusEl.textContent = healthText;
 
 		const countEl = append(card, $('.zonecog-membrane-count'));
 		countEl.textContent = localize('zonecog.processErrors', '{0} processes, {1} errors',

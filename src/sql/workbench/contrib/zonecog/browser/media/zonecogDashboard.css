@@ -1065,3 +1065,60 @@
 	flex-direction: column;
 	height: 100%;
 }
+
+/* High-contrast theme overrides */
+.hc-black .zonecog-loop-indicator.running,
+.hc-light .zonecog-loop-indicator.running {
+	outline: 2px solid var(--vscode-contrastActiveBorder);
+}
+
+.hc-black .zonecog-loop-indicator.paused,
+.hc-light .zonecog-loop-indicator.paused {
+	outline: 2px dashed var(--vscode-contrastActiveBorder);
+}
+
+.hc-black .zonecog-loop-indicator.stopped,
+.hc-light .zonecog-loop-indicator.stopped {
+	outline: 2px dotted var(--vscode-contrastBorder);
+}
+
+.hc-black .zonecog-membrane-card.healthy,
+.hc-light .zonecog-membrane-card.healthy {
+	border-width: 2px;
+	border-color: var(--vscode-contrastActiveBorder);
+}
+
+.hc-black .zonecog-membrane-card.unhealthy,
+.hc-light .zonecog-membrane-card.unhealthy {
+	border-width: 2px;
+	border-style: dashed;
+	border-color: var(--vscode-contrastActiveBorder);
+}
+
+.hc-black .zonecog-stat-card,
+.hc-light .zonecog-stat-card {
+	border: 1px solid var(--vscode-contrastBorder);
+}
+
+.hc-black .zonecog-stat-card:focus,
+.hc-light .zonecog-stat-card:focus,
+.hc-black .zonecog-membrane-card:focus,
+.hc-light .zonecog-membrane-card:focus {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+.hc-black .zonecog-load-gauge,
+.hc-light .zonecog-load-gauge {
+	border: 1px solid var(--vscode-contrastBorder);
+}
+
+.hc-black .zonecog-stat-value.positive,
+.hc-light .zonecog-stat-value.positive {
+	text-decoration: underline;
+}
+
+.hc-black .zonecog-stat-value.negative,
+.hc-light .zonecog-stat-value.negative {
+	text-decoration: underline wavy;
+}
