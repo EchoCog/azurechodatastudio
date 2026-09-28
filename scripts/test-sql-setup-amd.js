@@ -92,11 +92,13 @@ function verifyLoaderNativeRequireIsolation() {
 	assert.strictEqual(localRequire.__$__commonJSGlobal, commonJsGlobal, 'module-local require is missing the CommonJS global');
 	const Module = require('module');
 	const wrapperBefore = Module.wrapper[0];
+	const wrapBefore = Module.wrap;
 	loaderModule.exports.__$__nodeRequireWithoutAMD('zone.js/dist/zone');
 	assert.strictEqual(typeof loaderContext.Zone, 'function', 'zone.js did not take its non-AMD branch');
 	assert.strictEqual(loaderContext.define, amdDefine, 'loader define was not restored by the native require helper');
 	assert.strictEqual(commonJsGlobal.define, 'commonjs-define', 'CommonJS define was not restored by the native require helper');
 	assert.strictEqual(Module.wrapper[0], wrapperBefore, 'Node module wrapper was not restored by the native require helper');
+	assert.strictEqual(Module.wrap, wrapBefore, 'Node Module.wrap was not restored by the native require helper');
 }
 
 verifyLoaderNativeRequireIsolation();
@@ -152,6 +154,7 @@ function verifyLoaderHelperShadowsStickyGlobalDefine() {
 		delete require.cache[require.resolve(fixturePath)];
 		const result = loaderRequire.__$__nodeRequireWithoutAMD(fixturePath);
 		assert.strictEqual(result && result.branch, 'cjs', 'loader helper did not shadow sticky global define');
+		assert.deepStrictEqual(amdDefine.amd, { jQuery: true }, 'define.amd was not restored by the native require helper');
 	} finally {
 		if (previousDescriptor) {
 			Object.defineProperty(global, 'define', previousDescriptor);
@@ -164,6 +167,95 @@ function verifyLoaderHelperShadowsStickyGlobalDefine() {
 }
 
 verifyLoaderHelperShadowsStickyGlobalDefine();
+
+function verifyLoaderHelperHandlesElectronModuleWrapper() {
+	const os = require('os');
+	const Module = require('module');
+	const fixturePath = path.join(os.tmpdir(), `amd-first-umd-electron-${process.pid}.js`);
+	fs.writeFileSync(fixturePath, [
+		'(function (root, factory) {',
+		'  if (typeof define === "function" && define.amd) {',
+		'    define(factory);',
+		'  } else if (typeof module === "object" && module.exports) {',
+		'    module.exports = {',
+		'      branch: "cjs",',
+		'      processPid: typeof process === "object" && process ? process.pid : undefined,',
+		'      defineType: typeof define',
+		'    };',
+		'  } else {',
+		'    root.AmdFirstUmd = { branch: "global" };',
+		'  }',
+		'})(typeof globalThis !== "undefined" ? globalThis : this, function () {',
+		'  return { branch: "amd" };',
+		'});',
+		''
+	].join('\n'));
+
+	const electronWrapper0 = '(function (exports, require, module, __filename, __dirname, process, global, Buffer) { ';
+	const previousWrapper0 = Module.wrapper[0];
+	const previousWrap = Module.wrap;
+	const previousCompile = Module.prototype._compile;
+	const amdDefine = function () {
+		throw new Error('Can only have one anonymous define call per script file');
+	};
+	amdDefine.amd = { jQuery: true };
+	const previousDescriptor = Object.getOwnPropertyDescriptor(global, 'define');
+	Object.defineProperty(global, 'define', {
+		configurable: true,
+		enumerable: false,
+		get() {
+			return amdDefine;
+		},
+		set() {
+			// Simulate an Electron renderer binding that assignment cannot hide.
+		}
+	});
+
+	delete require.cache[require.resolve(loaderPath)];
+	const loaderRequire = require(loaderPath);
+
+	try {
+		Module.wrapper[0] = electronWrapper0;
+		Module.prototype._compile = function (content, filename) {
+			const wrapped = Module.wrap(content.replace(/^#!.*/, ''));
+			const compiled = require('vm').runInThisContext(wrapped, { filename: filename });
+			const dirname = path.dirname(filename);
+			const moduleRequire = Module.createRequire ? Module.createRequire(filename) : require;
+			return compiled.call(
+				this.exports,
+				this.exports,
+				moduleRequire,
+				this,
+				filename,
+				dirname,
+				process,
+				global,
+				Buffer
+			);
+		};
+		delete require.cache[require.resolve(fixturePath)];
+		const result = loaderRequire.__$__nodeRequireWithoutAMD(fixturePath);
+		assert.strictEqual(result && result.branch, 'cjs', 'loader helper did not isolate AMD-first UMD with Electron module wrapper');
+		assert.strictEqual(result.processPid, process.pid, 'injecting define shifted Electron wrapper arguments');
+		assert.strictEqual(result.defineType, 'undefined', 'define was not shadowed as the last Electron wrapper argument');
+		assert.strictEqual(Module.wrapper[0], electronWrapper0, 'Electron module wrapper was not restored');
+		assert.strictEqual(Module.wrap, previousWrap, 'Module.wrap was not restored after Electron wrapper isolation');
+		assert.deepStrictEqual(amdDefine.amd, { jQuery: true }, 'define.amd was not restored after Electron wrapper isolation');
+	} finally {
+		Module.wrapper[0] = previousWrapper0;
+		Module.wrap = previousWrap;
+		Module.prototype._compile = previousCompile;
+		if (previousDescriptor) {
+			Object.defineProperty(global, 'define', previousDescriptor);
+		} else {
+			delete global.define;
+		}
+		delete require.cache[require.resolve(fixturePath)];
+		fs.unlinkSync(fixturePath);
+	}
+}
+
+verifyLoaderHelperHandlesElectronModuleWrapper();
 
 const loadedModules = [];
 const commonJsGlobal = {};

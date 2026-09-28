@@ -642,7 +642,7 @@ var AMDLoader;
 				let pieces = scriptSrc.split('|');
 				let moduleExports = null;
 				try {
-					moduleExports = nodeRequire(pieces[1]);
+					moduleExports = AMDLoader.nativeRequireWithoutAMD(moduleManager, nodeRequire, pieces[1]);
 				}
 				catch (err) {
 					errorback(err);
@@ -701,7 +701,7 @@ var AMDLoader;
 				const pieces = scriptSrc.split('|');
 				let moduleExports = null;
 				try {
-					moduleExports = nodeRequire(pieces[1]);
+					moduleExports = AMDLoader.nativeRequireWithoutAMD(moduleManager, nodeRequire, pieces[1]);
 				}
 				catch (err) {
 					errorback(err);
@@ -845,7 +845,7 @@ var AMDLoader;
 				let pieces = scriptSrc.split('|');
 				let moduleExports = null;
 				try {
-					moduleExports = nodeRequire(pieces[1]);
+					moduleExports = AMDLoader.nativeRequireWithoutAMD(moduleManager, nodeRequire, pieces[1]);
 				}
 				catch (err) {
 					errorback(err);
@@ -1063,6 +1063,16 @@ var AMDLoader;
 		return nodeRequire;
 	}
 	AMDLoader.ensureRecordedNodeRequire = ensureRecordedNodeRequire;
+	function nativeRequireWithoutAMD(moduleManager, nodeRequire, moduleId) {
+		const amdRequire = moduleManager && typeof moduleManager.getGlobalAMDRequireFunc === 'function'
+			? moduleManager.getGlobalAMDRequireFunc()
+			: undefined;
+		if (amdRequire && typeof amdRequire.__$__nodeRequireWithoutAMD === 'function') {
+			return amdRequire.__$__nodeRequireWithoutAMD(moduleId);
+		}
+		return nodeRequire(moduleId);
+	}
+	AMDLoader.nativeRequireWithoutAMD = nativeRequireWithoutAMD;
 	function createScriptLoader(env) {
 		return new OnlyOnceScriptLoader(env);
 	}
@@ -1897,14 +1907,40 @@ var AMDLoader;
 				// {{SQL CARBON EDIT}} AMD-first UMD modules (zone.js, reflect-metadata, …) must not see the
 				// loader's `define`. Assignment to lexical/global `define` is not enough in the Electron
 				// renderer: Node compiles native modules with `runInThisContext`, so a sticky global
-				// `define` remains visible to `typeof define === 'function' && define.amd`. Shadow
-				// `define` as an extra Node module-wrapper parameter (undefined) around the require.
+				// `define` remains visible to `typeof define === 'function' && define.amd`.
+				// Hide AMD by clearing `define.amd` (the UMD predicate) and by appending an undefined
+				// `define` parameter at the END of Node's module wrapper. Electron's wrapper already
+				// includes `(process, global, Buffer)` after `__dirname`, so replacing `__dirname)`
+				// does not match and must not insert `define` in the middle (that would shift args).
 				RequireFunc.__$__nodeRequireWithoutAMD = function (what) {
 					const previousDefine = define;
 					const previousLoaderDefine = AMDLoader.global.define;
 					const previousCommonJSDefine = _commonjsGlobal.define;
 					const globalThisRef = typeof globalThis !== 'undefined' ? globalThis : undefined;
 					const previousGlobalThisDefine = globalThisRef ? globalThisRef.define : undefined;
+					const amdFlags = [];
+					const hideAmdFlag = (defineFn) => {
+						if (typeof defineFn !== 'function') {
+							return;
+						}
+						for (let i = 0; i < amdFlags.length; i++) {
+							if (amdFlags[i].defineFn === defineFn) {
+								return;
+							}
+						}
+						amdFlags.push({ defineFn: defineFn, amd: defineFn.amd });
+						try {
+							defineFn.amd = undefined;
+						}
+						catch (_err) { }
+					};
+					try {
+						hideAmdFlag(define);
+					}
+					catch (_err) { }
+					hideAmdFlag(previousLoaderDefine);
+					hideAmdFlag(previousCommonJSDefine);
+					hideAmdFlag(previousGlobalThisDefine);
 					try {
 						define = undefined;
 					}
@@ -1925,23 +1961,69 @@ var AMDLoader;
 					catch (_err) { }
 					let nodeModuleApi;
 					let previousWrapper;
+					let previousWrap;
+					const injectDefineParam = (header) => {
+						if (typeof header !== 'string' || /,\s*define\s*\)/.test(header)) {
+							return header;
+						}
+						return header.replace(/\)\s*\{/, ', define) {');
+					};
 					try {
 						nodeModuleApi = _nodeRequire('module');
-						previousWrapper = nodeModuleApi && nodeModuleApi.wrapper && nodeModuleApi.wrapper[0];
-						if (typeof previousWrapper === 'string' && previousWrapper.indexOf('__dirname') !== -1 && previousWrapper.indexOf(', define') === -1) {
-							nodeModuleApi.wrapper[0] = previousWrapper.replace('__dirname)', '__dirname, define)');
-						}
 					}
 					catch (_err) {
 						nodeModuleApi = undefined;
+					}
+					try {
+						previousWrapper = nodeModuleApi && nodeModuleApi.wrapper && nodeModuleApi.wrapper[0];
+						if (typeof previousWrapper === 'string') {
+							nodeModuleApi.wrapper[0] = injectDefineParam(previousWrapper);
+						}
+					}
+					catch (_err) {
 						previousWrapper = undefined;
+					}
+					try {
+						previousWrap = nodeModuleApi && nodeModuleApi.wrap;
+						if (typeof previousWrap === 'function') {
+							nodeModuleApi.wrap = function (script) {
+								const wrapped = previousWrap.call(this, script);
+								if (typeof wrapped !== 'string') {
+									return wrapped;
+								}
+								return wrapped.replace(/^\(function \(([^)]*)\) \{/, (match, params) => {
+									if (/(^|,)\s*define\s*(,|$)/.test(params)) {
+										return match;
+									}
+									return '(function (' + params + ', define) {';
+								});
+							};
+						}
+					}
+					catch (_err) {
+						previousWrap = undefined;
 					}
 					try {
 						return nodeRequire(what);
 					}
 					finally {
-						if (nodeModuleApi && nodeModuleApi.wrapper && typeof previousWrapper === 'string') {
-							nodeModuleApi.wrapper[0] = previousWrapper;
+						try {
+							if (nodeModuleApi && nodeModuleApi.wrapper && typeof previousWrapper === 'string') {
+								nodeModuleApi.wrapper[0] = previousWrapper;
+							}
+						}
+						catch (_err) { }
+						try {
+							if (nodeModuleApi && typeof previousWrap === 'function') {
+								nodeModuleApi.wrap = previousWrap;
+							}
+						}
+						catch (_err) { }
+						for (let i = 0; i < amdFlags.length; i++) {
+							try {
+								amdFlags[i].defineFn.amd = amdFlags[i].amd;
+							}
+							catch (_err) { }
 						}
 						try {
 							define = previousDefine;
