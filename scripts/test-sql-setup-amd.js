@@ -46,6 +46,9 @@ function verifyLoaderNativeRequireIsolation() {
 		assert.strictEqual(vm.runInContext('typeof define', loaderContext), 'undefined');
 		assert.strictEqual(loaderContext.define, undefined);
 		assert.strictEqual(commonJsGlobal.define, undefined);
+		if (moduleId === 'module') {
+			return require('module');
+		}
 		if (moduleId === 'zone.js/dist/zone') {
 			return vm.runInContext(zoneSource, loaderContext, { filename: require.resolve(moduleId) });
 		}
@@ -87,13 +90,80 @@ function verifyLoaderNativeRequireIsolation() {
 		'module-local require is missing the native AMD isolation helper'
 	);
 	assert.strictEqual(localRequire.__$__commonJSGlobal, commonJsGlobal, 'module-local require is missing the CommonJS global');
+	const Module = require('module');
+	const wrapperBefore = Module.wrapper[0];
 	loaderModule.exports.__$__nodeRequireWithoutAMD('zone.js/dist/zone');
 	assert.strictEqual(typeof loaderContext.Zone, 'function', 'zone.js did not take its non-AMD branch');
 	assert.strictEqual(loaderContext.define, amdDefine, 'loader define was not restored by the native require helper');
 	assert.strictEqual(commonJsGlobal.define, 'commonjs-define', 'CommonJS define was not restored by the native require helper');
+	assert.strictEqual(Module.wrapper[0], wrapperBefore, 'Node module wrapper was not restored by the native require helper');
 }
 
 verifyLoaderNativeRequireIsolation();
+
+function verifyLoaderHelperShadowsStickyGlobalDefine() {
+	const os = require('os');
+	const fixturePath = path.join(os.tmpdir(), `amd-first-umd-${process.pid}.js`);
+	fs.writeFileSync(fixturePath, [
+		'(function (root, factory) {',
+		'  if (typeof define === "function" && define.amd) {',
+		'    define(factory);',
+		'  } else if (typeof module === "object" && module.exports) {',
+		'    module.exports = { branch: "cjs" };',
+		'  } else {',
+		'    root.AmdFirstUmd = { branch: "global" };',
+		'  }',
+		'})(typeof globalThis !== "undefined" ? globalThis : this, function () {',
+		'  return { branch: "amd" };',
+		'});',
+		''
+	].join('\n'));
+
+	const amdDefine = function () {
+		throw new Error('Can only have one anonymous define call per script file');
+	};
+	amdDefine.amd = { jQuery: true };
+	const previousDescriptor = Object.getOwnPropertyDescriptor(global, 'define');
+	Object.defineProperty(global, 'define', {
+		configurable: true,
+		enumerable: false,
+		get() {
+			return amdDefine;
+		},
+		set() {
+			// Simulate an Electron renderer binding that assignment cannot hide.
+		}
+	});
+
+	delete require.cache[require.resolve(loaderPath)];
+	const loaderRequire = require(loaderPath);
+	assert.strictEqual(typeof loaderRequire.__$__nodeRequireWithoutAMD, 'function');
+
+	try {
+		delete require.cache[require.resolve(fixturePath)];
+		let directThrew = false;
+		try {
+			require(fixturePath);
+		} catch (err) {
+			directThrew = /anonymous define/.test(err.message);
+		}
+		assert.ok(directThrew, 'fixture should take the AMD branch when define is sticky');
+
+		delete require.cache[require.resolve(fixturePath)];
+		const result = loaderRequire.__$__nodeRequireWithoutAMD(fixturePath);
+		assert.strictEqual(result && result.branch, 'cjs', 'loader helper did not shadow sticky global define');
+	} finally {
+		if (previousDescriptor) {
+			Object.defineProperty(global, 'define', previousDescriptor);
+		} else {
+			delete global.define;
+		}
+		delete require.cache[require.resolve(fixturePath)];
+		fs.unlinkSync(fixturePath);
+	}
+}
+
+verifyLoaderHelperShadowsStickyGlobalDefine();
 
 const loadedModules = [];
 const commonJsGlobal = {};

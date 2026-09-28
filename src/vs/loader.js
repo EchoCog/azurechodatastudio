@@ -1894,22 +1894,73 @@ var AMDLoader;
 				RequireFunc.nodeRequire = nodeRequire;
 				RequireFunc.__$__nodeRequire = nodeRequire;
 				RequireFunc.__$__commonJSGlobal = _commonjsGlobal;
-				// {{SQL CARBON EDIT}} Some AMD-first UMD modules probe the loader's lexical `define` binding.
-				// Temporarily hide every loader-visible binding while performing a synchronous native require.
+				// {{SQL CARBON EDIT}} AMD-first UMD modules (zone.js, reflect-metadata, …) must not see the
+				// loader's `define`. Assignment to lexical/global `define` is not enough in the Electron
+				// renderer: Node compiles native modules with `runInThisContext`, so a sticky global
+				// `define` remains visible to `typeof define === 'function' && define.amd`. Shadow
+				// `define` as an extra Node module-wrapper parameter (undefined) around the require.
 				RequireFunc.__$__nodeRequireWithoutAMD = function (what) {
 					const previousDefine = define;
 					const previousLoaderDefine = AMDLoader.global.define;
 					const previousCommonJSDefine = _commonjsGlobal.define;
-					define = undefined;
-					AMDLoader.global.define = undefined;
-					_commonjsGlobal.define = undefined;
+					const globalThisRef = typeof globalThis !== 'undefined' ? globalThis : undefined;
+					const previousGlobalThisDefine = globalThisRef ? globalThisRef.define : undefined;
+					try {
+						define = undefined;
+					}
+					catch (_err) { }
+					try {
+						AMDLoader.global.define = undefined;
+					}
+					catch (_err) { }
+					try {
+						_commonjsGlobal.define = undefined;
+					}
+					catch (_err) { }
+					try {
+						if (globalThisRef) {
+							globalThisRef.define = undefined;
+						}
+					}
+					catch (_err) { }
+					let nodeModuleApi;
+					let previousWrapper;
+					try {
+						nodeModuleApi = _nodeRequire('module');
+						previousWrapper = nodeModuleApi && nodeModuleApi.wrapper && nodeModuleApi.wrapper[0];
+						if (typeof previousWrapper === 'string' && previousWrapper.indexOf('__dirname') !== -1 && previousWrapper.indexOf(', define') === -1) {
+							nodeModuleApi.wrapper[0] = previousWrapper.replace('__dirname)', '__dirname, define)');
+						}
+					}
+					catch (_err) {
+						nodeModuleApi = undefined;
+						previousWrapper = undefined;
+					}
 					try {
 						return nodeRequire(what);
 					}
 					finally {
-						define = previousDefine;
-						AMDLoader.global.define = previousLoaderDefine;
-						_commonjsGlobal.define = previousCommonJSDefine;
+						if (nodeModuleApi && nodeModuleApi.wrapper && typeof previousWrapper === 'string') {
+							nodeModuleApi.wrapper[0] = previousWrapper;
+						}
+						try {
+							define = previousDefine;
+						}
+						catch (_err) { }
+						try {
+							AMDLoader.global.define = previousLoaderDefine;
+						}
+						catch (_err) { }
+						try {
+							_commonjsGlobal.define = previousCommonJSDefine;
+						}
+						catch (_err) { }
+						try {
+							if (globalThisRef) {
+								globalThisRef.define = previousGlobalThisDefine;
+							}
+						}
+						catch (_err) { }
 					}
 				};
 			}
