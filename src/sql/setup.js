@@ -9,8 +9,8 @@ define(['require', 'exports'], function (require) {
 	// the expected method and so nothing needs to be done - but if it's AMD then the VS Code loader will throw an error
 	// (Can only have one anonymous define call per script file) since it only expects to be loading its own files.
 
-	// The Electron loader's `define` can be a lexical global that cannot be hidden by changing properties on window,
-	// globalThis, or Node's global object. Ask the loader to hide and restore its own binding around each synchronous
+	// The Electron loader's `define` can be a lexical global that assignment cannot hide from Node-compiled
+	// UMD modules. Ask the loader to shadow `define` in Node's module wrapper around each synchronous
 	// native require so AMD-first UMD modules deterministically select their non-AMD branch.
 	function loadWithoutAMD(moduleId) {
 		return require.__$__nodeRequireWithoutAMD(moduleId);
