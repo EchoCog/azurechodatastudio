@@ -20,6 +20,8 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 
 	private readonly _nodes = new Map<string, HypergraphNode>();
 	private readonly _links = new Map<string, HypergraphLink>();
+	// Adjacency index: nodeId → set of linkIds that include the node
+	private readonly _nodeToLinks = new Map<string, Set<string>>();
 
 	/** Deep-copy a node so callers cannot mutate internal state. */
 	private static _cloneNode(n: HypergraphNode): HypergraphNode {
@@ -84,6 +86,7 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 	removeNode(id: string): boolean {
 		const deleted = this._nodes.delete(id);
 		if (deleted) {
+			this._nodeToLinks.delete(id);
 			this.logService.trace(`HypergraphStore: removed node ${id}`);
 		}
 		return deleted;
@@ -111,12 +114,18 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 
 	addLink(link: HypergraphLink): void {
 		this._links.set(link.id, HypergraphStore._cloneLink(link));
-		// Update link references on participating nodes
+		// Update link references on participating nodes and adjacency index
 		for (const nodeId of link.outgoing) {
 			const node = this._nodes.get(nodeId);
 			if (node && !node.links.includes(link.id)) {
 				node.links.push(link.id);
 			}
+			let set = this._nodeToLinks.get(nodeId);
+			if (!set) {
+				set = new Set();
+				this._nodeToLinks.set(nodeId, set);
+			}
+			set.add(link.id);
 		}
 		this._onDidChangeLink.fire(link);
 		this.logService.trace(`HypergraphStore: added link ${link.id} (${link.link_type})`);
@@ -132,13 +141,20 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 		if (!link) {
 			return false;
 		}
-		// Remove link reference from participating nodes
+		// Remove link reference from participating nodes and adjacency index
 		for (const nodeId of link.outgoing) {
 			const node = this._nodes.get(nodeId);
 			if (node) {
 				const idx = node.links.indexOf(id);
 				if (idx !== -1) {
 					node.links.splice(idx, 1);
+				}
+			}
+			const set = this._nodeToLinks.get(nodeId);
+			if (set) {
+				set.delete(id);
+				if (set.size === 0) {
+					this._nodeToLinks.delete(nodeId);
 				}
 			}
 		}
@@ -158,9 +174,14 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 	}
 
 	getLinksForNode(nodeId: string): HypergraphLink[] {
+		const linkIds = this._nodeToLinks.get(nodeId);
+		if (!linkIds) {
+			return [];
+		}
 		const result: HypergraphLink[] = [];
-		for (const l of this._links.values()) {
-			if (l.outgoing.includes(nodeId)) {
+		for (const linkId of linkIds) {
+			const l = this._links.get(linkId);
+			if (l) {
 				result.push(HypergraphStore._cloneLink(l));
 			}
 		}
@@ -189,6 +210,7 @@ export class HypergraphStore extends Disposable implements IHypergraphStore {
 	clear(): void {
 		this._nodes.clear();
 		this._links.clear();
+		this._nodeToLinks.clear();
 		this.logService.info('HypergraphStore: cleared all nodes and links');
 	}
 

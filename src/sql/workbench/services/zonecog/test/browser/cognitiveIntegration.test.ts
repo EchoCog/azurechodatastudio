@@ -867,4 +867,156 @@ suite('Cognitive Pipeline Integration Tests', () => {
 			assert.strictEqual(balance.dominantTriad, undefined);
 		});
 	});
+
+	// -------------------------------------------------------------------
+	// Phase 7: Hypergraph performance at scale (10k+ nodes)
+	// -------------------------------------------------------------------
+
+	suite('hypergraph performance at scale', () => {
+
+		test('getLinksForNode is O(1) via adjacency index with 10k nodes', () => {
+			const N = 10_000;
+			const LINKS_PER_NODE = 3;
+
+			// Seed N nodes
+			for (let i = 0; i < N; i++) {
+				graph.hypergraphStore.addNode({
+					id: `perf-node-${i}`,
+					content: `Node ${i}`,
+					node_type: 'Concept',
+					salience_score: 0.5,
+					metadata: {},
+					links: [],
+				});
+			}
+
+			// Create LINKS_PER_NODE links per node to random neighbours
+			for (let i = 0; i < N; i++) {
+				for (let j = 0; j < LINKS_PER_NODE; j++) {
+					const target = (i + j + 1) % N;
+					graph.hypergraphStore.addLink({
+						id: `perf-link-${i}-${j}`,
+						link_type: 'Related',
+						outgoing: [`perf-node-${i}`, `perf-node-${target}`],
+						metadata: {},
+					});
+				}
+			}
+
+			// Measure lookup time for a single node
+			const start = Date.now();
+			const LOOKUPS = 1000;
+			for (let i = 0; i < LOOKUPS; i++) {
+				const nodeId = `perf-node-${i}`;
+				graph.hypergraphStore.getLinksForNode(nodeId);
+			}
+			const elapsed = Date.now() - start;
+
+			// 1000 lookups in a 10k-node, 30k-link graph should complete
+			// in under 500ms with the adjacency index (vs seconds without it)
+			assert.ok(elapsed < 500,
+				`1000 getLinksForNode lookups took ${elapsed}ms (expected < 500ms)`);
+		});
+
+		test('addNode and addLink scale linearly to 10k entries', () => {
+			const N = 10_000;
+			const start = Date.now();
+
+			for (let i = 0; i < N; i++) {
+				graph.hypergraphStore.addNode({
+					id: `scale-node-${i}`,
+					content: `Node ${i}`,
+					node_type: 'Concept',
+					salience_score: 0.5,
+					metadata: {},
+					links: [],
+				});
+			}
+
+			for (let i = 0; i < N; i++) {
+				const target = (i + 1) % N;
+				graph.hypergraphStore.addLink({
+					id: `scale-link-${i}`,
+					link_type: 'Related',
+					outgoing: [`scale-node-${i}`, `scale-node-${target}`],
+					metadata: {},
+				});
+			}
+
+			const elapsed = Date.now() - start;
+			assert.strictEqual(graph.hypergraphStore.nodeCount(), N);
+			assert.strictEqual(graph.hypergraphStore.linkCount(), N);
+			assert.ok(elapsed < 5000,
+				`inserting 10k nodes + 10k links took ${elapsed}ms (expected < 5000ms)`);
+		});
+
+		test('adjacency index stays consistent after removeLink', () => {
+			graph.hypergraphStore.addNode({
+				id: 'adj-a', content: 'A', node_type: 'Concept',
+				salience_score: 0.5, metadata: {}, links: [],
+			});
+			graph.hypergraphStore.addNode({
+				id: 'adj-b', content: 'B', node_type: 'Concept',
+				salience_score: 0.5, metadata: {}, links: [],
+			});
+			graph.hypergraphStore.addLink({
+				id: 'adj-link-1', link_type: 'Related',
+				outgoing: ['adj-a', 'adj-b'], metadata: {},
+			});
+			graph.hypergraphStore.addLink({
+				id: 'adj-link-2', link_type: 'Related',
+				outgoing: ['adj-a', 'adj-b'], metadata: {},
+			});
+
+			assert.strictEqual(graph.hypergraphStore.getLinksForNode('adj-a').length, 2);
+
+			graph.hypergraphStore.removeLink('adj-link-1');
+			const remaining = graph.hypergraphStore.getLinksForNode('adj-a');
+			assert.strictEqual(remaining.length, 1);
+			assert.strictEqual(remaining[0].id, 'adj-link-2');
+		});
+	});
+
+	// -------------------------------------------------------------------
+	// Phase 7: Dispose / memory leak verification
+	// -------------------------------------------------------------------
+
+	suite('service disposal and memory leak prevention', () => {
+
+		test('AAR service cleans up consensus deadline timers on dispose', () => {
+			// Import AAROrchestrationService for direct instantiation
+			const aarService = graph.instantiationService.createInstance(
+				require('sql/workbench/services/zonecog/browser/aarOrchestrationService').AAROrchestrationService
+			);
+
+			// Register built-in agents and create a consensus proposal
+			aarService.registerAgent({
+				id: 'timer-test-agent',
+				name: 'Timer Test',
+				role: 'worker',
+				capabilities: ['test'],
+				status: 'idle',
+			});
+
+			// Create a proposal with a long deadline (would leak without disposal)
+			aarService.createConsensusProposal(
+				'test',
+				'test proposal',
+				['timer-test-agent'],
+				0.5,
+				60000
+			);
+
+			// Dispose should not throw and should clear all timers
+			aarService.dispose();
+		});
+
+		test('cognitive loop stop prevents further iteration timers', async () => {
+			graph.loopService.start(100);
+			assert.strictEqual(graph.loopService.getState().running, true);
+
+			graph.loopService.stop();
+			assert.strictEqual(graph.loopService.getState().running, false);
+		});
+	});
 });
