@@ -25,6 +25,7 @@ import { DTESNService } from 'sql/workbench/services/zonecog/browser/dtesnServic
 import { ICognitiveAnalyticsService, CognitiveAnalyticsSnapshot } from 'sql/workbench/services/zonecog/common/cognitiveAnalytics';
 import { CognitiveAnalyticsService } from 'sql/workbench/services/zonecog/browser/cognitiveAnalyticsService';
 import { AutognosisService } from 'sql/workbench/services/zonecog/browser/autognosisService';
+import { AAROrchestrationService } from 'sql/workbench/services/zonecog/browser/aarOrchestrationService';
 import { TestInstantiationService } from 'vs/platform/instantiation/test/common/instantiationServiceMock';
 import { ILogService, NullLogService } from 'vs/platform/log/common/log';
 
@@ -983,40 +984,37 @@ suite('Cognitive Pipeline Integration Tests', () => {
 
 	suite('service disposal and memory leak prevention', () => {
 
-		test('AAR service cleans up consensus deadline timers on dispose', () => {
-			// Import AAROrchestrationService for direct instantiation
-			const aarService = graph.instantiationService.createInstance(
-				require('sql/workbench/services/zonecog/browser/aarOrchestrationService').AAROrchestrationService
-			);
+		test('AAR service cleans up consensus deadline timers on dispose', async () => {
+			const aarService = graph.instantiationService.createInstance(AAROrchestrationService);
 
-			// Register built-in agents and create a consensus proposal
 			aarService.registerAgent({
 				id: 'timer-test-agent',
 				name: 'Timer Test',
-				role: 'worker',
+				role: 'custom',
 				capabilities: ['test'],
-				status: 'idle',
+				active: true,
 			});
 
-			// Create a proposal with a long deadline (would leak without disposal)
-			aarService.createConsensusProposal(
-				'test',
+			await aarService.proposeConsensus(
+				'decision',
 				'test proposal',
 				['timer-test-agent'],
 				0.5,
 				60000
 			);
 
-			// Dispose should not throw and should clear all timers
+			assert.strictEqual(aarService.getPendingConsensusProposals().length, 1);
 			aarService.dispose();
 		});
 
 		test('cognitive loop stop prevents further iteration timers', async () => {
-			graph.loopService.start(100);
+			graph.loopService.setTickInterval(1000);
+			graph.loopService.start();
 			assert.strictEqual(graph.loopService.getState().running, true);
 
 			graph.loopService.stop();
 			assert.strictEqual(graph.loopService.getState().running, false);
+			assert.strictEqual(graph.loopService.getState().tickIntervalMs, 1000);
 		});
 	});
 });
