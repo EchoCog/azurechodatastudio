@@ -7,6 +7,7 @@ REPO_ROOT="${1:-$(git rev-parse --show-toplevel 2>/dev/null || echo /home/user/a
 cd "$REPO_ROOT"
 
 STATUS="pass"
+USED_STUBS=false
 COMPILE_ERRORS=0
 UNIT_PASSING=0
 UNIT_FAILING=0
@@ -53,8 +54,7 @@ else
                 fail_step "yarn-install"
             fi
 
-            # Restore package.json
-            git checkout -- package.json yarn.lock 2>/dev/null || true
+            USED_STUBS=true
         else
             fail_step "yarn-install"
         fi
@@ -81,9 +81,22 @@ for dep in "${BUILD_DEPS[@]}"; do
 done
 
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
+    # If stubs were used in step 1, keep them in place so yarn add doesn't
+    # try to re-resolve the private GitHub deps and fail with 403.
+    if [ "${USED_STUBS:-}" = "true" ]; then
+        sed -i 's|"azdataGraph": "github:Microsoft/azdataGraph#[^"]*"|"azdataGraph": "file:/tmp/stubs/azdataGraph"|' package.json
+        sed -i 's|"slickgrid": "github:Microsoft/SlickGrid.ADS#[^"]*"|"slickgrid": "file:/tmp/stubs/slickgrid"|' package.json
+    fi
+
     log "Installing missing build deps: ${MISSING_DEPS[*]}"
     yarn add --dev "${MISSING_DEPS[@]}" --ignore-scripts 2>&1 || true
-    # Restore package.json/yarn.lock changes from yarn add
+
+    # Restore package.json/yarn.lock after all installs are done
+    git checkout -- package.json yarn.lock 2>/dev/null || true
+fi
+
+# Restore package.json if stubs were used and step 2 had no missing deps
+if [ "${USED_STUBS:-}" = "true" ]; then
     git checkout -- package.json yarn.lock 2>/dev/null || true
 fi
 
