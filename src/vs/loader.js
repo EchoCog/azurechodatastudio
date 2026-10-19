@@ -1899,6 +1899,12 @@ var AMDLoader;
 				// renderer: Node compiles native modules with `runInThisContext`, so a sticky global
 				// `define` remains visible to `typeof define === 'function' && define.amd`. Shadow
 				// `define` as an extra Node module-wrapper parameter (undefined) around the require.
+				//
+				// Node 18+ uses vm.compileFunction with hardcoded parameter names by default, bypassing
+				// Module.wrapper entirely. Mutating wrapper[0] alone does NOT trigger Node's internal
+				// `patched` flag. We must REASSIGN Module.wrapper to a new array so the setter fires,
+				// forcing Node to fall back to Module.wrap() + vm.runInThisContext() which honours the
+				// modified wrapper string.
 				RequireFunc.__$__nodeRequireWithoutAMD = function (what) {
 					const previousDefine = define;
 					const previousLoaderDefine = AMDLoader.global.define;
@@ -1924,24 +1930,27 @@ var AMDLoader;
 					}
 					catch (_err) { }
 					let nodeModuleApi;
-					let previousWrapper;
+					let previousWrapperArr;
 					try {
 						nodeModuleApi = _nodeRequire('module');
-						previousWrapper = nodeModuleApi && nodeModuleApi.wrapper && nodeModuleApi.wrapper[0];
-						if (typeof previousWrapper === 'string' && previousWrapper.indexOf('__dirname') !== -1 && previousWrapper.indexOf(', define') === -1) {
-							nodeModuleApi.wrapper[0] = previousWrapper.replace('__dirname)', '__dirname, define)');
+						if (nodeModuleApi && nodeModuleApi.wrapper && Array.isArray(nodeModuleApi.wrapper)) {
+							previousWrapperArr = nodeModuleApi.wrapper;
+							var w0 = nodeModuleApi.wrapper[0];
+							if (typeof w0 === 'string' && w0.indexOf('__dirname') !== -1 && w0.indexOf(', define') === -1) {
+								nodeModuleApi.wrapper = [w0.replace('__dirname)', '__dirname, define)'), nodeModuleApi.wrapper[1]];
+							}
 						}
 					}
 					catch (_err) {
 						nodeModuleApi = undefined;
-						previousWrapper = undefined;
+						previousWrapperArr = undefined;
 					}
 					try {
 						return nodeRequire(what);
 					}
 					finally {
-						if (nodeModuleApi && nodeModuleApi.wrapper && typeof previousWrapper === 'string') {
-							nodeModuleApi.wrapper[0] = previousWrapper;
+						if (nodeModuleApi && previousWrapperArr) {
+							nodeModuleApi.wrapper = previousWrapperArr;
 						}
 						try {
 							define = previousDefine;
