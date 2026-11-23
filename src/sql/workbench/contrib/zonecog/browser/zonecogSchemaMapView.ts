@@ -105,6 +105,7 @@ export class SchemaCognitionMapView extends ViewPane {
 			const changes = this.schemaEvolution.getChangeHistory(connectionUri);
 			const decisions = this.provenanceService.getAuditTrail({ limit: 50 });
 			const list = append(section, $('.zonecog-wm-list'));
+			list.setAttribute('role', 'list');
 			for (const table of tables) {
 				const cognitionCount = nodeContents.reduce((acc, content) => acc + (content.includes(table.name) ? 1 : 0), 0);
 				const changeCount = changes.reduce((acc, change) => acc + (change.elementId === table.id ? 1 : 0), 0);

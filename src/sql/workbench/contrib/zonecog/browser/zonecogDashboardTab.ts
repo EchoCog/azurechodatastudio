@@ -110,6 +110,8 @@ export class ZoneCogDashboardTabView extends ViewPane {
 		this._heatmapCanvas = append(wrapper, $('canvas.zonecog-dashboard-mini-heatmap'));
 		this._heatmapCanvas.width = MINI_CANVAS_SIZE;
 		this._heatmapCanvas.height = MINI_CANVAS_SIZE;
+		this._heatmapCanvas.setAttribute('role', 'img');
+		this._heatmapCanvas.setAttribute('aria-label', localize('zonecog.dashHeatmapCanvas', 'ECAN attention heatmap visualization'));
 	}
 
 	private _refresh(): void {
@@ -205,7 +207,8 @@ export class ZoneCogDashboardTabView extends ViewPane {
 			indicator.style.borderRadius = '50%';
 			indicator.style.display = 'inline-block';
 			indicator.style.marginRight = '8px';
-			indicator.style.backgroundColor = status.healthy ? '#4caf50' : '#f44336';
+			indicator.style.backgroundColor = status.healthy ? 'var(--zonecog-healthy-color, #4caf50)' : 'var(--zonecog-error-color, #f44336)';
+			indicator.setAttribute('aria-hidden', 'true');
 
 			const label = append(row, $('span'));
 			label.textContent = `${triad[0].toUpperCase()}${triad.slice(1)}: ${status.activeProcesses} active, ${status.errorCount} errors`;

@@ -108,6 +108,7 @@ export class HypergraphExplorerView extends ViewPane {
 		this._tooltip.style.display = 'none';
 		this._detailPane = append(view, $('.zonecog-hypergraph-detail')) as HTMLElement;
 		this._detailPane.style.display = 'none';
+		this._detailPane.setAttribute('aria-live', 'polite');
 		this._legend = append(view, $('.zonecog-hypergraph-legend'));
 		this._emptyMessage = append(view, $('.zonecog-thinking-idle'));
 		this._emptyMessage.textContent = localize('zonecog.hypergraphEmpty', 'The hypergraph is empty - process a query or perceive a schema to grow it.');
