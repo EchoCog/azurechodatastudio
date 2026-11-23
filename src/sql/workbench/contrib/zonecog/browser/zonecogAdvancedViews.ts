@@ -84,6 +84,8 @@ export class DTESNNetworkView extends ViewPane {
 
 		// Grid of stats
 		const statsGrid = append(this._networkSection, $('.zonecog-cognitive-state'));
+		statsGrid.setAttribute('role', 'status');
+		statsGrid.setAttribute('aria-label', localize('zonecog.dtesnStatsSummary', 'DTESN network statistics'));
 
 		// Depth
 		this._createStatCard(statsGrid, localize('zonecog.dtesnDepth', 'Depth'),
@@ -108,6 +110,8 @@ export class DTESNNetworkView extends ViewPane {
 		}
 
 		clearNode(this._layerVisualization);
+		this._layerVisualization.setAttribute('role', 'list');
+		this._layerVisualization.setAttribute('aria-label', localize('zonecog.dtesnLayersList', 'Network layers'));
 
 		const config = this.dtesnService.getConfig();
 
@@ -116,6 +120,7 @@ export class DTESNNetworkView extends ViewPane {
 			const spectralRadius = this.dtesnService.getLayerSpectralRadius(i);
 
 			const layerEl = append(this._layerVisualization, $('.zonecog-dtesn-layer'));
+			layerEl.setAttribute('role', 'listitem');
 
 			// Layer header
 			const header = append(layerEl, $('.zonecog-dtesn-layer-header'));
@@ -128,6 +133,12 @@ export class DTESNNetworkView extends ViewPane {
 
 			// Visual indicator bar
 			const bar = append(layerEl, $('.zonecog-dtesn-layer-bar'));
+			const radiusPercent = Math.round(Math.min(spectralRadius / 1.5, 1) * 100);
+			bar.setAttribute('role', 'progressbar');
+			bar.setAttribute('aria-valuemin', '0');
+			bar.setAttribute('aria-valuemax', '100');
+			bar.setAttribute('aria-valuenow', String(radiusPercent));
+			bar.setAttribute('aria-label', localize('zonecog.dtesnLayerBar', 'Layer {0} spectral radius', i));
 			const fill = append(bar, $('.zonecog-dtesn-layer-fill'));
 			// Use spectral radius as indicator (clamped to max 1.5)
 			const width = Math.min(spectralRadius / 1.5, 1) * 100;
@@ -144,6 +155,8 @@ export class DTESNNetworkView extends ViewPane {
 
 	private _createStatCard(container: HTMLElement, label: string, value: string, className?: string): void {
 		const card = append(container, $('.zonecog-stat-card'));
+		card.tabIndex = 0;
+		card.setAttribute('aria-label', `${label}: ${value}`);
 		append(card, $('.zonecog-stat-label')).textContent = label;
 		const valueEl = append(card, $('.zonecog-stat-value'));
 		valueEl.textContent = value;
@@ -195,6 +208,9 @@ export class AAROrchestrationView extends ViewPane {
 		const agentListSection = append(this._container, $('.zonecog-section'));
 		append(agentListSection, $('.zonecog-section-header')).textContent = localize('zonecog.aarAgents', 'Registered Agents');
 		this._agentList = append(agentListSection, $('.zonecog-aar-agents'));
+		this._agentList.setAttribute('role', 'list');
+		this._agentList.setAttribute('aria-label', localize('zonecog.aarAgentsList', 'Registered agents'));
+		this._agentList.setAttribute('aria-live', 'polite');
 
 		// Subscribe to AAR changes
 		this._register(this.aarService.onDidCompleteTask(() => this._refresh()));
@@ -219,6 +235,8 @@ export class AAROrchestrationView extends ViewPane {
 
 		// Stats grid
 		const statsGrid = append(this._arenaSection, $('.zonecog-cognitive-state'));
+		statsGrid.setAttribute('role', 'status');
+		statsGrid.setAttribute('aria-label', localize('zonecog.aarStatsGrid', 'AAR arena statistics'));
 
 		this._createStatCard(statsGrid, localize('zonecog.aarAgentCount', 'Agents'),
 			String(arenaState.agentCount));
@@ -253,11 +271,16 @@ export class AAROrchestrationView extends ViewPane {
 
 		for (const agent of agents) {
 			const agentEl = append(this._agentList, $('.zonecog-aar-agent'));
+			agentEl.setAttribute('role', 'listitem');
 			agentEl.classList.add(agent.active ? 'active' : 'inactive');
+			agentEl.tabIndex = 0;
+			const activeText = agent.active ? localize('zonecog.agentActive', 'active') : localize('zonecog.agentInactive', 'inactive');
+			agentEl.setAttribute('aria-label', localize('zonecog.agentLabel', '{0}, {1}, {2}, {3} tasks', agent.name, agent.role, activeText, agent.totalTasksProcessed));
 
 			// Agent icon based on role
 			const icon = append(agentEl, $('.zonecog-aar-agent-icon'));
 			icon.textContent = this._getRoleIcon(agent.role);
+			icon.setAttribute('aria-hidden', 'true');
 
 			// Agent info
 			const info = append(agentEl, $('.zonecog-aar-agent-info'));
@@ -272,6 +295,7 @@ export class AAROrchestrationView extends ViewPane {
 			const status = append(agentEl, $('.zonecog-aar-agent-status'));
 			// allow-any-unicode-next-line
 			status.textContent = agent.active ? '●' : 'o';
+			status.setAttribute('aria-hidden', 'true');
 		}
 	}
 
@@ -293,6 +317,8 @@ export class AAROrchestrationView extends ViewPane {
 
 	private _createStatCard(container: HTMLElement, label: string, value: string, className?: string): void {
 		const card = append(container, $('.zonecog-stat-card'));
+		card.tabIndex = 0;
+		card.setAttribute('aria-label', `${label}: ${value}`);
 		append(card, $('.zonecog-stat-label')).textContent = label;
 		const valueEl = append(card, $('.zonecog-stat-value'));
 		valueEl.textContent = value;
@@ -339,11 +365,16 @@ export class CognitiveWorkflowsView extends ViewPane {
 		const workflowsSection = append(this._container, $('.zonecog-section'));
 		append(workflowsSection, $('.zonecog-section-header')).textContent = localize('zonecog.workflows', 'Workflows');
 		this._workflowList = append(workflowsSection, $('.zonecog-workflow-list'));
+		this._workflowList.setAttribute('role', 'list');
+		this._workflowList.setAttribute('aria-label', localize('zonecog.workflowsList', 'Registered workflows'));
 
 		// History Section
 		const historySection = append(this._container, $('.zonecog-section'));
 		append(historySection, $('.zonecog-section-header')).textContent = localize('zonecog.recentExecutions', 'Recent Executions');
 		this._historySection = append(historySection, $('.zonecog-workflow-history'));
+		this._historySection.setAttribute('role', 'list');
+		this._historySection.setAttribute('aria-label', localize('zonecog.executionHistory', 'Execution history'));
+		this._historySection.setAttribute('aria-live', 'polite');
 
 		// Subscribe to workflow changes
 		this._register(this.workflowService.onDidCompleteExecution(() => this._refresh()));
@@ -380,13 +411,18 @@ export class CognitiveWorkflowsView extends ViewPane {
 
 	private _createWorkflowItem(container: HTMLElement, workflow: RegisteredWorkflow): void {
 		const item = append(container, $('.zonecog-workflow-item'));
+		item.setAttribute('role', 'listitem');
 		item.classList.add(workflow.enabled ? 'enabled' : 'disabled');
+		item.tabIndex = 0;
+		const enabledText = workflow.enabled ? localize('zonecog.workflowEnabled', 'enabled') : localize('zonecog.workflowDisabled', 'disabled');
+		item.setAttribute('aria-label', localize('zonecog.workflowLabel', '{0}, {1}, {2} runs', workflow.definition.name, enabledText, workflow.executionCount));
 
 		// Status indicator
 		const status = append(item, $('.zonecog-workflow-status'));
 		// allow-any-unicode-next-line
 		status.textContent = workflow.enabled ? '●' : 'o';
 		status.title = workflow.enabled ? 'Enabled' : 'Disabled';
+		status.setAttribute('aria-hidden', 'true');
 
 		// Workflow info
 		const info = append(item, $('.zonecog-workflow-info'));
@@ -425,11 +461,15 @@ export class CognitiveWorkflowsView extends ViewPane {
 		for (const exec of active) {
 			const item = append(this._historySection, $('.zonecog-execution-item'));
 			item.classList.add('running');
+			item.setAttribute('role', 'listitem');
+			item.tabIndex = 0;
+			item.setAttribute('aria-label', localize('zonecog.executionRunning', '{0}, running, step: {1}', exec.workflowId, exec.currentStep || 'starting'));
 
 			const statusIcon = append(item, $('.zonecog-execution-status'));
 			// allow-any-unicode-next-line
 			statusIcon.textContent = '◐';
 			statusIcon.title = 'Running';
+			statusIcon.setAttribute('aria-hidden', 'true');
 
 			const info = append(item, $('.zonecog-execution-info'));
 			const name = append(info, $('.zonecog-execution-name'));
@@ -443,17 +483,21 @@ export class CognitiveWorkflowsView extends ViewPane {
 		for (const exec of history) {
 			const item = append(this._historySection, $('.zonecog-execution-item'));
 			item.classList.add(exec.status);
+			item.setAttribute('role', 'listitem');
+			const duration = exec.endTime ? exec.endTime - exec.startTime : 0;
+			item.tabIndex = 0;
+			item.setAttribute('aria-label', localize('zonecog.executionHistoryItem', '{0}, {1}, {2}ms', exec.workflowId, exec.status, duration));
 
 			const statusIcon = append(item, $('.zonecog-execution-status'));
 			// allow-any-unicode-next-line
 			statusIcon.textContent = exec.status === 'completed' ? '✓' : exec.status === 'failed' ? '✗' : 'o';
+			statusIcon.setAttribute('aria-hidden', 'true');
 
 			const info = append(item, $('.zonecog-execution-info'));
 			const name = append(info, $('.zonecog-execution-name'));
 			name.textContent = exec.workflowId;
 
 			const details = append(info, $('.zonecog-execution-details'));
-			const duration = exec.endTime ? exec.endTime - exec.startTime : 0;
 			details.textContent = `${exec.status} • ${duration}ms • ${new Date(exec.startTime).toLocaleTimeString()}`;
 		}
 	}

@@ -181,8 +181,8 @@ Depth-adaptive: shallow (phases 1,2,11), moderate (1-5,11), deep (all 11).
 - [x] Memory leak fix: AAR consensus deadline timers tracked and cleaned up on dispose
 - [x] Accessibility: ARIA roles, labels, keyboard focus on stat cards, membrane cards, load gauge
 - [x] High-contrast theme support for loop indicators, membrane cards, stat cards
-- [ ] End-to-end integration tests: PLN→HypergraphStore→ECAN, Schema→Loop, Workflow→Analytics
-- [ ] Accessibility audit for remaining panel views beyond CognitiveStateView/MembraneHealthView
+- [x] End-to-end integration tests: PLN→HypergraphStore→ECAN, Schema→Loop, Workflow→Analytics
+- [x] Accessibility audit for remaining panel views beyond CognitiveStateView/MembraneHealthView
 - [ ] VS Code Marketplace publication (requires VSCE_PAT/OVSX_PAT secrets)
 - [ ] Documentation: API reference for all 40 service interfaces
 

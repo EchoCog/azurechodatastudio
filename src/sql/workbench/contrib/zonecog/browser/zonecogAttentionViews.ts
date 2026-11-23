@@ -80,14 +80,20 @@ export class ECANAttentionView extends ViewPane {
 		clearNode(this._statsSection);
 
 		const state = this.ecanService.getState();
+		this._statsSection.setAttribute('role', 'status');
+		this._statsSection.setAttribute('aria-label', localize('zonecog.ecanStatsSummary', 'ECAN statistics summary'));
 
 		// Total nodes tracked
 		const totalCard = append(this._statsSection, $('.zonecog-stat-card'));
+		totalCard.tabIndex = 0;
+		totalCard.setAttribute('aria-label', `${localize('zonecog.nodesTracked', 'Tracked Nodes')}: ${state.totalNodes}`);
 		append(totalCard, $('.zonecog-stat-label')).textContent = localize('zonecog.nodesTracked', 'Tracked Nodes');
 		append(totalCard, $('.zonecog-stat-value')).textContent = String(state.totalNodes);
 
 		// Important count
 		const importantCard = append(this._statsSection, $('.zonecog-stat-card'));
+		importantCard.tabIndex = 0;
+		importantCard.setAttribute('aria-label', `${localize('zonecog.importantNodes', 'Important')}: ${state.importantCount}`);
 		append(importantCard, $('.zonecog-stat-label')).textContent = localize('zonecog.importantNodes', 'Important');
 		const importantValue = append(importantCard, $('.zonecog-stat-value'));
 		importantValue.textContent = String(state.importantCount);
@@ -95,11 +101,15 @@ export class ECANAttentionView extends ViewPane {
 
 		// Total attention
 		const attentionCard = append(this._statsSection, $('.zonecog-stat-card'));
+		attentionCard.tabIndex = 0;
+		attentionCard.setAttribute('aria-label', `${localize('zonecog.totalAttention', 'Total Attention')}: ${state.totalAttention.toFixed(2)}`);
 		append(attentionCard, $('.zonecog-stat-label')).textContent = localize('zonecog.totalAttention', 'Total Attention');
 		append(attentionCard, $('.zonecog-stat-value')).textContent = state.totalAttention.toFixed(2);
 
 		// Rent cycles
 		const rentCard = append(this._statsSection, $('.zonecog-stat-card'));
+		rentCard.tabIndex = 0;
+		rentCard.setAttribute('aria-label', `${localize('zonecog.rentCycles', 'Rent Cycles')}: ${state.rentCycles}`);
 		append(rentCard, $('.zonecog-stat-label')).textContent = localize('zonecog.rentCycles', 'Rent Cycles');
 		append(rentCard, $('.zonecog-stat-value')).textContent = String(state.rentCycles);
 	}
@@ -110,6 +120,8 @@ export class ECANAttentionView extends ViewPane {
 		}
 
 		clearNode(this._attentionBars);
+		this._attentionBars.setAttribute('role', 'list');
+		this._attentionBars.setAttribute('aria-label', localize('zonecog.attentionDistributionList', 'Attention distribution by node'));
 
 		// Get top nodes by attention
 		const topNodes = this.ecanService.getTopByAttention(10);
@@ -125,6 +137,9 @@ export class ECANAttentionView extends ViewPane {
 
 		for (const node of topNodes) {
 			const barContainer = append(this._attentionBars, $('.zonecog-attention-bar'));
+			barContainer.setAttribute('role', 'listitem');
+			barContainer.tabIndex = 0;
+			barContainer.setAttribute('aria-label', localize('zonecog.attentionBarLabel', '{0}: attention {1}', node.nodeId, node.attentionValue.toFixed(2)));
 
 			// Label
 			const label = append(barContainer, $('.zonecog-attention-label'));
@@ -136,6 +151,11 @@ export class ECANAttentionView extends ViewPane {
 			const bar = append(barContainer, $('.zonecog-attention-fill'));
 			const width = Math.round((node.attentionValue / maxAttention) * 100);
 			bar.style.width = `${width}%`;
+			bar.setAttribute('role', 'progressbar');
+			bar.setAttribute('aria-valuemin', '0');
+			bar.setAttribute('aria-valuemax', String(maxAttention));
+			bar.setAttribute('aria-valuenow', node.attentionValue.toFixed(2));
+			bar.setAttribute('aria-label', localize('zonecog.attentionFillLabel', '{0} attention level', node.nodeId));
 
 			// STI indicator
 			if (node.attentionValue >= this.ecanService.getState().importantThreshold) {
@@ -185,6 +205,9 @@ export class WorkingMemoryView extends ViewPane {
 		const section = append(this._container, $('.zonecog-section'));
 		append(section, $('.zonecog-section-header')).textContent = localize('zonecog.workingMemory', 'Working Memory');
 		this._memoryList = append(section, $('.zonecog-working-memory'));
+		this._memoryList.setAttribute('role', 'list');
+		this._memoryList.setAttribute('aria-label', localize('zonecog.workingMemoryList', 'Working memory items'));
+		this._memoryList.setAttribute('aria-live', 'polite');
 
 		// Subscribe to workspace changes
 		this._register(this.workspaceService.onDidChangeWorkspace(() => this._refreshWorkingMemory()));
@@ -215,16 +238,20 @@ export class WorkingMemoryView extends ViewPane {
 
 	private _createMemoryItem(container: HTMLElement, item: WorkingMemoryItem): void {
 		const itemEl = append(container, $('.zonecog-memory-item'));
+		itemEl.setAttribute('role', 'listitem');
+		itemEl.tabIndex = 0;
+		const displayContent = item.content.length > 50 ? item.content.substring(0, 47) + '...' : item.content;
+		itemEl.setAttribute('aria-label', localize('zonecog.memoryItemLabel', '{0}: {1}, activation {2}%', item.type, displayContent, Math.round(item.activation * 100)));
 
 		// Type icon
 		const typeIcon = append(itemEl, $('.zonecog-memory-icon'));
 		typeIcon.textContent = this._getTypeIcon(item.type);
+		typeIcon.setAttribute('aria-hidden', 'true');
 
 		// Content
 		const content = append(itemEl, $('.zonecog-memory-content'));
 
 		const label = append(content, $('.zonecog-memory-label'));
-		const displayContent = item.content.length > 50 ? item.content.substring(0, 47) + '...' : item.content;
 		label.textContent = displayContent;
 		label.title = item.content;
 
