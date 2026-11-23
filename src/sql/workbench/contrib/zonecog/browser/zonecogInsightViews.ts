@@ -72,6 +72,8 @@ export class ThinkingTimelineView extends ViewPane {
 		const section = append(container, $('.zonecog-view'));
 		append(section, $('.zonecog-section-header')).textContent = localize('zonecog.thinkingTimeline', 'Thinking Timeline');
 		this._lanesEl = append(section, $('.zonecog-timeline-lanes'));
+		this._lanesEl.setAttribute('aria-live', 'polite');
+		this._lanesEl.setAttribute('role', 'log');
 		this._renderIdle();
 
 		this._register(this.zonecogService.onDidCompleteThinkingPhase(phase => this._onPhase(phase)));
@@ -112,6 +114,8 @@ export class ThinkingTimelineView extends ViewPane {
 		bar.style.width = `${Math.max(24, Math.min(240, phase.durationMs / 4))}px`;
 		bar.style.marginLeft = `${Math.min(360, offset / 8)}px`;
 		bar.title = `${phase.name} · ${phase.durationMs}ms`;
+		bar.tabIndex = 0;
+		bar.setAttribute('aria-label', localize('zonecog.timelineBar', 'Phase {0}: {1}, {2}ms', this._currentPhases.length, phase.name, phase.durationMs));
 		append(bar, $('.zonecog-timeline-bar-label')).textContent = `${this._currentPhases.length}. ${phase.name}`;
 		append(bar, $('.zonecog-timeline-bar-duration')).textContent = `${phase.durationMs}ms`;
 	}
@@ -171,7 +175,9 @@ export class EpisodicTimelineView extends ViewPane {
 		this._scrubber.value = '0';
 		this._scrubber.setAttribute('aria-label', localize('zonecog.scrubAria', 'Scrub through recorded episodes'));
 		this._detailEl = append(section, $('.zonecog-timeline-detail'));
+		this._detailEl.setAttribute('aria-live', 'polite');
 		this._listEl = append(section, $('.zonecog-wm-list'));
+		this._listEl.setAttribute('role', 'list');
 
 		this._register(this.workspaceService.onDidRecordEpisode(() => this._refresh()));
 
@@ -435,6 +441,12 @@ export class PLNInferenceVisualizerView extends ViewPane {
 			item.tabIndex = 0;
 			item.addEventListener('click', () => {
 				this.visualizationService.focusNode(link.from, 'plnVisualizer');
+			});
+			item.addEventListener('keydown', (e: KeyboardEvent) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					this.visualizationService.focusNode(link.from, 'plnVisualizer');
+					e.preventDefault();
+				}
 			});
 		}
 	}

@@ -98,6 +98,8 @@ export class AgiStudioView extends ViewPane {
 		const allRuns = this.agiStudioService.getRuns();
 
 		const statsGrid = append(this._runStatusSection, $('.zonecog-cognitive-state'));
+		statsGrid.setAttribute('role', 'status');
+		statsGrid.setAttribute('aria-label', localize('zonecog.agiStudio.runSummary', 'AGI Studio run summary'));
 
 		// Current status
 		this._createStatCard(
@@ -182,10 +184,13 @@ export class AgiStudioView extends ViewPane {
 	private _renderAgent(container: HTMLElement, agent: StudioAgent): void {
 		const agentEl = append(container, $('.zonecog-agi-agent'));
 		agentEl.style.paddingLeft = `${agent.depth * 16}px`;
+		agentEl.tabIndex = 0;
+		agentEl.setAttribute('aria-label', localize('zonecog.agiStudio.agentLabel', '{0}, role {1}, status {2}, depth {3}', agent.name, agent.role, agent.status, agent.depth));
 
 		const statusClass = `zonecog-agi-status-${agent.status}`;
 		const statusEl = append(agentEl, $(`.zonecog-agi-agent-status.${statusClass}`));
 		statusEl.textContent = '●';
+		statusEl.setAttribute('aria-hidden', 'true');
 
 		const nameEl = append(agentEl, $('.zonecog-agi-agent-name'));
 		nameEl.textContent = `${agent.name} [${agent.role}]`;
@@ -228,12 +233,14 @@ export class AgiStudioView extends ViewPane {
 
 	private _renderMessage(container: HTMLElement, msg: AgentMessage): void {
 		const msgEl = append(container, $('.zonecog-agi-message'));
+		msgEl.tabIndex = 0;
+		const truncated = msg.content.length > 80 ? msg.content.slice(0, 80) + '…' : msg.content;
+		msgEl.setAttribute('aria-label', localize('zonecog.agiStudio.messageLabel', '{0}: {1}', this._messageTypeLabel(msg.messageType), truncated));
 
 		const typeEl = append(msgEl, $('.zonecog-agi-message-type'));
 		typeEl.textContent = this._messageTypeLabel(msg.messageType);
 
 		const contentEl = append(msgEl, $('.zonecog-agi-message-content'));
-		const truncated = msg.content.length > 80 ? msg.content.slice(0, 80) + '…' : msg.content;
 		contentEl.textContent = truncated;
 
 		const timeEl = append(msgEl, $('.zonecog-agi-message-time'));
@@ -244,6 +251,8 @@ export class AgiStudioView extends ViewPane {
 
 	private _createStatCard(container: HTMLElement, label: string, value: string): void {
 		const card = append(container, $('.zonecog-stat-card'));
+		card.tabIndex = 0;
+		card.setAttribute('aria-label', `${label}: ${value}`);
 		append(card, $('.zonecog-stat-label')).textContent = label;
 		append(card, $('.zonecog-stat-value')).textContent = value;
 	}
