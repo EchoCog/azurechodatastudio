@@ -96,8 +96,12 @@ export class MemoryExplorerView extends ViewPane {
 			return;
 		}
 		const list = append(section, $('.zonecog-wm-list'));
+		list.setAttribute('role', 'list');
 		for (const episode of episodes) {
 			const item = append(list, $('.zonecog-wm-item'));
+			item.setAttribute('role', 'listitem');
+			item.tabIndex = 0;
+			item.setAttribute('aria-label', localize('zonecog.episodeLabel', 'Episode: {0}, salience {1}%', episode.title, Math.round(episode.salience * 100)));
 			append(item, $('.zonecog-wm-category')).textContent = localize('zonecog.episode', 'Episode');
 			const content = append(item, $('.zonecog-wm-content'));
 			content.textContent = episode.title;
@@ -119,12 +123,15 @@ export class MemoryExplorerView extends ViewPane {
 			return;
 		}
 		const list = append(section, $('.zonecog-wm-list'));
+		list.setAttribute('role', 'list');
 		for (const task of tasks) {
 			const item = append(list, $('.zonecog-wm-item'));
+			item.setAttribute('role', 'listitem');
+			item.tabIndex = 0;
+			const statusText = task.active ? localize('zonecog.activeTask', 'Active') : localize('zonecog.task', 'Task');
+			item.setAttribute('aria-label', localize('zonecog.taskLabel', '{0}: {1}, {2} working memory, {3} episodes', statusText, task.description, task.workingMemoryIds.length, task.episodeIds.length));
 			const badge = append(item, $('.zonecog-wm-category'));
-			badge.textContent = task.active
-				? localize('zonecog.activeTask', 'Active')
-				: localize('zonecog.task', 'Task');
+			badge.textContent = statusText;
 			append(item, $('.zonecog-wm-content')).textContent = task.description;
 			append(item, $('.zonecog-wm-relevance')).textContent = localize('zonecog.taskCounts', '{0} wm · {1} ep',
 				task.workingMemoryIds.length, task.episodeIds.length);
@@ -148,9 +155,13 @@ export class MemoryExplorerView extends ViewPane {
 		}
 		const total = this.hypergraphStore.nodeCount();
 		const list = append(section, $('.zonecog-wm-list'));
+		list.setAttribute('role', 'list');
 		const top = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, MAX_NODE_TYPES);
 		for (const [type, count] of top) {
 			const item = append(list, $('.zonecog-wm-item'));
+			item.setAttribute('role', 'listitem');
+			item.tabIndex = 0;
+			item.setAttribute('aria-label', localize('zonecog.nodeTypeLabel', '{0}: {1} nodes, {2}%', type, count, Math.round((count / Math.max(1, total)) * 100)));
 			append(item, $('.zonecog-wm-category')).textContent = type;
 			append(item, $('.zonecog-wm-content')).textContent = localize('zonecog.nodeTypeCount', '{0} nodes', count);
 			append(item, $('.zonecog-wm-relevance')).textContent = `${Math.round((count / Math.max(1, total)) * 100)}%`;

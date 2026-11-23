@@ -77,7 +77,10 @@ export class ThinkingProcessView extends ViewPane {
 		this._liveSection = append(this._container, $('.zonecog-section'));
 		append(this._liveSection, $('.zonecog-section-header')).textContent = localize('zonecog.liveThinking', 'Live Thinking');
 		this._livePhaseList = append(this._liveSection, $('.zonecog-thinking-phases'));
+		this._livePhaseList.setAttribute('aria-live', 'polite');
+		this._livePhaseList.setAttribute('role', 'log');
 		this._liveResponse = append(this._liveSection, $('.zonecog-thinking-response'));
+		this._liveResponse.setAttribute('aria-live', 'polite');
 
 		this._recentSection = append(this._container, $('.zonecog-section'));
 		append(this._recentSection, $('.zonecog-section-header')).textContent = localize('zonecog.recentQueries', 'Recent Queries');
@@ -123,6 +126,8 @@ export class ThinkingProcessView extends ViewPane {
 		this._currentPhases.push(phase);
 
 		const card = append(this._livePhaseList, $('.zonecog-thinking-phase'));
+		card.tabIndex = 0;
+		card.setAttribute('aria-label', localize('zonecog.phaseLabel', 'Phase {0}: {1}, {2}ms', this._currentPhases.length, phase.name, phase.durationMs));
 		const header = append(card, $('.zonecog-thinking-phase-header'));
 		append(header, $('.zonecog-thinking-phase-name')).textContent = `${this._currentPhases.length}. ${phase.name}`;
 		append(header, $('.zonecog-thinking-phase-duration')).textContent = localize('zonecog.phaseDuration', '{0}ms', phase.durationMs);
@@ -172,6 +177,8 @@ export class ThinkingProcessView extends ViewPane {
 			return;
 		}
 		clearNode(this._recentList);
+		this._recentList.setAttribute('role', 'list');
+		this._recentList.setAttribute('aria-label', localize('zonecog.recentQueriesList', 'Recent query results'));
 		if (this._recentQueries.length === 0) {
 			append(this._recentList, $('.zonecog-thinking-idle')).textContent =
 				localize('zonecog.noRecentQueries', 'No queries processed yet this session.');
@@ -179,6 +186,9 @@ export class ThinkingProcessView extends ViewPane {
 		}
 		for (const entry of this._recentQueries) {
 			const item = append(this._recentList, $('.zonecog-thinking-recent-item'));
+			item.setAttribute('role', 'listitem');
+			item.tabIndex = 0;
+			item.setAttribute('aria-label', localize('zonecog.recentQueryLabel', '{0} {1}, {2} phases, {3}ms, {4}% confidence', entry.complexity, entry.depth, entry.phaseCount, entry.processingTimeMs, Math.round(entry.confidence * 100)));
 			const meta = append(item, $('.zonecog-thinking-recent-meta'));
 			meta.textContent = localize('zonecog.recentQueryMeta', '{0} / {1} · {2} phases · {3}ms · confidence {4}%',
 				entry.complexity, entry.depth, entry.phaseCount, entry.processingTimeMs, Math.round(entry.confidence * 100));

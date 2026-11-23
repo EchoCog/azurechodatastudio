@@ -124,7 +124,12 @@ export class ECANAttentionHeatmapView extends ZoneCogCanvasView {
 
 		const wrapper = append(container, $('.zonecog-view.zonecog-heatmap-view'));
 		this._canvas = append(wrapper, $('canvas.zonecog-hypergraph-canvas')) as HTMLCanvasElement;
+		this._canvas.setAttribute('role', 'img');
+		this._canvas.setAttribute('aria-label', localize('zonecog.heatmapCanvas', 'ECAN attention heatmap with salience heat overlay'));
+		this._canvas.tabIndex = 0;
 		this._statsEl = append(wrapper, $('.zonecog-heatmap-stats'));
+		this._statsEl.setAttribute('role', 'status');
+		this._statsEl.setAttribute('aria-live', 'polite');
 
 		this._register(this.visualizationService.attachRenderer(animations => {
 			if (!this.isBodyVisible()) {
@@ -288,6 +293,9 @@ export class MembraneTriadDiagramView extends ZoneCogCanvasView {
 	protected override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
 		this._canvas = append(append(container, $('.zonecog-view.zonecog-membrane-diagram')), $('canvas.zonecog-hypergraph-canvas')) as HTMLCanvasElement;
+		this._canvas.setAttribute('role', 'img');
+		this._canvas.setAttribute('aria-label', localize('zonecog.membraneDiagramCanvas', 'Membrane triad health diagram with animated inter-membrane channels'));
+		this._canvas.tabIndex = 0;
 
 		this._register(this.visualizationService.attachRenderer(() => {
 			if (!this.isBodyVisible()) {
@@ -444,6 +452,9 @@ export class DTESNReservoirAnimationView extends ZoneCogCanvasView {
 	protected override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
 		this._canvas = append(append(container, $('.zonecog-view.zonecog-reservoir-view')), $('canvas.zonecog-hypergraph-canvas')) as HTMLCanvasElement;
+		this._canvas.setAttribute('role', 'img');
+		this._canvas.setAttribute('aria-label', localize('zonecog.reservoirCanvas', 'DTESN reservoir activation scatter with spectral radius gauges and convergence sparkline'));
+		this._canvas.tabIndex = 0;
 
 		this._register(this.visualizationService.attachRenderer(() => {
 			if (!this.isBodyVisible()) {
@@ -579,6 +590,9 @@ export class AAROrchestrationGraphView extends ZoneCogCanvasView {
 	protected override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
 		this._canvas = append(append(container, $('.zonecog-view.zonecog-aar-graph')), $('canvas.zonecog-hypergraph-canvas')) as HTMLCanvasElement;
+		this._canvas.setAttribute('role', 'img');
+		this._canvas.setAttribute('aria-label', localize('zonecog.aarGraphCanvas', 'AAR orchestration graph showing agent nodes and relation edges'));
+		this._canvas.tabIndex = 0;
 
 		this._register(this.visualizationService.attachRenderer(() => {
 			if (!this.isBodyVisible()) {
